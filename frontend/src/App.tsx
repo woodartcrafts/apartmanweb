@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import {
   apiBase,
   dateInputToIso,
@@ -216,51 +216,6 @@ function LazyAdminPageFallback() {
         <h3>Sayfa Yukleniyor...</h3>
         <p className="small">Lutfen bekleyin.</p>
       </div>
-    </section>
-  );
-}
-
-function HomePage({ user }: { user: LoginResponse["user"] | null }) {
-  return (
-    <section className="dashboard">
-      <div className="card">
-        <h2>Ana Sayfa</h2>
-        <p className="small">Panel butonlari ile ilgili sayfaya gecis yapabilirsiniz.</p>
-      </div>
-
-      <div className="home-grid">
-        <article className="card home-card">
-          <h3>Giris</h3>
-          <p>Admin veya resident hesabi ile sisteme giris yapin.</p>
-          <Link className="btn btn-primary" to="/login">
-            Giris Sayfasi
-          </Link>
-        </article>
-
-        <article className="card home-card">
-          <h3>Admin Panel</h3>
-          <p>Daire, tahakkuk, odeme, kapama ve ekstre islemleri.</p>
-          <Link className="btn btn-primary" to="/admin">
-            Admin'e Git
-          </Link>
-        </article>
-
-        <article className="card home-card">
-          <h3>Resident Panel</h3>
-          <p>Sadece bagli dairenin ekstresini goruntuleyin.</p>
-          <Link className="btn btn-primary" to="/resident">
-            Resident'a Git
-          </Link>
-        </article>
-      </div>
-
-      {user && (
-        <div className="card">
-          <p className="small">
-            Aktif hesap: <b>{user.fullName}</b> ({user.role})
-          </p>
-        </div>
-      )}
     </section>
   );
 }
@@ -12298,6 +12253,8 @@ function App() {
   });
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("Lutfen giris yapin");
+  const defaultAuthenticatedPath = user?.role === "ADMIN" ? "/admin" : "/resident";
+  const isAdmin = user?.role === "ADMIN";
 
   async function handleLogin(identifier: string, password: string): Promise<void> {
     setAuthLoading(true);
@@ -12356,55 +12313,45 @@ function App() {
 
       <header className="hero">
         <h1>ApartmanWeb MVP | Tahakkuk ve Ekstre Paneli</h1>
-      </header>
-
-      <div className="app-shell">
-        <nav className="card top-nav">
-          <div className="nav-links">
-            <NavLink className="btn btn-ghost" to="/">
-              Ana Sayfa
-            </NavLink>
-            {!user && (
-              <NavLink className="btn btn-ghost" to="/login">
-                Giris
-              </NavLink>
-            )}
-            {user?.role === "ADMIN" && (
-              <NavLink className="btn btn-ghost" to="/admin">
-                Admin Panel
-              </NavLink>
-            )}
-            {user && (
-              <NavLink className="btn btn-ghost" to="/resident">
-                Resident Panel
-              </NavLink>
-            )}
+        {isAdmin && (
+          <div className="hero-actions">
             <button className="btn btn-ghost" type="button" onClick={openCurrentScreenInNewTab}>
               Yeni Ekran Ac
             </button>
           </div>
-          <div className="nav-user">
-            {user ? (
-              <>
-                <span className="small">{user.fullName}</span>
-                <button className="btn btn-danger" onClick={logout}>
-                  Cikis
-                </button>
-              </>
-            ) : (
-              <span className="small">Misafir</span>
-            )}
-          </div>
-        </nav>
+        )}
+      </header>
+
+      <div className="app-shell">
+        {user && (
+          <nav className="card top-nav">
+            <div className="nav-links">
+              {user.role === "ADMIN" && (
+                <NavLink className="btn btn-ghost" to="/admin">
+                  Admin Panel
+                </NavLink>
+              )}
+              <NavLink className="btn btn-ghost" to="/resident">
+                Resident Panel
+              </NavLink>
+            </div>
+            <div className="nav-user">
+              <span className="small">{user.fullName}</span>
+              <button className="btn btn-danger" onClick={logout}>
+                Cikis
+              </button>
+            </div>
+          </nav>
+        )}
 
         <main className="workspace">
           <Routes>
-            <Route path="/" element={<HomePage user={user} />} />
+            <Route path="/" element={<Navigate to={user ? defaultAuthenticatedPath : "/login"} replace />} />
             <Route
               path="/login"
               element={
                 user ? (
-                  <Navigate to={user.role === "ADMIN" ? "/admin" : "/resident"} replace />
+                  <Navigate to={defaultAuthenticatedPath} replace />
                 ) : (
                   <LoginPage onLogin={handleLogin} loading={authLoading} message={authMessage} />
                 )
@@ -12420,7 +12367,7 @@ function App() {
                 user ? <ResidentPage user={user} /> : <Navigate to="/login" replace />
               }
             />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to={user ? defaultAuthenticatedPath : "/login"} replace />} />
           </Routes>
         </main>
       </div>
