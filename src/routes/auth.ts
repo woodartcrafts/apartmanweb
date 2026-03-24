@@ -1,0 +1,125 @@
+import { Router } from "express";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { z } from "zod";
+import { config } from "../config";
+import { prisma } from "../db";
+
+const router = Router();
+const AUTH_COOKIE_NAME = "auth_token";
+const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function normalizePhone(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) {
+    return null;
+  }
+
+  if (trimmed.startsWith("+") && digits.length >= 10) {
+    return `+${digits}`;
+  }
+
+  if (digits.length === 10) {
+    return `+90${digits}`;
+  }
+
+  if (digits.length === 11 && digits.startsWith("0")) {
+    return `+90${digits.slice(1)}`;
+  }
+
+  if (digits.length === 12 && digits.startsWith("90")) {
+    return `+${digits}`;
+  }
+
+  if (digits.length > 4 && digits.startsWith("00")) {
+    return `+${digits.slice(2)}`;
+  }
+
+  return null;
+}
+
+router.post("/login", async (req, res) => {
+  const schema = z
+    .object({
+      identifier: z.string().trim().min(3).max(64).optional(),
+      email: z.string().trim().email().optional(),
+      password: z
+        .string()
+        .min(8)
+        .max(128)
+        .regex(/[A-Za-z]/, "Password must include at least one letter")
+        .regex(/[0-9]/, "Password must include at least one digit"),
+    })
+    .refine((data) => Boolean(data.identifier || data.email), {
+      message: "Identifier or email is required",
+      path: ["identifier"],
+    });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const password = parsed.data.password;
+  const rawIdentifier = (parsed.data.identifier ?? parsed.data.email ?? "").trim();
+  const identifier = rawIdentifier.toLowerCase();
+
+  const user = identifier.includes("@")
+    ? await prisma.user.findUnique({ where: { email: identifier } })
+    : await prisma.user.findUnique({ where: { phone: normalizePhone(identifier) ?? "" } });
+
+  if (!user) {
+    return res.status(401).json({ message: "Invalid credentials" });
+  }
+
+  const ok = await bcrypt.compare(password, user.passwordHash);
+  if (!ok) {
+    return res.status(401).json({ message: "Invalid credentials" });
+  }
+
+  const token = jwt.sign(
+    {
+      userId: user.id,
+      role: user.role,
+      apartmentId: user.apartmentId,
+    },
+    config.jwtSecret,
+    { expiresIn: "7d" }
+  );
+
+  res.cookie(AUTH_COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: AUTH_COOKIE_MAX_AGE_MS,
+  });
+
+  return res.json({
+    token,
+    user: {
+      id: user.id,
+      email: user.email,
+      phone: user.phone,
+      fullName: user.fullName,
+      role: user.role,
+      apartmentId: user.apartmentId,
+    },
+  });
+});
+
+router.post("/logout", (_req, res) => {
+  res.clearCookie(AUTH_COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+
+  return res.json({ ok: true });
+});
+
+export default router;

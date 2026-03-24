@@ -1,0 +1,469 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
+import {
+  apiBase,
+  formatDateTr,
+  isoToDateInput,
+  type AdminResidentAnnouncementRow,
+  type AdminResidentPollRow,
+} from "../../app/shared";
+
+type ResidentAnnouncementFormState = {
+  title: string;
+  content: string;
+  publishAt: string;
+  expiresAt: string;
+  isActive: boolean;
+};
+
+type ResidentPollFormState = {
+  title: string;
+  description: string;
+  startsAt: string;
+  endsAt: string;
+  allowMultiple: boolean;
+  isActive: boolean;
+  optionsText: string;
+};
+
+const initialAnnouncementFormState: ResidentAnnouncementFormState = {
+  title: "",
+  content: "",
+  publishAt: "",
+  expiresAt: "",
+  isActive: true,
+};
+
+const initialPollFormState: ResidentPollFormState = {
+  title: "",
+  description: "",
+  startsAt: "",
+  endsAt: "",
+  allowMultiple: false,
+  isActive: true,
+  optionsText: "Evet\nHayir",
+};
+
+export function ResidentContentAdminPage() {
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [saveNotice, setSaveNotice] = useState("");
+  const saveNoticeTimerRef = useRef<number | null>(null);
+  const [announcementRows, setAnnouncementRows] = useState<AdminResidentAnnouncementRow[]>([]);
+  const [pollRows, setPollRows] = useState<AdminResidentPollRow[]>([]);
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null);
+  const [editingPollId, setEditingPollId] = useState<string | null>(null);
+  const [announcementForm, setAnnouncementForm] = useState<ResidentAnnouncementFormState>(initialAnnouncementFormState);
+  const [pollForm, setPollForm] = useState<ResidentPollFormState>(initialPollFormState);
+
+  const adminRequest = useCallback(async <T,>(
+    endpoint: string,
+    options?: { method?: "GET" | "POST" | "PUT" | "DELETE"; payload?: unknown }
+  ): Promise<T> => {
+    const method = options?.method ?? "GET";
+    const payload = options?.payload;
+
+    const response = await fetch(`${apiBase}${endpoint}`, {
+      method,
+      headers: {
+        ...(payload ? { "Content-Type": "application/json" } : {}),
+      },
+      credentials: "include",
+      ...(payload ? { body: JSON.stringify(payload) } : {}),
+    });
+
+    if (!response.ok) {
+      const errorBody = (await response.json().catch(() => ({}))) as { message?: string };
+      if (response.status === 401) {
+        throw new Error("Oturum gecersiz veya suresi dolmus. Lutfen tekrar giris yapin");
+      }
+      throw new Error(errorBody.message ?? "Istek basarisiz");
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    return (await response.json()) as T;
+  }, []);
+
+  const fetchData = useCallback(async (): Promise<void> => {
+    setLoading(true);
+    try {
+      const [announcements, polls] = await Promise.all([
+        adminRequest<AdminResidentAnnouncementRow[]>("/api/admin/resident-content/announcements"),
+        adminRequest<AdminResidentPollRow[]>("/api/admin/resident-content/polls"),
+      ]);
+      setAnnouncementRows(announcements);
+      setPollRows(polls);
+      setMessage("");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Duyuru/anket verileri alinamadi");
+    } finally {
+      setLoading(false);
+    }
+  }, [adminRequest]);
+
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    return () => {
+      if (saveNoticeTimerRef.current !== null) {
+        window.clearTimeout(saveNoticeTimerRef.current);
+      }
+    };
+  }, []);
+
+  function showSaveNotice(text: string): void {
+    setSaveNotice(text);
+    if (saveNoticeTimerRef.current !== null) {
+      window.clearTimeout(saveNoticeTimerRef.current);
+    }
+    saveNoticeTimerRef.current = window.setTimeout(() => {
+      setSaveNotice("");
+      saveNoticeTimerRef.current = null;
+    }, 3000);
+  }
+
+  async function onSubmitResidentAnnouncement(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const formData = new FormData(e.currentTarget);
+      const title = String(formData.get("title") ?? "").trim();
+      const content = String(formData.get("content") ?? "").trim();
+      const publishAtRaw = String(formData.get("publishAt") ?? "").trim();
+      const expiresAtRaw = String(formData.get("expiresAt") ?? "").trim();
+      const isActive = formData.get("isActive") === "on";
+
+      const payload = {
+        title,
+        content,
+        isActive,
+        publishAt: publishAtRaw ? new Date(`${publishAtRaw}T00:00:00.000Z`).toISOString() : undefined,
+        expiresAt: expiresAtRaw ? new Date(`${expiresAtRaw}T23:59:59.000Z`).toISOString() : null,
+      };
+
+      if (editingAnnouncementId) {
+        await adminRequest(`/api/admin/resident-content/announcements/${editingAnnouncementId}`, {
+          method: "PUT",
+          payload,
+        });
+      } else {
+        await adminRequest("/api/admin/resident-content/announcements", {
+          method: "POST",
+          payload,
+        });
+      }
+
+      await fetchData();
+      setEditingAnnouncementId(null);
+      setAnnouncementForm(initialAnnouncementFormState);
+      setMessage(editingAnnouncementId ? "Duyuru guncellendi" : "Duyuru eklendi");
+      showSaveNotice(editingAnnouncementId ? "Duyuru guncellendi" : "Duyuru eklendi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Duyuru kaydedilemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function startEditResidentAnnouncement(row: AdminResidentAnnouncementRow): void {
+    setEditingAnnouncementId(row.id);
+    setAnnouncementForm({
+      title: row.title,
+      content: row.content,
+      publishAt: isoToDateInput(row.publishAt),
+      expiresAt: row.expiresAt ? isoToDateInput(row.expiresAt) : "",
+      isActive: row.isActive,
+    });
+  }
+
+  function cancelEditResidentAnnouncement(): void {
+    setEditingAnnouncementId(null);
+    setAnnouncementForm(initialAnnouncementFormState);
+  }
+
+  async function onSubmitResidentPoll(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const formData = new FormData(e.currentTarget);
+      const title = String(formData.get("title") ?? "").trim();
+      const description = String(formData.get("description") ?? "").trim();
+      const startsAtRaw = String(formData.get("startsAt") ?? "").trim();
+      const endsAtRaw = String(formData.get("endsAt") ?? "").trim();
+      const allowMultiple = formData.get("allowMultiple") === "on";
+      const isActive = formData.get("isActive") === "on";
+
+      if (editingPollId) {
+        await adminRequest(`/api/admin/resident-content/polls/${editingPollId}`, {
+          method: "PUT",
+          payload: {
+            title,
+            description: description || null,
+            allowMultiple,
+            isActive,
+            startsAt: startsAtRaw ? new Date(`${startsAtRaw}T00:00:00.000Z`).toISOString() : undefined,
+            endsAt: endsAtRaw ? new Date(`${endsAtRaw}T23:59:59.000Z`).toISOString() : null,
+          },
+        });
+      } else {
+        const optionsText = String(formData.get("optionsText") ?? "");
+        const options = optionsText
+          .split(/\r?\n/)
+          .map((x) => x.trim())
+          .filter(Boolean);
+
+        await adminRequest("/api/admin/resident-content/polls", {
+          method: "POST",
+          payload: {
+            title,
+            description: description || undefined,
+            allowMultiple,
+            isActive,
+            startsAt: startsAtRaw ? new Date(`${startsAtRaw}T00:00:00.000Z`).toISOString() : undefined,
+            endsAt: endsAtRaw ? new Date(`${endsAtRaw}T23:59:59.000Z`).toISOString() : null,
+            options,
+          },
+        });
+      }
+
+      await fetchData();
+      setEditingPollId(null);
+      setPollForm(initialPollFormState);
+      setMessage(editingPollId ? "Anket guncellendi" : "Anket eklendi");
+      showSaveNotice(editingPollId ? "Anket guncellendi" : "Anket eklendi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Anket kaydedilemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function startEditResidentPoll(row: AdminResidentPollRow): void {
+    setEditingPollId(row.id);
+    setPollForm({
+      title: row.title,
+      description: row.description ?? "",
+      startsAt: isoToDateInput(row.startsAt),
+      endsAt: row.endsAt ? isoToDateInput(row.endsAt) : "",
+      allowMultiple: row.allowMultiple,
+      isActive: row.isActive,
+      optionsText: row.options.map((x) => x.text).join("\n"),
+    });
+  }
+
+  function cancelEditResidentPoll(): void {
+    setEditingPollId(null);
+    setPollForm(initialPollFormState);
+  }
+
+  return (
+    <section className="dashboard report-page">
+      {saveNotice && (
+        <div className="blocking-modal" role="status" aria-live="polite" aria-busy="false">
+          <div className="blocking-modal-card save-notice-modal-card">
+            <div className="save-notice-icon" aria-hidden="true">
+              ✓
+            </div>
+            <h3>Islem Tamamlandi</h3>
+            <p className="small">{saveNotice}</p>
+          </div>
+        </div>
+      )}
+
+      <div className="card table-card report-page-card">
+        <div className="section-head report-toolbar">
+          <h3>Duyurular ve Anketler</h3>
+          <button className="btn btn-ghost" type="button" onClick={() => void fetchData()} disabled={loading}>
+            Yenile
+          </button>
+        </div>
+        <p className="small">Admin bu ekrandan duyuru ve anket olusturur; resident panelde yayinda olanlar gorunur.</p>
+        {message && <p className="small">{message}</p>}
+      </div>
+
+      <div className="admin-forms-grid">
+        <form
+          key={`ann-form-${editingAnnouncementId ?? "new"}-${announcementForm.title}-${announcementForm.publishAt}-${announcementForm.expiresAt}-${announcementForm.isActive ? "1" : "0"}`}
+          className="card admin-form"
+          onSubmit={onSubmitResidentAnnouncement}
+        >
+          <h3>{editingAnnouncementId ? "Duyuru Duzenle" : "Duyuru Ekle"}</h3>
+          <label>
+            Baslik
+            <input name="title" defaultValue={announcementForm.title} required />
+          </label>
+          <label>
+            Icerik
+            <textarea name="content" rows={4} defaultValue={announcementForm.content} required />
+          </label>
+          <div className="compact-row">
+            <label>
+              Yayin Tarihi
+              <input name="publishAt" type="date" defaultValue={announcementForm.publishAt} />
+            </label>
+            <label>
+              Bitis Tarihi
+              <input name="expiresAt" type="date" defaultValue={announcementForm.expiresAt} />
+            </label>
+          </div>
+          <label className="checkbox-row">
+            <input name="isActive" type="checkbox" defaultChecked={announcementForm.isActive} />
+            Aktif
+          </label>
+          <div className="admin-row">
+            <button className="btn btn-primary" type="submit" disabled={loading}>
+              {editingAnnouncementId ? "Guncelle" : "Ekle"}
+            </button>
+            {editingAnnouncementId && (
+              <button className="btn btn-ghost" type="button" onClick={cancelEditResidentAnnouncement}>
+                Iptal
+              </button>
+            )}
+          </div>
+        </form>
+
+        <form
+          key={`poll-form-${editingPollId ?? "new"}-${pollForm.title}-${pollForm.startsAt}-${pollForm.endsAt}-${pollForm.allowMultiple ? "1" : "0"}-${pollForm.isActive ? "1" : "0"}`}
+          className="card admin-form"
+          onSubmit={onSubmitResidentPoll}
+        >
+          <h3>{editingPollId ? "Anket Duzenle" : "Anket Ekle"}</h3>
+          <label>
+            Baslik
+            <input name="title" defaultValue={pollForm.title} required />
+          </label>
+          <label>
+            Aciklama
+            <textarea name="description" rows={3} defaultValue={pollForm.description} />
+          </label>
+          <div className="compact-row">
+            <label>
+              Baslangic Tarihi
+              <input name="startsAt" type="date" defaultValue={pollForm.startsAt} />
+            </label>
+            <label>
+              Bitis Tarihi
+              <input name="endsAt" type="date" defaultValue={pollForm.endsAt} />
+            </label>
+          </div>
+          <label className="checkbox-row">
+            <input name="allowMultiple" type="checkbox" defaultChecked={pollForm.allowMultiple} />
+            Coklu secime izin ver
+          </label>
+          <label className="checkbox-row">
+            <input name="isActive" type="checkbox" defaultChecked={pollForm.isActive} />
+            Aktif
+          </label>
+          {!editingPollId && (
+            <label>
+              Secenekler (satir satir)
+              <textarea name="optionsText" rows={4} defaultValue={pollForm.optionsText} required />
+            </label>
+          )}
+          <div className="admin-row">
+            <button className="btn btn-primary" type="submit" disabled={loading}>
+              {editingPollId ? "Guncelle" : "Ekle"}
+            </button>
+            {editingPollId && (
+              <button className="btn btn-ghost" type="button" onClick={cancelEditResidentPoll}>
+                Iptal
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+
+      <div className="card table-card report-page-card">
+        <h3>Duyuru Listesi</h3>
+        <div className="table-wrap compact-row-top-gap">
+          <table className="apartment-list-table report-compact-table">
+            <thead>
+              <tr>
+                <th>Baslik</th>
+                <th>Icerik</th>
+                <th>Yayin</th>
+                <th>Bitis</th>
+                <th>Durum</th>
+                <th>Islem</th>
+              </tr>
+            </thead>
+            <tbody>
+              {announcementRows.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.title}</td>
+                  <td>{row.content}</td>
+                  <td>{formatDateTr(row.publishAt)}</td>
+                  <td>{row.expiresAt ? formatDateTr(row.expiresAt) : "-"}</td>
+                  <td>{row.isActive ? "Aktif" : "Pasif"}</td>
+                  <td className="actions-cell">
+                    <button className="btn btn-ghost" type="button" onClick={() => startEditResidentAnnouncement(row)}>
+                      Duzenle
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {announcementRows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="empty">
+                    Duyuru yok
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card table-card report-page-card">
+        <h3>Anket Listesi</h3>
+        <div className="table-wrap compact-row-top-gap">
+          <table className="apartment-list-table report-compact-table">
+            <thead>
+              <tr>
+                <th>Baslik</th>
+                <th>Secenekler</th>
+                <th>Oy</th>
+                <th>Coklu</th>
+                <th>Durum</th>
+                <th>Islem</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pollRows.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.title}</td>
+                  <td>{row.options.map((x) => `${x.text} (${x.voteCount})`).join(" | ")}</td>
+                  <td className="col-num">{row.totalVotes}</td>
+                  <td>{row.allowMultiple ? "Evet" : "Hayir"}</td>
+                  <td>{row.isActive ? "Aktif" : "Pasif"}</td>
+                  <td className="actions-cell">
+                    <button className="btn btn-ghost" type="button" onClick={() => startEditResidentPoll(row)}>
+                      Duzenle
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {pollRows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="empty">
+                    Anket yok
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}

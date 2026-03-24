@@ -1,0 +1,16 @@
+ALTER TABLE "BankDefinition"
+DROP COLUMN IF EXISTS "accountHolderName",
+DROP COLUMN IF EXISTS "accountNumber",
+DROP COLUMN IF EXISTS "iban",
+DROP COLUMN IF EXISTS "swiftCode",
+DROP COLUMN IF EXISTS "taxOffice",
+DROP COLUMN IF EXISTS "taxNumber",
+DROP COLUMN IF EXISTS "customerCode",
+DROP COLUMN IF EXISTS "website",
+DROP COLUMN IF EXISTS "phone",
+DROP COLUMN IF EXISTS "email",
+DROP COLUMN IF EXISTS "address",
+DROP COLUMN IF EXISTS "representativeName",
+DROP COLUMN IF EXISTS "representativePhone",
+DROP COLUMN IF EXISTS "representativeEmail",
+DROP COLUMN IF EXISTS "notes";

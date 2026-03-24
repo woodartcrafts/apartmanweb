@@ -1,0 +1,143 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Prisma Generate Once",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"prisma:generate"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Prisma Generate Binary Engine",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"prisma:generate"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Prisma Generate Check Exit",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"npm run prisma:generate; Write-Output \"EXIT:$LASTEXITCODE\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Prisma Migrate Deploy",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"prisma:deploy"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Restart API After Migrate",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"restart:api"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Frontend Dev Host 5173",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Set-Location frontend; npm run dev -- --host --strictPort --port 5173"
+			],
+			"isBackground": true
+		},
+		{
+			"label": "Free 5173 and Start Frontend",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; Set-Location frontend; npm run dev -- --host --strictPort --port 5173"
+			],
+			"isBackground": true
+		},
+		{
+			"label": "Check Duplicate Expense References",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$code = @'\nconst { PrismaClient } = require(\"@prisma/client\");\nconst prisma = new PrismaClient();\n\nasync function main() {\n  const refs = [\n    \"11188005235620260303115134255\",\n    \"11188005235620260303115112071\",\n  ];\n\n  const expenses = await prisma.expense.findMany({\n    where: { reference: { in: refs } },\n    select: {\n      id: true,\n      reference: true,\n      amount: true,\n      spentAt: true,\n      createdAt: true,\n      importBatchId: true,\n      paymentMethod: true,\n      description: true,\n      expenseItemId: true,\n    },\n    orderBy: [{ createdAt: \"desc\" }],\n  });\n\n  const batches = await prisma.importBatch.findMany({\n    where: { id: { in: expenses.map((x) => x.importBatchId).filter(Boolean) } },\n    select: { id: true, fileName: true, uploadedAt: true, kind: true },\n  });\n\n  console.log(JSON.stringify({\n    refs,\n    expenseCount: expenses.length,\n    expenses,\n    batches,\n  }, null, 2));\n}\n\nmain().catch((e) => { console.error(e); process.exitCode = 1; }).finally(async () => { await prisma.$disconnect(); });\n'@; Set-Content -Path .tmp_check_refs.js -Value $code; node .tmp_check_refs.js; Remove-Item .tmp_check_refs.js -Force"
+			]
+		},
+		{
+			"label": "Run Ref Check Script",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				".tmp_check_refs.js"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Recheck Two Expense Refs",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$code = @'\nconst { PrismaClient } = require(\"@prisma/client\");\nconst prisma = new PrismaClient();\n\nasync function main() {\n  const refs = [\"11188005235620260303115134255\",\"11188005235620260303115112071\"];\n  const expenses = await prisma.expense.findMany({\n    where: { reference: { in: refs } },\n    select: { id: true, reference: true, spentAt: true, createdAt: true, importBatchId: true, description: true },\n    orderBy: [{ spentAt: \"desc\" }]\n  });\n  console.log(JSON.stringify({ count: expenses.length, expenses }, null, 2));\n}\nmain().catch(e=>{console.error(e); process.exitCode=1;}).finally(async()=>{await prisma.$disconnect();});\n'@; Set-Content -Path .tmp_recheck_refs.js -Value $code; node .tmp_recheck_refs.js; Remove-Item .tmp_recheck_refs.js -Force"
+			]
+		},
+		{
+			"label": "Check Expense Count Now",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				".tmp_check_expenses_now.js"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Run Expense Count Script Now",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				".tmp_check_expenses_now.js"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Test Expenses Report API",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				".tmp_test_expense_report_api.js"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Delete Latest Bank Batch",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				".tmp_delete_latest_bank_batch.js"
+			],
+			"isBackground": false
+		}
+	]
+}

@@ -1,0 +1,7463 @@
+import { ApartmentType, ImportBatchType, OccupancyType, PaymentMethod, Prisma, UserRole } from "@prisma/client";
+import { Router } from "express";
+import multer from "multer";
+import { PDFParse } from "pdf-parse";
+import ExcelJS from "exceljs";
+import { z } from "zod";
+import { prisma } from "../db";
+import { requireAuth, requireRole } from "../middlewares/auth";
+import { getApartmentStatements } from "../utils/statement";
+import blockRoutes from "./adminBlockRoutes";
+import definitionRoutes from "./adminDefinitionRoutes";
+import descriptionRuleRoutes from "./adminDescriptionRuleRoutes";
+import { createAdminApartmentRoutes } from "./adminApartmentRoutes";
+import { createAdminApartmentUploadRoutes } from "./adminApartmentUploadRoutes";
+import { createAdminExpenseRoutes } from "./adminExpenseRoutes";
+import { createAdminPaymentMethodRoutes } from "./adminPaymentMethodRoutes";
+import { createAdminApartmentDefinitionRoutes } from "./adminApartmentDefinitionRoutes";
+import {
+  buildPaymentNote,
+  extractDoorNoTagFromPaymentNote,
+  normalizeDoorNoForCompare,
+  parsePaymentNoteParts,
+} from "./adminNoteUtils";
+
+const router = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+router.use(requireAuth, requireRole([UserRole.ADMIN]));
+router.use(blockRoutes);
+router.use(definitionRoutes);
+router.use(descriptionRuleRoutes);
+router.use(
+  createAdminExpenseRoutes({
+    ensurePaymentMethodDefinitions,
+    pushActionLog: (input) => pushActionLog(input as any),
+    mapExpenseSnapshot: (expense) => mapExpenseSnapshot(expense as any),
+    extractChargeInvoiceAmount,
+  })
+);
+router.use(
+  createAdminPaymentMethodRoutes({
+    ensurePaymentMethodDefinitions,
+  })
+);
+router.use(
+  createAdminApartmentRoutes({
+    ensureApartmentClassDefinitions,
+    ensureApartmentDutyDefinitions,
+  })
+);
+router.use(
+  createAdminApartmentUploadRoutes({
+    ensureApartmentClassDefinitions,
+    ensureApartmentDutyDefinitions,
+  })
+);
+router.use(
+  createAdminApartmentDefinitionRoutes({
+    ensureApartmentClassDefinitions,
+    ensureApartmentDutyDefinitions,
+    ensureApartmentTypeDefinitions,
+  })
+);
+
+router.get("/resident-content/announcements", async (_req, res) => {
+  const rows = await prisma.residentAnnouncement.findMany({
+    orderBy: [{ publishAt: "desc" }, { createdAt: "desc" }],
+    take: 200,
+  });
+
+  return res.json(
+    rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      content: row.content,
+      isActive: row.isActive,
+      publishAt: row.publishAt,
+      expiresAt: row.expiresAt,
+      createdById: row.createdById,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }))
+  );
+});
+
+router.post("/resident-content/announcements", async (req, res) => {
+  const schema = z.object({
+    title: z.string().trim().min(3).max(200),
+    content: z.string().trim().min(5).max(5000),
+    isActive: z.boolean().optional(),
+    publishAt: z.string().datetime().optional(),
+    expiresAt: z.string().datetime().nullable().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const created = await prisma.residentAnnouncement.create({
+    data: {
+      title: parsed.data.title,
+      content: parsed.data.content,
+      isActive: parsed.data.isActive ?? true,
+      publishAt: parsed.data.publishAt ? new Date(parsed.data.publishAt) : new Date(),
+      expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
+      createdById: req.user?.userId,
+    },
+  });
+
+  return res.status(201).json(created);
+});
+
+router.put("/resident-content/announcements/:id", async (req, res) => {
+  const { id } = req.params;
+  const schema = z.object({
+    title: z.string().trim().min(3).max(200).optional(),
+    content: z.string().trim().min(5).max(5000).optional(),
+    isActive: z.boolean().optional(),
+    publishAt: z.string().datetime().optional(),
+    expiresAt: z.string().datetime().nullable().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const existing = await prisma.residentAnnouncement.findUnique({ where: { id } });
+  if (!existing) {
+    return res.status(404).json({ message: "Duyuru bulunamadi" });
+  }
+
+  const updated = await prisma.residentAnnouncement.update({
+    where: { id },
+    data: {
+      ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
+      ...(parsed.data.content !== undefined ? { content: parsed.data.content } : {}),
+      ...(parsed.data.isActive !== undefined ? { isActive: parsed.data.isActive } : {}),
+      ...(parsed.data.publishAt !== undefined ? { publishAt: new Date(parsed.data.publishAt) } : {}),
+      ...(parsed.data.expiresAt !== undefined
+        ? { expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null }
+        : {}),
+    },
+  });
+
+  return res.json(updated);
+});
+
+router.get("/resident-content/polls", async (_req, res) => {
+  const polls = await prisma.residentPoll.findMany({
+    include: {
+      options: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      },
+    },
+    orderBy: [{ startsAt: "desc" }, { createdAt: "desc" }],
+    take: 200,
+  });
+
+  const allOptionIds = polls.flatMap((poll) => poll.options.map((opt) => opt.id));
+  const groupedCounts =
+    allOptionIds.length > 0
+      ? await prisma.residentPollVote.groupBy({
+          by: ["optionId"],
+          where: { optionId: { in: allOptionIds } },
+          _count: { _all: true },
+        })
+      : [];
+
+  const voteCountByOption = new Map(groupedCounts.map((x) => [x.optionId, x._count._all]));
+
+  return res.json(
+    polls.map((poll) => {
+      const options = poll.options.map((opt) => ({
+        id: opt.id,
+        text: opt.text,
+        sortOrder: opt.sortOrder,
+        isActive: opt.isActive,
+        voteCount: voteCountByOption.get(opt.id) ?? 0,
+      }));
+
+      return {
+        id: poll.id,
+        title: poll.title,
+        description: poll.description,
+        isActive: poll.isActive,
+        allowMultiple: poll.allowMultiple,
+        startsAt: poll.startsAt,
+        endsAt: poll.endsAt,
+        createdById: poll.createdById,
+        createdAt: poll.createdAt,
+        updatedAt: poll.updatedAt,
+        totalVotes: options.reduce((sum, x) => sum + x.voteCount, 0),
+        options,
+      };
+    })
+  );
+});
+
+router.post("/resident-content/polls", async (req, res) => {
+  const schema = z.object({
+    title: z.string().trim().min(3).max(200),
+    description: z.string().trim().max(2000).optional(),
+    allowMultiple: z.boolean().optional(),
+    isActive: z.boolean().optional(),
+    startsAt: z.string().datetime().optional(),
+    endsAt: z.string().datetime().nullable().optional(),
+    options: z.array(z.string().trim().min(1).max(200)).min(2).max(20),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const uniqueOptions = [...new Set(parsed.data.options.map((x) => x.trim()).filter(Boolean))];
+  if (uniqueOptions.length < 2) {
+    return res.status(400).json({ message: "Anket icin en az 2 farkli secenek gereklidir" });
+  }
+
+  const created = await prisma.residentPoll.create({
+    data: {
+      title: parsed.data.title,
+      description: parsed.data.description || null,
+      allowMultiple: parsed.data.allowMultiple ?? false,
+      isActive: parsed.data.isActive ?? true,
+      startsAt: parsed.data.startsAt ? new Date(parsed.data.startsAt) : new Date(),
+      endsAt: parsed.data.endsAt ? new Date(parsed.data.endsAt) : null,
+      createdById: req.user?.userId,
+      options: {
+        create: uniqueOptions.map((text, idx) => ({
+          text,
+          sortOrder: idx,
+          isActive: true,
+        })),
+      },
+    },
+    include: {
+      options: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      },
+    },
+  });
+
+  return res.status(201).json(created);
+});
+
+router.put("/resident-content/polls/:id", async (req, res) => {
+  const { id } = req.params;
+  const schema = z.object({
+    title: z.string().trim().min(3).max(200).optional(),
+    description: z.string().trim().max(2000).nullable().optional(),
+    allowMultiple: z.boolean().optional(),
+    isActive: z.boolean().optional(),
+    startsAt: z.string().datetime().optional(),
+    endsAt: z.string().datetime().nullable().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const existing = await prisma.residentPoll.findUnique({ where: { id } });
+  if (!existing) {
+    return res.status(404).json({ message: "Anket bulunamadi" });
+  }
+
+  const updated = await prisma.residentPoll.update({
+    where: { id },
+    data: {
+      ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
+      ...(parsed.data.description !== undefined ? { description: parsed.data.description || null } : {}),
+      ...(parsed.data.allowMultiple !== undefined ? { allowMultiple: parsed.data.allowMultiple } : {}),
+      ...(parsed.data.isActive !== undefined ? { isActive: parsed.data.isActive } : {}),
+      ...(parsed.data.startsAt !== undefined ? { startsAt: new Date(parsed.data.startsAt) } : {}),
+      ...(parsed.data.endsAt !== undefined
+        ? { endsAt: parsed.data.endsAt ? new Date(parsed.data.endsAt) : null }
+        : {}),
+    },
+  });
+
+  return res.json(updated);
+});
+
+const paymentMethodLabels: Record<PaymentMethod, string> = {
+  BANK_TRANSFER: "Banka",
+  CASH: "Nakit",
+  CREDIT_CARD: "Kredi Karti",
+  OTHER: "Diger",
+};
+
+const defaultApartmentClasses = [
+  { code: "BUYUK", name: "Buyuk Daire" },
+  { code: "KUCUK", name: "Kucuk Daire" },
+] as const;
+
+const defaultApartmentDuties = [
+  { code: "KAPICI", name: "Kapici" },
+  { code: "YONETICI", name: "Yonetici" },
+  { code: "GUVENLIK", name: "Guvenlik" },
+] as const;
+
+const defaultApartmentTypes = [
+  { code: "BUYUK", name: "Buyuk Daire" },
+  { code: "KUCUK", name: "Kucuk Daire" },
+] as const;
+
+async function ensureApartmentClassDefinitions() {
+  const existing = await prisma.apartmentClassDefinition.findMany();
+  if (existing.length > 0) {
+    return existing;
+  }
+
+  await prisma.$transaction(
+    defaultApartmentClasses.map((item) =>
+      prisma.apartmentClassDefinition.upsert({
+        where: { code: item.code },
+        update: {},
+        create: {
+          code: item.code,
+          name: item.name,
+          isActive: true,
+        },
+      })
+    )
+  );
+
+  return prisma.apartmentClassDefinition.findMany();
+}
+
+async function ensureApartmentDutyDefinitions() {
+  const existing = await prisma.apartmentDutyDefinition.findMany();
+  if (existing.length > 0) {
+    return existing;
+  }
+
+  await prisma.$transaction(
+    defaultApartmentDuties.map((item) =>
+      prisma.apartmentDutyDefinition.upsert({
+        where: { code: item.code },
+        update: {},
+        create: {
+          code: item.code,
+          name: item.name,
+          isActive: true,
+        },
+      })
+    )
+  );
+
+  return prisma.apartmentDutyDefinition.findMany();
+}
+
+async function ensureApartmentTypeDefinitions() {
+  const existing = await prisma.apartmentTypeDefinition.findMany();
+  if (existing.length > 0) {
+    return existing;
+  }
+
+  await prisma.$transaction(
+    defaultApartmentTypes.map((item) =>
+      prisma.apartmentTypeDefinition.upsert({
+        where: { code: item.code },
+        update: {},
+        create: {
+          code: item.code,
+          name: item.name,
+          isActive: true,
+        },
+      })
+    )
+  );
+
+  return prisma.apartmentTypeDefinition.findMany();
+}
+
+async function ensurePaymentMethodDefinitions() {
+  const existing = await prisma.paymentMethodDefinition.findMany();
+  if (existing.length > 0) {
+    return existing;
+  }
+
+  const methods = Object.keys(paymentMethodLabels) as PaymentMethod[];
+  await prisma.$transaction(
+    methods.map((code) =>
+      prisma.paymentMethodDefinition.upsert({
+        where: { code },
+        update: {},
+        create: {
+          code,
+          name: paymentMethodLabels[code],
+          isActive: true,
+        },
+      })
+    )
+  );
+
+  return prisma.paymentMethodDefinition.findMany();
+}
+
+async function refreshChargeStatusesForIds(chargeIds: string[]): Promise<void> {
+  if (chargeIds.length === 0) {
+    return;
+  }
+
+  const uniqueIds = [...new Set(chargeIds)];
+  const grouped = await prisma.paymentItem.groupBy({
+    by: ["chargeId"],
+    where: { chargeId: { in: uniqueIds } },
+    _sum: { amount: true },
+  });
+
+  const paidMap = new Map(grouped.map((g) => [g.chargeId, Number(g._sum.amount ?? 0)]));
+  const CHUNK_SIZE = 200;
+
+  for (let i = 0; i < uniqueIds.length; i += CHUNK_SIZE) {
+    const chunkIds = uniqueIds.slice(i, i + CHUNK_SIZE);
+    const charges = await prisma.charge.findMany({
+      where: { id: { in: chunkIds } },
+      select: { id: true, amount: true },
+    });
+
+    const toOpen: string[] = [];
+    const toClose: string[] = [];
+
+    for (const charge of charges) {
+      const paid = paidMap.get(charge.id) ?? 0;
+      const isClosed = paid + 0.0001 >= Number(charge.amount);
+      if (isClosed) {
+        toClose.push(charge.id);
+      } else {
+        toOpen.push(charge.id);
+      }
+    }
+
+    if (toOpen.length > 0) {
+      await prisma.charge.updateMany({
+        where: { id: { in: toOpen } },
+        data: { status: "OPEN", closedAt: null },
+      });
+    }
+
+    if (toClose.length > 0) {
+      await prisma.charge.updateMany({
+        where: { id: { in: toClose } },
+        data: { status: "CLOSED", closedAt: new Date() },
+      });
+    }
+  }
+}
+
+type ReconcilePaymentSource = {
+  paymentId: string;
+  amount: number;
+  paidAt: Date;
+  createdAt: Date;
+  sourceType: "LINKED" | "UNAPPLIED_DOOR";
+};
+
+type ReconcileApartmentResult = {
+  apartmentId: string;
+  apartmentDoorNo: string;
+  chargeCount: number;
+  processedPaymentCount: number;
+  skippedMixedPaymentCount: number;
+  skippedLockedPaymentCount: number;
+  createdPaymentItemCount: number;
+  unappliedPaymentCount: number;
+  unappliedTotal: number;
+};
+
+const MANUAL_RECONCILE_LOCK_TAG = "RECONCILE_LOCK:MANUAL";
+
+function hasManualReconcileLock(note: string | null | undefined): boolean {
+  if (!note) {
+    return false;
+  }
+  return parsePaymentNoteParts(note).some((part) => part.trim().toUpperCase() === MANUAL_RECONCILE_LOCK_TAG);
+}
+
+function stripManualReconcileLockTag(note: string | null | undefined): string | null {
+  if (!note) {
+    return null;
+  }
+
+  const next = parsePaymentNoteParts(note).filter((part) => part.trim().toUpperCase() !== MANUAL_RECONCILE_LOCK_TAG);
+  if (next.length === 0) {
+    return null;
+  }
+
+  return next.join(" | ");
+}
+
+function withManualReconcileLock(note: string | null | undefined, locked: boolean): string | null {
+  const base = parsePaymentNoteParts(note ?? null).filter(
+    (part) => part.trim().toUpperCase() !== MANUAL_RECONCILE_LOCK_TAG
+  );
+  if (locked) {
+    base.push(MANUAL_RECONCILE_LOCK_TAG);
+  }
+  if (base.length === 0) {
+    return null;
+  }
+  return base.join(" | ");
+}
+
+type MixedPaymentReportRow = {
+  paymentId: string;
+  paidAt: Date;
+  method: PaymentMethod;
+  totalAmount: number;
+  linkedAmount: number;
+  note: string | null;
+  apartmentCount: number;
+  apartments: string[];
+  allocations: Array<{
+    apartmentId: string;
+    apartmentDoorNo: string;
+    blockName: string;
+    amount: number;
+  }>;
+};
+
+async function buildMixedPaymentReport(apartmentId?: string): Promise<MixedPaymentReportRow[]> {
+  const payments = await prisma.payment.findMany({
+    where: {
+      itemLinks: { some: {} },
+    },
+    include: {
+      itemLinks: {
+        include: {
+          charge: {
+            include: {
+              apartment: {
+                include: {
+                  block: {
+                    select: { name: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+  });
+
+  const reportRows: MixedPaymentReportRow[] = [];
+
+  for (const payment of payments) {
+    const apartmentAllocMap = new Map<
+      string,
+      {
+        apartmentId: string;
+        apartmentDoorNo: string;
+        blockName: string;
+        amount: number;
+      }
+    >();
+
+    let linkedAmount = 0;
+    for (const item of payment.itemLinks) {
+      const apt = item.charge.apartment;
+      const amount = Number(item.amount);
+      linkedAmount += amount;
+
+      const existing = apartmentAllocMap.get(apt.id);
+      if (existing) {
+        existing.amount += amount;
+      } else {
+        apartmentAllocMap.set(apt.id, {
+          apartmentId: apt.id,
+          apartmentDoorNo: apt.doorNo,
+          blockName: apt.block.name,
+          amount,
+        });
+      }
+    }
+
+    if (apartmentAllocMap.size <= 1) {
+      continue;
+    }
+
+    if (apartmentId && !apartmentAllocMap.has(apartmentId)) {
+      continue;
+    }
+
+    const allocations = [...apartmentAllocMap.values()]
+      .sort((a, b) => a.apartmentDoorNo.localeCompare(b.apartmentDoorNo, "tr", { numeric: true }))
+      .map((x) => ({
+        ...x,
+        amount: Number(x.amount.toFixed(2)),
+      }));
+
+    reportRows.push({
+      paymentId: payment.id,
+      paidAt: payment.paidAt,
+      method: payment.method,
+      totalAmount: Number(payment.totalAmount),
+      linkedAmount: Number(linkedAmount.toFixed(2)),
+      note: payment.note,
+      apartmentCount: allocations.length,
+      apartments: allocations.map((x) => `${x.blockName}/${x.apartmentDoorNo}`),
+      allocations,
+    });
+  }
+
+  return reportRows;
+}
+
+async function reconcileApartmentPaymentLinks(apartmentId: string): Promise<ReconcileApartmentResult | null> {
+  const apartment = await prisma.apartment.findUnique({
+    where: { id: apartmentId },
+    select: { id: true, doorNo: true },
+  });
+
+  if (!apartment) {
+    return null;
+  }
+
+  const [charges, linkedPayments, unappliedDoorPaymentsRaw] = await Promise.all([
+    prisma.charge.findMany({
+      where: { apartmentId },
+      select: { id: true, amount: true, dueDate: true, createdAt: true },
+      orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.payment.findMany({
+      where: {
+        itemLinks: {
+          some: {
+            charge: { apartmentId },
+          },
+        },
+      },
+      select: {
+        id: true,
+        paidAt: true,
+        createdAt: true,
+        totalAmount: true,
+        note: true,
+        itemLinks: {
+          select: {
+            amount: true,
+            charge: {
+              select: { apartmentId: true },
+            },
+          },
+        },
+      },
+      orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.payment.findMany({
+      where: {
+        note: { contains: "DOOR:" },
+        itemLinks: { none: {} },
+      },
+      select: {
+        id: true,
+        paidAt: true,
+        createdAt: true,
+        totalAmount: true,
+        note: true,
+      },
+      orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }],
+    }),
+  ]);
+
+  const apartmentDoorNoNormalized = normalizeDoorNoForCompare(apartment.doorNo);
+  const unappliedDoorPayments = unappliedDoorPaymentsRaw.filter((payment) => {
+    const doorTag = extractDoorNoTagFromPaymentNote(payment.note);
+    return normalizeDoorNoForCompare(doorTag) === apartmentDoorNoNormalized;
+  });
+
+  const paymentSources: ReconcilePaymentSource[] = [];
+  let skippedMixedPaymentCount = 0;
+  let skippedLockedPaymentCount = 0;
+
+  for (const payment of linkedPayments) {
+    if (hasManualReconcileLock(payment.note)) {
+      skippedLockedPaymentCount += 1;
+      continue;
+    }
+
+    const apartmentIds = new Set(payment.itemLinks.map((item) => item.charge.apartmentId));
+    if (apartmentIds.size > 1) {
+      skippedMixedPaymentCount += 1;
+      continue;
+    }
+
+    const linkedAmount = payment.itemLinks.reduce((sum, item) => sum + Number(item.amount), 0);
+    const paymentDoorNo = extractDoorNoTagFromPaymentNote(payment.note);
+    const paymentDoorNoNormalized = normalizeDoorNoForCompare(paymentDoorNo);
+    const shouldUsePaymentTotal =
+      paymentDoorNoNormalized.length > 0 &&
+      paymentDoorNoNormalized === apartmentDoorNoNormalized &&
+      Number(payment.totalAmount) > linkedAmount + 0.0001;
+
+    const amount = shouldUsePaymentTotal ? Number(payment.totalAmount) : linkedAmount;
+    if (amount <= 0.0001) {
+      continue;
+    }
+
+    paymentSources.push({
+      paymentId: payment.id,
+      amount,
+      paidAt: payment.paidAt,
+      createdAt: payment.createdAt,
+      sourceType: "LINKED",
+    });
+  }
+
+  const linkedPaymentIdSet = new Set(paymentSources.map((x) => x.paymentId));
+  for (const payment of unappliedDoorPayments) {
+    if (hasManualReconcileLock(payment.note)) {
+      skippedLockedPaymentCount += 1;
+      continue;
+    }
+
+    if (linkedPaymentIdSet.has(payment.id)) {
+      continue;
+    }
+
+    paymentSources.push({
+      paymentId: payment.id,
+      amount: Number(payment.totalAmount),
+      paidAt: payment.paidAt,
+      createdAt: payment.createdAt,
+      sourceType: "UNAPPLIED_DOOR",
+    });
+  }
+
+  paymentSources.sort((a, b) => {
+    const paidAtDiff = a.paidAt.getTime() - b.paidAt.getTime();
+    if (paidAtDiff !== 0) {
+      return paidAtDiff;
+    }
+    const createdAtDiff = a.createdAt.getTime() - b.createdAt.getTime();
+    if (createdAtDiff !== 0) {
+      return createdAtDiff;
+    }
+    return a.paymentId.localeCompare(b.paymentId);
+  });
+
+  let createdPaymentItemCount = 0;
+  let unappliedPaymentCount = 0;
+  let unappliedTotal = 0;
+
+  await prisma.$transaction(async (tx) => {
+    const chargeIds = charges.map((charge) => charge.id);
+    const paymentIds = paymentSources.map((source) => source.paymentId);
+
+    if (paymentIds.length > 0) {
+      await tx.paymentItem.deleteMany({
+        where: {
+          paymentId: { in: paymentIds },
+          charge: { apartmentId },
+        },
+      });
+    }
+
+    if (chargeIds.length === 0 || paymentSources.length === 0) {
+      return;
+    }
+
+    const paidGrouped = await tx.paymentItem.groupBy({
+      by: ["chargeId"],
+      where: { chargeId: { in: chargeIds } },
+      _sum: { amount: true },
+    });
+
+    const paidMap = new Map(paidGrouped.map((row) => [row.chargeId, Number(row._sum.amount ?? 0)]));
+    const chargeBalances = charges.map((charge) => ({
+      chargeId: charge.id,
+      remaining: Math.max(0, Number(charge.amount) - (paidMap.get(charge.id) ?? 0)),
+    }));
+
+    for (const source of paymentSources) {
+      let remainingToAllocate = source.amount;
+
+      for (const targetCharge of chargeBalances) {
+        if (remainingToAllocate <= 0.0001) {
+          break;
+        }
+        if (targetCharge.remaining <= 0.0001) {
+          continue;
+        }
+
+        const allocate = Math.min(remainingToAllocate, targetCharge.remaining);
+        const rounded = Number(allocate.toFixed(2));
+        if (rounded <= 0) {
+          continue;
+        }
+
+        await tx.paymentItem.create({
+          data: {
+            paymentId: source.paymentId,
+            chargeId: targetCharge.chargeId,
+            amount: rounded,
+          },
+        });
+
+        createdPaymentItemCount += 1;
+        remainingToAllocate = Number((remainingToAllocate - rounded).toFixed(2));
+        targetCharge.remaining = Number((targetCharge.remaining - rounded).toFixed(2));
+      }
+
+      if (remainingToAllocate > 0.01) {
+        unappliedPaymentCount += 1;
+        unappliedTotal += remainingToAllocate;
+      }
+    }
+  });
+
+  await refreshChargeStatusesForIds(charges.map((x) => x.id));
+
+  return {
+    apartmentId: apartment.id,
+    apartmentDoorNo: apartment.doorNo,
+    chargeCount: charges.length,
+    processedPaymentCount: paymentSources.length,
+    skippedMixedPaymentCount,
+    skippedLockedPaymentCount,
+    createdPaymentItemCount,
+    unappliedPaymentCount,
+    unappliedTotal: Number(unappliedTotal.toFixed(2)),
+  };
+}
+
+type AuditActionType = "EDIT" | "DELETE" | "UNDO";
+type AuditEntityType = "PAYMENT" | "EXPENSE";
+type UndoKind = "PAYMENT_EDIT" | "PAYMENT_DELETE" | "EXPENSE_EDIT" | "EXPENSE_DELETE";
+
+type PaymentItemSnapshot = {
+  id: string;
+  chargeId: string;
+  amount: number;
+};
+
+type PaymentSnapshot = {
+  id: string;
+  importBatchId: string | null;
+  paidAt: string;
+  totalAmount: number;
+  method: PaymentMethod;
+  note: string | null;
+  createdById: string | null;
+  createdAt: string;
+  items: PaymentItemSnapshot[];
+};
+
+type ExpenseSnapshot = {
+  id: string;
+  expenseItemId: string;
+  importBatchId: string | null;
+  spentAt: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  description: string | null;
+  reference: string | null;
+  createdById: string | null;
+  createdAt: string;
+};
+
+type AuditLogEntry = {
+  id: string;
+  createdAt: string;
+  undoUntil: string | null;
+  undoneAt: string | null;
+  actionType: AuditActionType;
+  entityType: AuditEntityType;
+  entityId: string;
+  actorUserId: string | null;
+  before: unknown;
+  after: unknown;
+  undoKind: UndoKind | null;
+  undoPayload: unknown;
+};
+
+const ACTION_LOG_RETENTION_MS = 24 * 60 * 60 * 1000;
+const ACTION_UNDO_WINDOW_MS = 5 * 60 * 1000;
+const ACTION_LOG_LIMIT = 500;
+
+function toJsonValue(value: unknown): Prisma.InputJsonValue | Prisma.JsonNullValueInput {
+  if (value === undefined || value === null) {
+    return Prisma.JsonNull;
+  }
+  return value as Prisma.InputJsonValue;
+}
+
+function mapAuditEntry(row: {
+  id: string;
+  createdAt: Date;
+  undoUntil: Date | null;
+  undoneAt: Date | null;
+  actionType: string;
+  entityType: string;
+  entityId: string;
+  actorUserId: string | null;
+  before: Prisma.JsonValue;
+  after: Prisma.JsonValue;
+  undoKind: string | null;
+  undoPayload: Prisma.JsonValue | null;
+}): AuditLogEntry {
+  return {
+    id: row.id,
+    createdAt: row.createdAt.toISOString(),
+    undoUntil: row.undoUntil ? row.undoUntil.toISOString() : null,
+    undoneAt: row.undoneAt ? row.undoneAt.toISOString() : null,
+    actionType: row.actionType as AuditActionType,
+    entityType: row.entityType as AuditEntityType,
+    entityId: row.entityId,
+    actorUserId: row.actorUserId,
+    before: row.before,
+    after: row.after,
+    undoKind: row.undoKind as UndoKind | null,
+    undoPayload: row.undoPayload,
+  };
+}
+
+async function pruneActionLogs(): Promise<void> {
+  const cutoff = new Date(Date.now() - ACTION_LOG_RETENTION_MS);
+  await prisma.auditActionLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
+
+  const overflow = await prisma.auditActionLog.findMany({
+    select: { id: true },
+    orderBy: [{ createdAt: "desc" }],
+    skip: ACTION_LOG_LIMIT,
+  });
+
+  if (overflow.length > 0) {
+    await prisma.auditActionLog.deleteMany({ where: { id: { in: overflow.map((x) => x.id) } } });
+  }
+}
+
+async function pushActionLog(
+  input: Omit<AuditLogEntry, "id" | "createdAt" | "undoUntil" | "undoneAt"> & { undoable?: boolean }
+): Promise<AuditLogEntry> {
+  await pruneActionLogs();
+
+  const createdAt = new Date();
+  const created = await prisma.auditActionLog.create({
+    data: {
+      createdAt,
+      undoUntil: input.undoable ? new Date(createdAt.getTime() + ACTION_UNDO_WINDOW_MS) : null,
+      actionType: input.actionType,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      actorUserId: input.actorUserId,
+      before: toJsonValue(input.before),
+      after: toJsonValue(input.after),
+      undoKind: input.undoKind,
+      undoPayload: input.undoPayload === null ? Prisma.JsonNull : toJsonValue(input.undoPayload),
+    },
+  });
+
+  return mapAuditEntry(created);
+}
+
+function isUndoAvailable(entry: { undoUntil: string | Date | null; undoneAt: string | Date | null }): boolean {
+  if (!entry.undoUntil || entry.undoneAt) {
+    return false;
+  }
+  return new Date(entry.undoUntil).getTime() > Date.now();
+}
+
+function detectPaymentSourceForEdit(payment: { importBatchId: string | null; note: string | null }): "MANUAL" | "UPLOAD" {
+  if (payment.importBatchId) {
+    return "UPLOAD";
+  }
+
+  const noteValue = (payment.note ?? "").toUpperCase();
+  if (noteValue.includes("BANK_REF:") || noteValue.includes("PAYMENT_UPLOAD:")) {
+    return "UPLOAD";
+  }
+
+  return "MANUAL";
+}
+
+function mapPaymentSnapshot(payment: {
+  id: string;
+  importBatchId: string | null;
+  paidAt: Date;
+  totalAmount: unknown;
+  method: PaymentMethod;
+  note: string | null;
+  createdById: string | null;
+  createdAt: Date;
+  itemLinks: Array<{ id: string; chargeId: string; amount: unknown }>;
+}): PaymentSnapshot {
+  return {
+    id: payment.id,
+    importBatchId: payment.importBatchId,
+    paidAt: payment.paidAt.toISOString(),
+    totalAmount: Number(payment.totalAmount),
+    method: payment.method,
+    note: payment.note,
+    createdById: payment.createdById,
+    createdAt: payment.createdAt.toISOString(),
+    items: payment.itemLinks.map((item) => ({
+      id: item.id,
+      chargeId: item.chargeId,
+      amount: Number(item.amount),
+    })),
+  };
+}
+
+function mapExpenseSnapshot(expense: {
+  id: string;
+  expenseItemId: string;
+  importBatchId: string | null;
+  spentAt: Date;
+  amount: unknown;
+  paymentMethod: PaymentMethod;
+  description: string | null;
+  reference: string | null;
+  createdById: string | null;
+  createdAt: Date;
+}): ExpenseSnapshot {
+  return {
+    id: expense.id,
+    expenseItemId: expense.expenseItemId,
+    importBatchId: expense.importBatchId,
+    spentAt: expense.spentAt.toISOString(),
+    amount: Number(expense.amount),
+    paymentMethod: expense.paymentMethod,
+    description: expense.description,
+    reference: expense.reference,
+    createdById: expense.createdById,
+    createdAt: expense.createdAt.toISOString(),
+  };
+}
+
+type UploadPaymentRow = {
+  paidAt: Date;
+  amount: number;
+  doorNo: string;
+  description?: string;
+  reference?: string;
+};
+
+type BankStatementRow = {
+  occurredAt: Date;
+  amount: number;
+  description: string;
+  reference?: string;
+  txType?: string;
+};
+
+type BankStatementCommitRow = {
+  occurredAt: Date;
+  amount: number;
+  entryType: "PAYMENT" | "EXPENSE";
+  isAutoSplit?: boolean;
+  splitSourceRowNo?: number;
+  doorNo?: string;
+  expenseItemId?: string;
+  description: string;
+  reference?: string;
+  txType?: string;
+  paymentMethod?: PaymentMethod;
+};
+
+type DescriptionDoorNoRuleLookup = {
+  keyword?: string;
+  normalizedKeyword: string;
+  doorNo: string;
+};
+
+type DescriptionExpenseRuleLookup = {
+  normalizedKeyword: string;
+  expenseItemId: string;
+};
+
+function getExcelCellValue(value: ExcelJS.CellValue | undefined): unknown {
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  if (value instanceof Date || typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((x) => String(x ?? "")).join(" ");
+  }
+
+  if (typeof value === "object") {
+    if ("result" in value) {
+      return getExcelCellValue(value.result);
+    }
+    if ("text" in value && typeof value.text === "string") {
+      return value.text;
+    }
+    if ("richText" in value && Array.isArray(value.richText)) {
+      return value.richText.map((part) => part.text ?? "").join("");
+    }
+  }
+
+  return String(value);
+}
+
+async function parseExcelRowsAsObjects(fileBuffer: Uint8Array): Promise<Record<string, unknown>[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(fileBuffer);
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    return [];
+  }
+
+  const colCount = Math.max(1, worksheet.columnCount);
+  const headerRow = worksheet.getRow(1);
+  const headers = Array.from({ length: colCount }, (_, idx) => {
+    const raw = getExcelCellValue(headerRow.getCell(idx + 1).value);
+    const text = String(raw ?? "").trim();
+    return text || `__EMPTY_${idx + 1}`;
+  });
+
+  const rows: Record<string, unknown>[] = [];
+  for (let rowNo = 2; rowNo <= worksheet.rowCount; rowNo += 1) {
+    const row = worksheet.getRow(rowNo);
+    const record: Record<string, unknown> = {};
+    let hasAnyValue = false;
+
+    for (let col = 1; col <= colCount; col += 1) {
+      const cellValue = getExcelCellValue(row.getCell(col).value);
+      record[headers[col - 1]] = cellValue;
+      if (String(cellValue ?? "").trim() !== "") {
+        hasAnyValue = true;
+      }
+    }
+
+    if (hasAnyValue) {
+      rows.push(record);
+    }
+  }
+
+  return rows;
+}
+
+async function parseExcelRowsAsArray(fileBuffer: Uint8Array): Promise<unknown[][]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(fileBuffer);
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    return [];
+  }
+
+  const colCount = Math.max(1, worksheet.columnCount);
+  const rows: unknown[][] = [];
+
+  for (let rowNo = 1; rowNo <= worksheet.rowCount; rowNo += 1) {
+    const row = worksheet.getRow(rowNo);
+    const values: unknown[] = [];
+    for (let col = 1; col <= colCount; col += 1) {
+      values.push(getExcelCellValue(row.getCell(col).value));
+    }
+    if (values.some((value) => String(value ?? "").trim() !== "")) {
+      rows.push(values);
+    }
+  }
+
+  return rows;
+}
+
+function excelSerialToDate(raw: number): Date | null {
+  if (!Number.isFinite(raw)) {
+    return null;
+  }
+
+  const wholeDays = Math.floor(raw);
+  const fractionalDays = raw - wholeDays;
+  const epochMs = Date.UTC(1899, 11, 30);
+  const millisInDay = 24 * 60 * 60 * 1000;
+  const asDate = new Date(epochMs + wholeDays * millisInDay + Math.round(fractionalDays * millisInDay));
+
+  if (Number.isNaN(asDate.getTime())) {
+    return null;
+  }
+
+  return asDate;
+}
+
+function parseFlexibleDate(raw: unknown): Date | null {
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    return raw;
+  }
+
+  if (typeof raw === "number") {
+    const parsed = excelSerialToDate(raw);
+    if (parsed) {
+      return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()));
+    }
+  }
+
+  if (typeof raw !== "string") {
+    return null;
+  }
+
+  const value = raw.trim();
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+  if (match) {
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3].length === 2 ? `20${match[3]}` : match[3]);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  // Fallback for ISO-like strings after local dd/mm parsing attempts.
+  const iso = new Date(value);
+  if (!Number.isNaN(iso.getTime())) {
+    return iso;
+  }
+
+  return null;
+}
+
+function parseAmount(raw: unknown): number | null {
+  if (typeof raw === "number") {
+    return raw > 0 ? raw : null;
+  }
+
+  if (typeof raw !== "string") {
+    return null;
+  }
+
+  const cleaned = raw.trim().replace(/\./g, "").replace(",", ".");
+  const value = Number(cleaned);
+  if (!Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return value;
+}
+
+function normalizeHeader(value: string): string {
+  return value
+    .toLocaleLowerCase("tr")
+    .replace(/ı/g, "i")
+    .replace(/ş/g, "s")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function extractChargeInvoiceFileName(description: string | null | undefined): string | null {
+  if (!description) {
+    return null;
+  }
+
+  const parts = description
+    .split("|")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const invoicePart = parts.find((part) => part.startsWith("Fatura:"));
+  if (!invoicePart) {
+    return null;
+  }
+
+  const fileName = invoicePart.slice("Fatura:".length).trim();
+  return fileName || null;
+}
+
+function extractChargeInvoiceAmount(description: string | null | undefined): number | null {
+  if (!description) {
+    return null;
+  }
+
+  const amountPart = description
+    .split("|")
+    .map((x) => x.trim())
+    .find((part) => /^fatura\s+tutar[ıi]\s*:/i.test(part));
+  if (!amountPart) {
+    return null;
+  }
+
+  const raw = amountPart.replace(/^fatura\s+tutar[ıi]\s*:/i, "").trim();
+  if (!raw) {
+    return null;
+  }
+
+  const numericText = raw.replace(/[^\d.,-]/g, "");
+  if (!numericText) {
+    return null;
+  }
+
+  // Parse both TR and EN decimal formats (e.g. 1.234,56 and 1234.56).
+  const lastComma = numericText.lastIndexOf(",");
+  const lastDot = numericText.lastIndexOf(".");
+  const decimalIndex = Math.max(lastComma, lastDot);
+
+  let normalized = numericText;
+  if (decimalIndex >= 0) {
+    const intPart = numericText.slice(0, decimalIndex).replace(/[.,]/g, "");
+    const fracPart = numericText.slice(decimalIndex + 1).replace(/[.,]/g, "");
+    normalized = `${intPart}.${fracPart}`;
+  } else {
+    normalized = numericText.replace(/[.,]/g, "");
+  }
+
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+
+  return Number(amount.toFixed(2));
+}
+
+function normalizeRowObject(row: Record<string, unknown>): UploadPaymentRow | null {
+  const mapped = Object.fromEntries(Object.entries(row).map(([k, v]) => [normalizeHeader(k), v]));
+
+  const paidAtRaw = mapped.tarih ?? mapped.date;
+  const amountRaw = mapped.tutar ?? mapped.amount;
+  const doorNoRaw = mapped.daireno ?? mapped.daire ?? mapped.doorno;
+  const descriptionRaw = mapped.aciklama ?? mapped.description;
+  const referenceRaw = mapped.referans ?? mapped.reference ?? mapped.ref;
+
+  const paidAt = parseFlexibleDate(paidAtRaw);
+  const amount = parseAmount(amountRaw);
+  const doorNo = typeof doorNoRaw === "string" || typeof doorNoRaw === "number" ? String(doorNoRaw).trim() : "";
+
+  if (!paidAt || !amount || !doorNo) {
+    return null;
+  }
+
+  const normalized: UploadPaymentRow = {
+    paidAt,
+    amount,
+    doorNo,
+    description: typeof descriptionRaw === "string" ? descriptionRaw.trim() : undefined,
+    reference: typeof referenceRaw === "string" ? referenceRaw.trim() : undefined,
+  };
+
+  return normalized;
+}
+
+function isUploadPaymentRow(value: UploadPaymentRow | null): value is UploadPaymentRow {
+  return value !== null;
+}
+
+function parseDelimitedTextRows(content: string): UploadPaymentRow[] {
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const delimiter = [";", "\t", "|", ","].reduce((best, current) => {
+    const score = lines[0].split(current).length;
+    const bestScore = lines[0].split(best).length;
+    return score > bestScore ? current : best;
+  }, ";");
+
+  const headers = lines[0].split(delimiter).map((x) => x.trim());
+  const hasHeader = headers.some((h) => /tarih|date|tutar|amount|daire|door/i.test(h));
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  return dataLines
+    .map((line) => {
+      const parts = line.split(delimiter).map((x) => x.trim());
+      const rowObj: Record<string, unknown> = hasHeader
+        ? Object.fromEntries(headers.map((h, idx) => [h, parts[idx] ?? ""]))
+        : {
+            tarih: parts[0] ?? "",
+            tutar: parts[1] ?? "",
+            daireno: parts[2] ?? "",
+            aciklama: parts[3] ?? "",
+            referans: parts[4] ?? "",
+          };
+
+      return normalizeRowObject(rowObj);
+    })
+    .filter(isUploadPaymentRow);
+}
+
+async function parseUploadRows(file: Express.Multer.File): Promise<UploadPaymentRow[]> {
+  const lowerName = file.originalname.toLowerCase();
+
+  if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
+    const rows = await parseExcelRowsAsObjects(new Uint8Array(file.buffer));
+    return rows.map((row) => normalizeRowObject(row)).filter(isUploadPaymentRow);
+  }
+
+  if (lowerName.endsWith(".pdf")) {
+    const parser = new PDFParse({ data: file.buffer });
+    const parsed = await parser.getText();
+    await parser.destroy();
+    return parseDelimitedTextRows(parsed.text);
+  }
+
+  if (lowerName.endsWith(".txt") || lowerName.endsWith(".csv")) {
+    return parseDelimitedTextRows(file.buffer.toString("utf8"));
+  }
+
+  return [];
+}
+
+
+function getRestrictedChargeTypeCode(chargeTypeCode: string | null | undefined): "AIDAT" | "DOGALGAZ" | null {
+  const normalized = toAsciiLower(chargeTypeCode ?? "").trim();
+  if (normalized === "aidat") {
+    return "AIDAT";
+  }
+  if (normalized === "dogalgaz") {
+    return "DOGALGAZ";
+  }
+  return null;
+}
+
+function isApartmentExemptForChargeType(
+  apartment: { hasAidat: boolean; hasDogalgaz: boolean },
+  restrictedChargeType: "AIDAT" | "DOGALGAZ"
+): boolean {
+  if (restrictedChargeType === "AIDAT") {
+    return !apartment.hasAidat;
+  }
+  return !apartment.hasDogalgaz;
+}
+
+const OPENING_BALANCE_PAYMENT_NOTE_PREFIX = "OPENING_BALANCE|";
+const CARRY_FORWARD_PAYMENT_NOTE_TAG = "CARRY_FORWARD:APARTMENT_CREDIT";
+const LEGACY_XLS_UNSUPPORTED_MESSAGE =
+  "Bu dosya eski Excel (.xls) formatinda. Lutfen dosyayi .xlsx olarak kaydedip tekrar yukleyin.";
+
+function buildOpeningBalanceNote(bankName: string, branchName: string | null): string {
+  const payload = JSON.stringify({
+    bankName,
+    branchName,
+  });
+  return `${OPENING_BALANCE_PAYMENT_NOTE_PREFIX}${payload}`;
+}
+
+function parseOpeningBalanceNote(note: string | null | undefined): { bankName: string; branchName: string | null } {
+  if (!note || !note.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX)) {
+    return { bankName: "Bilinmeyen Banka", branchName: null };
+  }
+
+  const raw = note.slice(OPENING_BALANCE_PAYMENT_NOTE_PREFIX.length).trim();
+  if (!raw) {
+    return { bankName: "Bilinmeyen Banka", branchName: null };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { bankName?: string; branchName?: string | null };
+    const bankName = parsed.bankName?.trim() || "Bilinmeyen Banka";
+    const branchName = parsed.branchName?.trim() || null;
+    return { bankName, branchName };
+  } catch {
+    return { bankName: raw, branchName: null };
+  }
+}
+
+
+function parseFlexibleDateTime(raw: unknown): Date | null {
+  if (typeof raw === "string") {
+    const value = raw.trim();
+    const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[-\s](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (match) {
+      const day = Number(match[1]);
+      const month = Number(match[2]);
+      const year = Number(match[3]);
+      const hour = Number(match[4] ?? "0");
+      const minute = Number(match[5] ?? "0");
+      const second = Number(match[6] ?? "0");
+
+      const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+      if (!Number.isNaN(date.getTime())) {
+        return date;
+      }
+    }
+  }
+
+  return parseFlexibleDate(raw);
+}
+
+function parseSignedAmount(raw: unknown): number | null {
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) && Math.abs(raw) > 0.0001 ? raw : null;
+  }
+
+  if (typeof raw !== "string") {
+    return null;
+  }
+
+  const compact = raw.trim().replace(/\s+/g, "");
+  if (!compact) {
+    return null;
+  }
+
+  const hasComma = compact.includes(",");
+  const hasDot = compact.includes(".");
+
+  let normalized = compact;
+  if (hasComma && hasDot) {
+    // TR style: 1.234,56 => 1234.56
+    if (compact.lastIndexOf(",") > compact.lastIndexOf(".")) {
+      normalized = compact.replace(/\./g, "").replace(/,/g, ".");
+    } else {
+      // EN style: 1,234.56 => 1234.56
+      normalized = compact.replace(/,/g, "");
+    }
+  } else if (hasComma) {
+    normalized = compact.replace(/,/g, ".");
+  }
+
+  const value = Number(normalized);
+  if (!Number.isFinite(value) || Math.abs(value) <= 0.0001) {
+    return null;
+  }
+
+  return value;
+}
+
+function toAsciiLower(input: string): string {
+  return input
+    .toLocaleLowerCase("tr")
+    .replace(/ı/g, "i")
+    .replace(/ş/g, "s")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c");
+}
+
+function normalizeKeywordForMatch(value: string): string {
+  return toAsciiLower(value)
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isBankFeeDescription(description: string): boolean {
+  const text = toAsciiLower(description);
+  return (
+    /\bbsmv\b/.test(text) ||
+    ((/\bucret\b|\bkomisyon\b|\bmasraf\b/.test(text) && /\btry\s*uz\.?\b/.test(text)) ||
+      text.includes("banka masraf"))
+  );
+}
+
+function isBankFeeExpenseItem(item: { code: string; name: string }): boolean {
+  const code = toAsciiLower(item.code);
+  const name = toAsciiLower(item.name);
+  return (
+    (code.includes("banka") && (code.includes("masraf") || code.includes("ucret") || code.includes("komisyon"))) ||
+    (name.includes("banka") && (name.includes("masraf") || name.includes("ucret") || name.includes("komisyon"))) ||
+    code.includes("bsmv") ||
+    name.includes("bsmv")
+  );
+}
+
+async function parseBankStatementRows(file: Express.Multer.File): Promise<BankStatementRow[]> {
+  const lowerName = file.originalname.toLowerCase();
+  if (!(lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv") || lowerName.endsWith(".txt"))) {
+    return [];
+  }
+
+  if (lowerName.endsWith(".csv") || lowerName.endsWith(".txt")) {
+    return [];
+  }
+
+  const rows = await parseExcelRowsAsArray(new Uint8Array(file.buffer));
+
+  const dateHeaderKeys = new Set([
+    "tarihsaat",
+    "tarih",
+    "valor",
+    "islemtarihi",
+    "islemtarih",
+    "dekonttarihi",
+  ]);
+  const descriptionHeaderKeys = new Set([
+    "aciklama",
+    "description",
+    "islemaciklamasi",
+    "islemaciklama",
+    "detay",
+  ]);
+  const signedAmountHeaderKeys = new Set([
+    "islemtutari",
+    "tutar",
+    "amount",
+    "islemtutar",
+    "tutartry",
+  ]);
+  const debitHeaderKeys = new Set([
+    "borc",
+    "debit",
+    "cikis",
+    "withdrawal",
+    "odeme",
+  ]);
+  const creditHeaderKeys = new Set([
+    "alacak",
+    "credit",
+    "giris",
+    "deposit",
+    "tahsilat",
+  ]);
+
+  const headerIndex = rows.findIndex((row) => {
+    const cells = row.map((cell) => normalizeHeader(String(cell ?? "")));
+    const hasDate = cells.some((cell) => dateHeaderKeys.has(cell));
+    const hasDescription = cells.some((cell) => descriptionHeaderKeys.has(cell));
+    const hasSignedAmount = cells.some((cell) => signedAmountHeaderKeys.has(cell) || cell.includes("islemtutari"));
+    const hasSplitAmount = cells.some((cell) => debitHeaderKeys.has(cell)) || cells.some((cell) => creditHeaderKeys.has(cell));
+    return hasDate && hasDescription && (hasSignedAmount || hasSplitAmount);
+  });
+
+  if (headerIndex < 0) {
+    return [];
+  }
+
+  const headerRow = rows[headerIndex].map((cell) => normalizeHeader(String(cell ?? "")));
+  const dateCol = headerRow.findIndex((h) => dateHeaderKeys.has(h));
+  const amountCol = headerRow.findIndex((h) => signedAmountHeaderKeys.has(h) || h.includes("islemtutari"));
+  const debitCol = headerRow.findIndex((h) => debitHeaderKeys.has(h));
+  const creditCol = headerRow.findIndex((h) => creditHeaderKeys.has(h));
+  const descCol = headerRow.findIndex((h) => descriptionHeaderKeys.has(h));
+  const refCol = headerRow.findIndex(
+    (h) => h === "referans" || h === "reference" || h === "dekontno" || h === "islemno" || h === "fisno"
+  );
+  const txTypeCol = headerRow.findIndex(
+    (h) => h === "islemtipi" || h === "tip" || h === "transactiontype" || h === "islemturu" || h === "tur"
+  );
+
+  if (dateCol < 0 || descCol < 0 || (amountCol < 0 && debitCol < 0 && creditCol < 0)) {
+    return [];
+  }
+
+  const parsedRows: BankStatementRow[] = [];
+
+  for (const row of rows.slice(headerIndex + 1)) {
+    const occurredAt = parseFlexibleDateTime(row[dateCol]);
+    let amount = amountCol >= 0 ? parseSignedAmount(row[amountCol]) : null;
+    if (amount === null) {
+      const debitRaw = debitCol >= 0 ? parseSignedAmount(row[debitCol]) : null;
+      const creditRaw = creditCol >= 0 ? parseSignedAmount(row[creditCol]) : null;
+      const debit = debitRaw === null ? 0 : Math.abs(debitRaw);
+      const credit = creditRaw === null ? 0 : Math.abs(creditRaw);
+      const net = credit - debit;
+      amount = Math.abs(net) > 0.0001 ? net : null;
+    }
+    const description = String(row[descCol] ?? "").trim();
+    const reference = refCol >= 0 ? String(row[refCol] ?? "").trim() : "";
+    const txType = txTypeCol >= 0 ? String(row[txTypeCol] ?? "").trim() : "";
+
+    if (!occurredAt || amount === null || description.length === 0) {
+      continue;
+    }
+
+    parsedRows.push({
+      occurredAt,
+      amount,
+      description,
+      reference: reference || undefined,
+      txType: txType || undefined,
+    });
+  }
+
+  return parsedRows;
+}
+
+function derivePaymentMethod(txType?: string): PaymentMethod {
+  const normalized = toAsciiLower(txType ?? "");
+  if (normalized.includes("eft") || normalized.includes("fast") || normalized.includes("havale")) {
+    return PaymentMethod.BANK_TRANSFER;
+  }
+  return PaymentMethod.BANK_TRANSFER;
+}
+
+function extractDoorNoFromDescription(
+  description: string,
+  doorNoSet: Set<string>,
+  rules: DescriptionDoorNoRuleLookup[] = []
+): string | null {
+  const normalizedForMatch = normalizeKeywordForMatch(description);
+  const normalizedForMatchPadded = ` ${normalizedForMatch} `;
+  const matchedDoorCandidates: Array<{ doorNo: string; score: number }> = [];
+
+  // Rule-only matching: automatic door resolution is driven by Admin's
+  // "Aciklama-Daire Esleme" definitions.
+  for (const rule of rules) {
+    const normalizedRule =
+      normalizeKeywordForMatch(rule.keyword ?? "") || normalizeKeywordForMatch(rule.normalizedKeyword ?? "");
+    if (!normalizedRule) {
+      continue;
+    }
+
+    // Boundary-safe contains: prevents partial numeric hits (e.g. "daire 2" matching "daire 23").
+    const directMatch = normalizedForMatchPadded.includes(` ${normalizedRule} `);
+    const tokenFallbackMatch = !directMatch
+      ? (() => {
+          const tokens = normalizedRule.split(" ").filter((token) => token.length >= 3);
+          if (tokens.length < 2) {
+            return false;
+          }
+          return tokens.every((token) => normalizedForMatch.includes(token));
+        })()
+      : false;
+
+    if (!directMatch && !tokenFallbackMatch) {
+      continue;
+    }
+
+    const candidateDoorNo = doorNoSet.has(rule.doorNo)
+      ? rule.doorNo
+      : (() => {
+          const asNumber = String(Number(rule.doorNo));
+          return doorNoSet.has(asNumber) ? asNumber : null;
+        })();
+    if (!candidateDoorNo) {
+      continue;
+    }
+
+    // Longer keyword means more specific rule (e.g. person name beats generic "daire xx").
+    matchedDoorCandidates.push({ doorNo: candidateDoorNo, score: normalizedRule.length });
+  }
+
+  if (matchedDoorCandidates.length > 0) {
+    matchedDoorCandidates.sort((a, b) => b.score - a.score);
+    return matchedDoorCandidates[0].doorNo;
+  }
+
+  return null;
+}
+
+function matchExpenseItemId(
+  description: string,
+  items: Array<{ id: string; code: string; name: string }>,
+  rules: DescriptionExpenseRuleLookup[] = []
+): string | null {
+  const text = toAsciiLower(description);
+  const normalizedText = normalizeKeywordForMatch(description);
+  const sorted = [...items].sort(
+    (a, b) => Math.max(b.code.length, b.name.length) - Math.max(a.code.length, a.name.length)
+  );
+
+  // Highest priority: explicit description->expense mapping rules from admin panel.
+  for (const rule of rules) {
+    if (rule.normalizedKeyword && normalizedText.includes(rule.normalizedKeyword)) {
+      const target = sorted.find((item) => item.id === rule.expenseItemId);
+      if (target) {
+        return target.id;
+      }
+    }
+  }
+
+  // Vendor-specific rule: OZATILIM records are generator maintenance/repair expenses.
+  if (text.includes("ozatilim makina ve elektrik sistemleri")) {
+    const generatorItem = sorted.find((item) => {
+      const code = toAsciiLower(item.code);
+      const name = toAsciiLower(item.name);
+      const mentionsGenerator = code.includes("jenerator") || name.includes("jenerator");
+      const mentionsMaintenance =
+        code.includes("bakim") || name.includes("bakim") || code.includes("onarim") || name.includes("onarim");
+      return mentionsGenerator && mentionsMaintenance;
+    });
+
+    if (generatorItem) {
+      return generatorItem.id;
+    }
+  }
+
+  // Utility-specific rule: ISKI records are water expenses.
+  if (text.includes("iski")) {
+    const waterItem = sorted.find((item) => {
+      const code = toAsciiLower(item.code);
+      const name = toAsciiLower(item.name);
+      return code.includes("su") || name.includes("su") || code.includes("iski") || name.includes("iski");
+    });
+
+    if (waterItem) {
+      return waterItem.id;
+    }
+  }
+
+  // Utility-specific rule: IGDAS records are natural gas expenses.
+  if (text.includes("igdas")) {
+    const naturalGasItem = sorted.find((item) => {
+      const code = toAsciiLower(item.code);
+      const name = toAsciiLower(item.name);
+      return code.includes("dogalgaz") || name.includes("dogalgaz") || code.includes("igdas") || name.includes("igdas");
+    });
+
+    if (naturalGasItem) {
+      return naturalGasItem.id;
+    }
+  }
+
+  // Utility-specific rule: CK BEPSAS records are electricity expenses.
+  if (text.includes("ck bepsas")) {
+    const electricityItem = sorted.find((item) => {
+      const code = toAsciiLower(item.code);
+      const name = toAsciiLower(item.name);
+      return code.includes("elektrik") || name.includes("elektrik") || code.includes("ck") || name.includes("ck");
+    });
+
+    if (electricityItem) {
+      return electricityItem.id;
+    }
+  }
+
+  // Vendor-specific rule: Eyup Kurumahmutoglu records are elevator maintenance/repair expenses.
+  const isEyupKurumahmutogluPayment =
+    normalizedText.includes("eyup kurumahmutoglu") ||
+    normalizedText.includes("kurumahmutoglu eyup") ||
+    (normalizedText.includes("eyup") && normalizedText.includes("kurumahmutoglu"));
+
+  if (isEyupKurumahmutogluPayment) {
+    const elevatorItem = sorted.find((item) => {
+      const code = toAsciiLower(item.code);
+      const name = toAsciiLower(item.name);
+      const mentionsElevator = code.includes("asansor") || name.includes("asansor");
+      const mentionsMaintenance =
+        code.includes("bakim") || name.includes("bakim") || code.includes("onarim") || name.includes("onarim");
+      return mentionsElevator && mentionsMaintenance;
+    });
+
+    if (elevatorItem) {
+      return elevatorItem.id;
+    }
+  }
+
+  // Office/legal/tax small expenses should be grouped into the related expense bucket.
+  const looksLikeOfficeLegalTax = text.includes("kirtasiye") || text.includes("noter") || text.includes("vergi");
+  if (looksLikeOfficeLegalTax) {
+    const officeLegalTaxItem = sorted.find((item) => {
+      const code = toAsciiLower(item.code);
+      const name = toAsciiLower(item.name);
+      return (
+        code.includes("kirtasiye") ||
+        name.includes("kirtasiye") ||
+        code.includes("noter") ||
+        name.includes("noter") ||
+        code.includes("vergi") ||
+        name.includes("vergi") ||
+        code.includes("diger") ||
+        name.includes("diger")
+      );
+    });
+
+    if (officeLegalTaxItem) {
+      return officeLegalTaxItem.id;
+    }
+  }
+
+  // Bank statement rows such as "BSMV ... TRY UZ." or "UCRET ... TRY UZ." should be treated as bank fees.
+  const looksLikeBankFee = isBankFeeDescription(description);
+
+  if (looksLikeBankFee) {
+    const bankFeeItem = sorted.find((item) => {
+      const code = toAsciiLower(item.code);
+      const name = toAsciiLower(item.name);
+      return (
+        (code.includes("banka") && (code.includes("masraf") || code.includes("ucret") || code.includes("komisyon"))) ||
+        (name.includes("banka") && (name.includes("masraf") || name.includes("ucret") || name.includes("komisyon"))) ||
+        code.includes("bsmv") ||
+        name.includes("bsmv")
+      );
+    });
+
+    if (bankFeeItem) {
+      return bankFeeItem.id;
+    }
+  }
+
+  for (const item of sorted) {
+    const code = toAsciiLower(item.code);
+    const name = toAsciiLower(item.name);
+    if (code.length >= 2 && text.includes(code)) {
+      return item.id;
+    }
+    if (name.length >= 3 && text.includes(name)) {
+      return item.id;
+    }
+  }
+
+  if (text.includes("dogalgaz") || text.includes("dogal gaz") || text.includes("dogalgaz")) {
+    const found = sorted.find((x) => toAsciiLower(x.code).includes("dogalgaz") || toAsciiLower(x.name).includes("dogalgaz"));
+    if (found) {
+      return found.id;
+    }
+  }
+
+  if (text.includes("elektrik")) {
+    const found = sorted.find((x) => toAsciiLower(x.code).includes("elektrik") || toAsciiLower(x.name).includes("elektrik"));
+    if (found) {
+      return found.id;
+    }
+  }
+
+  if (text.includes("su ") || text.endsWith("su") || text.includes(" su")) {
+    const found = sorted.find((x) => toAsciiLower(x.code) === "su" || toAsciiLower(x.name) === "su");
+    if (found) {
+      return found.id;
+    }
+  }
+
+  if (text.includes("sgk")) {
+    const found = sorted.find((x) => toAsciiLower(x.code).includes("sgk") || toAsciiLower(x.name).includes("sgk"));
+    if (found) {
+      return found.id;
+    }
+  }
+
+  if (text.includes("maas")) {
+    const found = sorted.find((x) => toAsciiLower(x.code).includes("maas") || toAsciiLower(x.name).includes("maas"));
+    if (found) {
+      return found.id;
+    }
+  }
+
+  return null;
+}
+
+async function processBankStatementImport(params: {
+  rows: BankStatementCommitRow[];
+  fileName: string;
+  uploadedById?: string;
+}) {
+  const { rows, fileName, uploadedById } = params;
+
+  const batch = await prisma.importBatch.create({
+    data: {
+      kind: ImportBatchType.BANK_STATEMENT_UPLOAD,
+      fileName,
+      uploadedById,
+      totalRows: rows.length,
+    },
+  });
+
+  const apartments = await prisma.apartment.findMany({
+    select: { id: true, doorNo: true },
+  });
+  const doorNoMap = new Map<string, string>();
+  for (const apt of apartments) {
+    doorNoMap.set(apt.doorNo, apt.id);
+    doorNoMap.set(String(Number(apt.doorNo)), apt.id);
+  }
+  const doorNoSet = new Set(doorNoMap.keys());
+  const activeDoorNoRules: DescriptionDoorNoRuleLookup[] = (
+    await prisma.descriptionDoorNoRule.findMany({
+      where: { isActive: true },
+      select: { keyword: true, normalizedKeyword: true, doorNo: true },
+      orderBy: [{ updatedAt: "desc" }],
+    })
+  ).map((rule) => ({
+    keyword: rule.keyword,
+    normalizedKeyword: rule.normalizedKeyword,
+    doorNo: rule.doorNo,
+  }));
+
+  const allExpenseItems = await prisma.expenseItemDefinition.findMany({
+    select: { id: true, code: true, name: true, isActive: true },
+  });
+  const activeExpenseItems = allExpenseItems
+    .filter((item) => item.isActive)
+    .map((item) => ({ id: item.id, code: item.code, name: item.name }));
+  const allExpenseItemIdSet = new Set(allExpenseItems.map((x) => x.id));
+
+  const activeExpenseRules: DescriptionExpenseRuleLookup[] = (
+    await prisma.descriptionExpenseRule.findMany({
+      where: { isActive: true, expenseItem: { isActive: true } },
+      select: { normalizedKeyword: true, expenseItemId: true },
+      orderBy: [{ updatedAt: "desc" }],
+    })
+  ).map((rule) => ({
+    normalizedKeyword: rule.normalizedKeyword,
+    expenseItemId: rule.expenseItemId,
+  }));
+
+  const paymentReferenceSet = new Set<string>();
+  const expenseReferenceSet = new Set<string>();
+  const incomingExpenseReferences = [...new Set(
+    rows
+      .filter((r) => r.entryType === "EXPENSE")
+      .map((r) => r.reference?.trim())
+      .filter((ref): ref is string => Boolean(ref))
+  )];
+  const existingExpenseReferenceSet = new Set(
+    incomingExpenseReferences.length > 0
+      ? (
+          await prisma.expense.findMany({
+            where: { reference: { in: incomingExpenseReferences } },
+            select: { reference: true },
+          })
+        )
+          .map((row) => row.reference?.trim())
+          .filter((ref): ref is string => Boolean(ref))
+      : []
+  );
+  const positiveCount = rows.filter((r) => r.entryType === "PAYMENT").length;
+  const negativeCount = rows.filter((r) => r.entryType === "EXPENSE").length;
+
+  const openChargeRows = await prisma.charge.findMany({
+    where: { status: "OPEN" },
+    select: {
+      id: true,
+      apartmentId: true,
+      amount: true,
+      dueDate: true,
+      createdAt: true,
+    },
+  });
+
+  const openChargeIds = openChargeRows.map((row) => row.id);
+  const paidByChargeId = new Map<string, number>();
+  if (openChargeIds.length > 0) {
+    const paymentSums = await prisma.paymentItem.groupBy({
+      by: ["chargeId"],
+      where: { chargeId: { in: openChargeIds } },
+      _sum: { amount: true },
+    });
+    for (const sumRow of paymentSums) {
+      paidByChargeId.set(sumRow.chargeId, Number(sumRow._sum.amount ?? 0));
+    }
+  }
+
+  const openChargeStatesByApartment = new Map<
+    string,
+    Array<{ chargeId: string; remaining: number; closedInImport: boolean }>
+  >();
+  for (const charge of openChargeRows) {
+    const paid = paidByChargeId.get(charge.id) ?? 0;
+    const remaining = Number((Number(charge.amount) - paid).toFixed(2));
+    if (remaining <= 0.0001) {
+      continue;
+    }
+
+    const list = openChargeStatesByApartment.get(charge.apartmentId) ?? [];
+    list.push({
+      chargeId: charge.id,
+      remaining,
+      closedInImport: false,
+    });
+    openChargeStatesByApartment.set(charge.apartmentId, list);
+  }
+
+  const chargeSortMetaById = new Map(
+    openChargeRows.map((row) => [row.id, { dueAt: row.dueDate.getTime(), createdAt: row.createdAt.getTime() }])
+  );
+  for (const list of openChargeStatesByApartment.values()) {
+    list.sort((a, b) => {
+      const aMeta = chargeSortMetaById.get(a.chargeId);
+      const bMeta = chargeSortMetaById.get(b.chargeId);
+      if (!aMeta || !bMeta) {
+        return a.chargeId.localeCompare(b.chargeId);
+      }
+
+      const dueDiff = aMeta.dueAt - bMeta.dueAt;
+      if (dueDiff !== 0) {
+        return dueDiff;
+      }
+
+      const createdDiff = aMeta.createdAt - bMeta.createdAt;
+      if (createdDiff !== 0) {
+        return createdDiff;
+      }
+
+      return a.chargeId.localeCompare(b.chargeId);
+    });
+  }
+
+  let paymentCreatedCount = 0;
+  let expenseCreatedCount = 0;
+  let skippedCount = 0;
+  const errors: string[] = [];
+  const infos: string[] = [];
+
+  // Process rows oldest-to-newest so allocations follow real payment chronology.
+  const processingRows = rows
+    .map((row, sourceIndex) => ({ row, rowNo: sourceIndex + 1, sourceIndex }))
+    .sort((a, b) => {
+      const dateDiff = a.row.occurredAt.getTime() - b.row.occurredAt.getTime();
+      if (dateDiff !== 0) {
+        return dateDiff;
+      }
+      return a.sourceIndex - b.sourceIndex;
+    });
+
+  for (const current of processingRows) {
+    const row = current.row;
+    const rowNo = current.rowNo;
+    const reference = row.reference?.trim();
+    const isSplitPaymentRow = row.entryType === "PAYMENT" && (row.isAutoSplit === true || Number.isFinite(row.splitSourceRowNo));
+
+    try {
+      if (row.entryType === "PAYMENT") {
+        const enteredDoorNo = row.doorNo?.trim();
+        const detectedDoorNo =
+          enteredDoorNo || extractDoorNoFromDescription(row.description, doorNoSet, activeDoorNoRules) || undefined;
+        if (!detectedDoorNo) {
+          skippedCount += 1;
+          errors.push(`Satir ${rowNo}: Daire no girilmedi veya aciklamadan bulunamadi`);
+          continue;
+        }
+
+        const apartmentId = doorNoMap.get(detectedDoorNo) ?? doorNoMap.get(String(Number(detectedDoorNo)));
+        if (!apartmentId) {
+          skippedCount += 1;
+          errors.push(`Satir ${rowNo}: Daire bulunamadi (${detectedDoorNo})`);
+          continue;
+        }
+
+        if (reference) {
+          if (paymentReferenceSet.has(reference)) {
+            if (!isSplitPaymentRow) {
+              skippedCount += 1;
+              errors.push(`Satir ${rowNo}: Ayni dosyada tekrar referans (${reference})`);
+              continue;
+            }
+            if (isSplitPaymentRow) {
+              infos.push(`Satir ${rowNo}: Bolunmus tahsilat satirinda ayni referans kabul edildi (${reference})`);
+            }
+          } else {
+            paymentReferenceSet.add(reference);
+          }
+
+          const existingPaymentWhere: Prisma.PaymentWhereInput = {
+            note: {
+              startsWith: `BANK_REF:${reference}`,
+            },
+          };
+
+          if (isSplitPaymentRow) {
+            existingPaymentWhere.NOT = { importBatchId: batch.id };
+          }
+
+          const existingPayment = await prisma.payment.findFirst({
+            where: existingPaymentWhere,
+            select: { id: true },
+          });
+          if (existingPayment) {
+            skippedCount += 1;
+            errors.push(`Satir ${rowNo}: Daha once islenmis referans (${reference})`);
+            continue;
+          }
+        }
+
+        const chargeStates = openChargeStatesByApartment.get(apartmentId) ?? [];
+        const openCharges = chargeStates.filter((x) => x.remaining > 0.0001);
+
+        if (openCharges.length === 0) {
+          const method = row.paymentMethod ?? derivePaymentMethod(row.txType);
+          const noteParts = [
+            reference ? `BANK_REF:${reference}` : undefined,
+            row.description ? `BANK_DESC:${row.description}` : undefined,
+            detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
+            "UNAPPLIED:NO_OPEN_DEBT",
+          ].filter(Boolean) as string[];
+
+          await prisma.payment.create({
+            data: {
+              importBatchId: batch.id,
+              paidAt: row.occurredAt,
+              method,
+              note: noteParts.join(" | "),
+              totalAmount: Number(row.amount.toFixed(2)),
+              createdById: uploadedById,
+            },
+          });
+
+          paymentCreatedCount += 1;
+          infos.push(`Satir ${rowNo}: Dairede acik borc yoktu, odeme dagitimsiz kaydedildi (${detectedDoorNo})`);
+          continue;
+        }
+
+        let remainingToAllocate = Number(row.amount.toFixed(2));
+        const items: Array<{ chargeId: string; amount: number }> = [];
+        const closedChargeIds: string[] = [];
+        for (const charge of openCharges) {
+          if (remainingToAllocate <= 0.0001) {
+            break;
+          }
+
+          const allocate = Math.min(remainingToAllocate, charge.remaining);
+          if (allocate > 0.0001) {
+            items.push({ chargeId: charge.chargeId, amount: Number(allocate.toFixed(2)) });
+            remainingToAllocate = Number((remainingToAllocate - allocate).toFixed(2));
+            charge.remaining = Number((charge.remaining - allocate).toFixed(2));
+            if (charge.remaining <= 0.0001 && !charge.closedInImport) {
+              charge.closedInImport = true;
+              closedChargeIds.push(charge.chargeId);
+            }
+          }
+        }
+
+        if (items.length === 0) {
+          skippedCount += 1;
+          errors.push(`Satir ${rowNo}: Tutar acik borca dagitilamadi`);
+          continue;
+        }
+
+        const method = row.paymentMethod ?? derivePaymentMethod(row.txType);
+        const noteParts = [
+          reference ? `BANK_REF:${reference}` : undefined,
+          row.description ? `BANK_DESC:${row.description}` : undefined,
+          detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
+          remainingToAllocate > 0.01 ? `UNAPPLIED:OVERPAYMENT:${remainingToAllocate.toFixed(2)}` : undefined,
+        ].filter(Boolean) as string[];
+
+        await prisma.$transaction(async (tx) => {
+          const payment = await tx.payment.create({
+            data: {
+              importBatchId: batch.id,
+              paidAt: row.occurredAt,
+              method,
+              note: noteParts.join(" | "),
+              totalAmount: Number(row.amount.toFixed(2)),
+              createdById: uploadedById,
+            },
+          });
+
+          if (items.length > 0) {
+            await tx.paymentItem.createMany({
+              data: items.map((item) => ({
+                paymentId: payment.id,
+                chargeId: item.chargeId,
+                amount: item.amount,
+              })),
+            });
+          }
+
+          if (closedChargeIds.length > 0) {
+            await tx.charge.updateMany({
+              where: {
+                id: { in: closedChargeIds },
+                status: "OPEN",
+              },
+              data: {
+                status: "CLOSED",
+                closedAt: new Date(),
+              },
+            });
+          }
+        });
+
+        paymentCreatedCount += 1;
+        if (remainingToAllocate > 0.01) {
+          infos.push(
+            `Satir ${rowNo}: Odeme acik borcu asti, ${remainingToAllocate.toFixed(2)} tutar dagitimsiz birakildi (${detectedDoorNo})`
+          );
+        }
+        continue;
+      }
+
+      if (reference) {
+        if (expenseReferenceSet.has(reference)) {
+          skippedCount += 1;
+          errors.push(`Satir ${rowNo}: Ayni dosyada tekrar gider referansi (${reference})`);
+          continue;
+        }
+        if (existingExpenseReferenceSet.has(reference)) {
+          skippedCount += 1;
+          errors.push(`Satir ${rowNo}: Daha once islenmis gider referansi (${reference})`);
+          continue;
+        }
+        expenseReferenceSet.add(reference);
+      }
+
+      const expenseAmount = Number(Math.abs(row.amount).toFixed(2));
+      const selectedExpenseItemId = row.expenseItemId && allExpenseItemIdSet.has(row.expenseItemId)
+        ? row.expenseItemId
+        : undefined;
+      const detectedExpenseItemId =
+        selectedExpenseItemId ?? matchExpenseItemId(row.description, activeExpenseItems, activeExpenseRules) ?? undefined;
+      if (!detectedExpenseItemId || !allExpenseItemIdSet.has(detectedExpenseItemId)) {
+        skippedCount += 1;
+        errors.push(`Satir ${rowNo}: Gider kalemi secilmedi veya bulunamadi`);
+        continue;
+      }
+
+      await prisma.expense.create({
+        data: {
+          importBatchId: batch.id,
+          expenseItemId: detectedExpenseItemId,
+          spentAt: row.occurredAt,
+          amount: expenseAmount,
+          paymentMethod: row.paymentMethod ?? PaymentMethod.BANK_TRANSFER,
+          description: row.description,
+          reference: reference || null,
+          createdById: uploadedById,
+        },
+      });
+
+      expenseCreatedCount += 1;
+    } catch (err) {
+      skippedCount += 1;
+      errors.push(`Satir ${rowNo}: Beklenmeyen hata`);
+      console.error(err);
+    }
+  }
+
+  await prisma.importBatch.update({
+    where: { id: batch.id },
+    data: {
+      createdPaymentCount: paymentCreatedCount,
+      createdExpenseCount: expenseCreatedCount,
+      skippedCount,
+    },
+  });
+
+  return {
+    batchId: batch.id,
+    totalRows: rows.length,
+    positiveCount,
+    negativeCount,
+    paymentCreatedCount,
+    expenseCreatedCount,
+    skippedCount,
+    errors: errors.slice(0, 200),
+    infos: infos.slice(0, 200),
+  };
+}
+
+router.get("/banks", async (_req, res) => {
+  const banks = await prisma.bankDefinition.findMany({
+    include: {
+      branches: {
+        orderBy: [{ name: "asc" }],
+      },
+      _count: {
+        select: {
+          branches: true,
+        },
+      },
+    },
+    orderBy: [{ isActive: "desc" }, { name: "asc" }],
+  });
+
+  return res.json(
+    banks.map((bank) => ({
+      id: bank.id,
+      name: bank.name,
+      isActive: bank.isActive,
+      branchCount: bank._count.branches,
+      branches: bank.branches.map((branch) => ({
+        id: branch.id,
+        bankId: branch.bankId,
+        bankName: bank.name,
+        name: branch.name,
+        branchCode: branch.branchCode,
+        accountName: branch.accountName,
+        accountNumber: branch.accountNumber,
+        iban: branch.iban,
+        phone: branch.phone,
+        email: branch.email,
+        address: branch.address,
+        representativeName: branch.representativeName,
+        representativePhone: branch.representativePhone,
+        representativeEmail: branch.representativeEmail,
+        notes: branch.notes,
+        isActive: branch.isActive,
+      })),
+    }))
+  );
+});
+
+function optionalBankText(max: number) {
+  return z
+    .string()
+    .max(max)
+    .optional()
+    .transform((value) => {
+      if (typeof value !== "string") {
+        return undefined;
+      }
+      const trimmed = value.trim();
+      return trimmed ? trimmed : undefined;
+    });
+}
+
+router.post("/banks", async (req, res) => {
+  const schema = z.object({
+    name: z.string().min(2).max(120),
+    isActive: z.boolean().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  try {
+    const created = await prisma.bankDefinition.create({
+      data: {
+        name: parsed.data.name.trim(),
+        isActive: parsed.data.isActive ?? true,
+      },
+    });
+
+    return res.status(201).json(created);
+  } catch (err) {
+    if (typeof err === "object" && err && "code" in err && (err as { code?: string }).code === "P2002") {
+      return res.status(409).json({ message: "Banka adi zaten var" });
+    }
+
+    throw err;
+  }
+});
+
+router.put("/banks/:bankId", async (req, res) => {
+  const { bankId } = req.params;
+  const schema = z.object({
+    name: z.string().min(2).max(120),
+    isActive: z.boolean(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  try {
+    const updated = await prisma.bankDefinition.update({
+      where: { id: bankId },
+      data: {
+        name: parsed.data.name.trim(),
+        isActive: parsed.data.isActive,
+      },
+    });
+    return res.json(updated);
+  } catch (err) {
+    if (typeof err === "object" && err && "code" in err) {
+      const code = (err as { code?: string }).code;
+      if (code === "P2025") {
+        return res.status(404).json({ message: "Banka bulunamadi" });
+      }
+      if (code === "P2002") {
+        return res.status(409).json({ message: "Banka adi zaten var" });
+      }
+    }
+    throw err;
+  }
+});
+
+router.delete("/banks/:bankId", async (req, res) => {
+  const { bankId } = req.params;
+  const existing = await prisma.bankDefinition.findUnique({ where: { id: bankId } });
+  if (!existing) {
+    return res.status(404).json({ message: "Banka bulunamadi" });
+  }
+
+  const branchCount = await prisma.bankBranchDefinition.count({ where: { bankId } });
+  if (branchCount > 0) {
+    return res.status(409).json({ message: "Bankaya bagli subeler oldugu icin silinemez", branchCount });
+  }
+
+  await prisma.bankDefinition.delete({ where: { id: bankId } });
+  return res.status(204).send();
+});
+
+router.post("/banks/branches", async (req, res) => {
+  const schema = z.object({
+    bankId: z.string().min(1),
+    name: z.string().min(2).max(120),
+    branchCode: optionalBankText(32),
+    accountName: optionalBankText(160),
+    accountNumber: optionalBankText(64),
+    iban: optionalBankText(64),
+    phone: optionalBankText(64),
+    email: optionalBankText(255),
+    address: optionalBankText(500),
+    representativeName: optionalBankText(160),
+    representativePhone: optionalBankText(64),
+    representativeEmail: optionalBankText(255),
+    notes: optionalBankText(1000),
+    isActive: z.boolean().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const bank = await prisma.bankDefinition.findUnique({ where: { id: parsed.data.bankId }, select: { id: true } });
+  if (!bank) {
+    return res.status(404).json({ message: "Banka bulunamadi" });
+  }
+
+  try {
+    const created = await prisma.bankBranchDefinition.create({
+      data: {
+        bankId: parsed.data.bankId,
+        name: parsed.data.name.trim(),
+        branchCode: parsed.data.branchCode,
+        accountName: parsed.data.accountName,
+        accountNumber: parsed.data.accountNumber,
+        iban: parsed.data.iban,
+        phone: parsed.data.phone,
+        email: parsed.data.email,
+        address: parsed.data.address,
+        representativeName: parsed.data.representativeName,
+        representativePhone: parsed.data.representativePhone,
+        representativeEmail: parsed.data.representativeEmail,
+        notes: parsed.data.notes,
+        isActive: parsed.data.isActive ?? true,
+      },
+    });
+    return res.status(201).json(created);
+  } catch (err) {
+    if (typeof err === "object" && err && "code" in err && (err as { code?: string }).code === "P2002") {
+      return res.status(409).json({ message: "Bu bankada ayni sube adi zaten var" });
+    }
+    throw err;
+  }
+});
+
+router.put("/banks/branches/:branchId", async (req, res) => {
+  const { branchId } = req.params;
+  const schema = z.object({
+    bankId: z.string().min(1),
+    name: z.string().min(2).max(120),
+    branchCode: optionalBankText(32),
+    accountName: optionalBankText(160),
+    accountNumber: optionalBankText(64),
+    iban: optionalBankText(64),
+    phone: optionalBankText(64),
+    email: optionalBankText(255),
+    address: optionalBankText(500),
+    representativeName: optionalBankText(160),
+    representativePhone: optionalBankText(64),
+    representativeEmail: optionalBankText(255),
+    notes: optionalBankText(1000),
+    isActive: z.boolean(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const bank = await prisma.bankDefinition.findUnique({ where: { id: parsed.data.bankId }, select: { id: true } });
+  if (!bank) {
+    return res.status(404).json({ message: "Banka bulunamadi" });
+  }
+
+  try {
+    const updated = await prisma.bankBranchDefinition.update({
+      where: { id: branchId },
+      data: {
+        bankId: parsed.data.bankId,
+        name: parsed.data.name.trim(),
+        branchCode: parsed.data.branchCode,
+        accountName: parsed.data.accountName,
+        accountNumber: parsed.data.accountNumber,
+        iban: parsed.data.iban,
+        phone: parsed.data.phone,
+        email: parsed.data.email,
+        address: parsed.data.address,
+        representativeName: parsed.data.representativeName,
+        representativePhone: parsed.data.representativePhone,
+        representativeEmail: parsed.data.representativeEmail,
+        notes: parsed.data.notes,
+        isActive: parsed.data.isActive,
+      },
+    });
+    return res.json(updated);
+  } catch (err) {
+    if (typeof err === "object" && err && "code" in err) {
+      const code = (err as { code?: string }).code;
+      if (code === "P2025") {
+        return res.status(404).json({ message: "Sube bulunamadi" });
+      }
+      if (code === "P2002") {
+        return res.status(409).json({ message: "Bu bankada ayni sube adi zaten var" });
+      }
+    }
+    throw err;
+  }
+});
+
+router.delete("/banks/branches/:branchId", async (req, res) => {
+  const { branchId } = req.params;
+  const existing = await prisma.bankBranchDefinition.findUnique({ where: { id: branchId } });
+  if (!existing) {
+    return res.status(404).json({ message: "Sube bulunamadi" });
+  }
+
+  await prisma.bankBranchDefinition.delete({ where: { id: branchId } });
+  return res.status(204).send();
+});
+
+function calculateTermDepositSummary(input: {
+  principalAmount: number;
+  annualInterestRate: number;
+  withholdingTaxRate: number;
+  startDate: Date;
+  endDate: Date;
+}): {
+  dayCount: number;
+  grossInterest: number;
+  withholdingAmount: number;
+  netInterest: number;
+  netMaturityAmount: number;
+} {
+  const millisInDay = 1000 * 60 * 60 * 24;
+  const dayDiff = Math.ceil((input.endDate.getTime() - input.startDate.getTime()) / millisInDay);
+  const dayCount = Math.max(1, dayDiff);
+  const grossInterest = input.principalAmount * (input.annualInterestRate / 100) * (dayCount / 365);
+  const withholdingAmount = grossInterest * (input.withholdingTaxRate / 100);
+  const netInterest = grossInterest - withholdingAmount;
+  const netMaturityAmount = input.principalAmount + netInterest;
+
+  return {
+    dayCount,
+    grossInterest: Number(grossInterest.toFixed(2)),
+    withholdingAmount: Number(withholdingAmount.toFixed(2)),
+    netInterest: Number(netInterest.toFixed(2)),
+    netMaturityAmount: Number(netMaturityAmount.toFixed(2)),
+  };
+}
+
+router.get("/banks/term-deposits", async (_req, res) => {
+  const rows = await prisma.bankTermDeposit.findMany({
+    include: {
+      bank: {
+        select: { id: true, name: true },
+      },
+      branch: {
+        select: { id: true, name: true },
+      },
+    },
+    orderBy: [{ endDate: "asc" }, { createdAt: "desc" }],
+  });
+
+  const payload = rows.map((row) => {
+    const principalAmount = Number(row.principalAmount);
+    const annualInterestRate = Number(row.annualInterestRate);
+    const withholdingTaxRate = Number(row.withholdingTaxRate);
+    const summary = calculateTermDepositSummary({
+      principalAmount,
+      annualInterestRate,
+      withholdingTaxRate,
+      startDate: row.startDate,
+      endDate: row.endDate,
+    });
+
+    return {
+      id: row.id,
+      bankId: row.bankId,
+      bankName: row.bank.name,
+      branchId: row.branchId,
+      branchName: row.branch?.name ?? null,
+      principalAmount,
+      annualInterestRate,
+      withholdingTaxRate,
+      startDate: row.startDate.toISOString(),
+      endDate: row.endDate.toISOString(),
+      notes: row.notes,
+      isActive: row.isActive,
+      dayCount: summary.dayCount,
+      grossInterest: summary.grossInterest,
+      withholdingAmount: summary.withholdingAmount,
+      netInterest: summary.netInterest,
+      netMaturityAmount: summary.netMaturityAmount,
+    };
+  });
+
+  return res.json(payload);
+});
+
+router.post("/banks/term-deposits", async (req, res) => {
+  const schema = z.object({
+    bankId: z.string().min(1),
+    branchId: z
+      .string()
+      .optional()
+      .transform((value) => {
+        if (typeof value !== "string") {
+          return undefined;
+        }
+        const trimmed = value.trim();
+        return trimmed ? trimmed : undefined;
+      }),
+    principalAmount: z.coerce.number().positive(),
+    annualInterestRate: z.coerce.number().min(0).max(500),
+    withholdingTaxRate: z.coerce.number().min(0).max(100),
+    startDate: z.string().datetime(),
+    endDate: z.string().datetime(),
+    notes: optionalBankText(1000),
+    isActive: z.boolean().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const startDate = new Date(parsed.data.startDate);
+  const endDate = new Date(parsed.data.endDate);
+  if (endDate.getTime() < startDate.getTime()) {
+    return res.status(400).json({ message: "Bitis tarihi baslangic tarihinden once olamaz" });
+  }
+
+  const bank = await prisma.bankDefinition.findUnique({ where: { id: parsed.data.bankId }, select: { id: true } });
+  if (!bank) {
+    return res.status(404).json({ message: "Banka bulunamadi" });
+  }
+
+  if (parsed.data.branchId) {
+    const branch = await prisma.bankBranchDefinition.findUnique({
+      where: { id: parsed.data.branchId },
+      select: { id: true, bankId: true },
+    });
+    if (!branch || branch.bankId !== parsed.data.bankId) {
+      return res.status(400).json({ message: "Secilen sube bankaya ait degil" });
+    }
+  }
+
+  const created = await prisma.bankTermDeposit.create({
+    data: {
+      bankId: parsed.data.bankId,
+      branchId: parsed.data.branchId,
+      principalAmount: parsed.data.principalAmount,
+      annualInterestRate: parsed.data.annualInterestRate,
+      withholdingTaxRate: parsed.data.withholdingTaxRate,
+      startDate,
+      endDate,
+      notes: parsed.data.notes,
+      isActive: parsed.data.isActive ?? true,
+    },
+  });
+
+  return res.status(201).json(created);
+});
+
+router.put("/banks/term-deposits/:depositId", async (req, res) => {
+  const { depositId } = req.params;
+  const schema = z.object({
+    bankId: z.string().min(1),
+    branchId: z
+      .string()
+      .optional()
+      .transform((value) => {
+        if (typeof value !== "string") {
+          return undefined;
+        }
+        const trimmed = value.trim();
+        return trimmed ? trimmed : undefined;
+      }),
+    principalAmount: z.coerce.number().positive(),
+    annualInterestRate: z.coerce.number().min(0).max(500),
+    withholdingTaxRate: z.coerce.number().min(0).max(100),
+    startDate: z.string().datetime(),
+    endDate: z.string().datetime(),
+    notes: optionalBankText(1000),
+    isActive: z.boolean(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const startDate = new Date(parsed.data.startDate);
+  const endDate = new Date(parsed.data.endDate);
+  if (endDate.getTime() < startDate.getTime()) {
+    return res.status(400).json({ message: "Bitis tarihi baslangic tarihinden once olamaz" });
+  }
+
+  const bank = await prisma.bankDefinition.findUnique({ where: { id: parsed.data.bankId }, select: { id: true } });
+  if (!bank) {
+    return res.status(404).json({ message: "Banka bulunamadi" });
+  }
+
+  if (parsed.data.branchId) {
+    const branch = await prisma.bankBranchDefinition.findUnique({
+      where: { id: parsed.data.branchId },
+      select: { id: true, bankId: true },
+    });
+    if (!branch || branch.bankId !== parsed.data.bankId) {
+      return res.status(400).json({ message: "Secilen sube bankaya ait degil" });
+    }
+  }
+
+  try {
+    const updated = await prisma.bankTermDeposit.update({
+      where: { id: depositId },
+      data: {
+        bankId: parsed.data.bankId,
+        branchId: parsed.data.branchId,
+        principalAmount: parsed.data.principalAmount,
+        annualInterestRate: parsed.data.annualInterestRate,
+        withholdingTaxRate: parsed.data.withholdingTaxRate,
+        startDate,
+        endDate,
+        notes: parsed.data.notes,
+        isActive: parsed.data.isActive,
+      },
+    });
+    return res.json(updated);
+  } catch (err) {
+    if (typeof err === "object" && err && "code" in err && (err as { code?: string }).code === "P2025") {
+      return res.status(404).json({ message: "Vadeli mevduat kaydi bulunamadi" });
+    }
+    throw err;
+  }
+});
+
+router.delete("/banks/term-deposits/:depositId", async (req, res) => {
+  const { depositId } = req.params;
+  try {
+    await prisma.bankTermDeposit.delete({ where: { id: depositId } });
+    return res.status(204).send();
+  } catch (err) {
+    if (typeof err === "object" && err && "code" in err && (err as { code?: string }).code === "P2025") {
+      return res.status(404).json({ message: "Vadeli mevduat kaydi bulunamadi" });
+    }
+    throw err;
+  }
+});
+
+router.get("/initial-balances", async (_req, res) => {
+  const openingPayments = await prisma.payment.findMany({
+    where: {
+      note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX },
+      itemLinks: { none: {} },
+    },
+    orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+    select: {
+      id: true,
+      totalAmount: true,
+      paidAt: true,
+      note: true,
+    },
+  });
+
+  const entries = openingPayments.map((payment) => {
+    const parsed = parseOpeningBalanceNote(payment.note);
+    return {
+      id: payment.id,
+      bankName: parsed.bankName,
+      branchName: parsed.branchName,
+      openingBalance: Number(payment.totalAmount),
+      openingDate: payment.paidAt,
+    };
+  });
+
+  const defaultOpeningDate = new Date();
+  defaultOpeningDate.setHours(0, 0, 0, 0);
+
+  return res.json({
+    defaultOpeningDate,
+    entries,
+  });
+});
+
+router.post("/initial-balances/apply", async (req, res) => {
+  const schema = z.object({
+    entries: z
+      .array(
+        z.object({
+          bankName: z.string().min(1),
+          branchName: z.string().optional().nullable(),
+          openingBalance: z.number().positive(),
+          openingDate: z.string().datetime(),
+        })
+      )
+      .max(200),
+    replaceExisting: z.boolean().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const normalizedEntries = parsed.data.entries
+    .map((entry) => ({
+      bankName: entry.bankName.trim(),
+      branchName: entry.branchName?.trim() ? entry.branchName.trim() : null,
+      openingBalance: Number(entry.openingBalance.toFixed(2)),
+      openingDate: new Date(entry.openingDate),
+    }))
+    .filter((entry) => entry.bankName.length > 0 && entry.openingBalance > 0);
+
+  if (normalizedEntries.length === 0) {
+    return res.status(400).json({ message: "En az bir banka acilis satiri girin" });
+  }
+
+  const effectiveReplaceExisting = parsed.data.replaceExisting ?? true;
+
+  const result = await prisma.$transaction(async (tx) => {
+    let deletedOpeningPayments = 0;
+    if (effectiveReplaceExisting) {
+      const deleted = await tx.payment.deleteMany({
+        where: {
+          note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX },
+          itemLinks: { none: {} },
+        },
+      });
+      deletedOpeningPayments = deleted.count;
+    }
+
+    let createdOpeningPayments = 0;
+    for (const entry of normalizedEntries) {
+      await tx.payment.create({
+        data: {
+          paidAt: entry.openingDate,
+          totalAmount: entry.openingBalance,
+          method: PaymentMethod.BANK_TRANSFER,
+          note: buildOpeningBalanceNote(entry.bankName, entry.branchName),
+          createdById: req.user?.userId,
+        },
+      });
+      createdOpeningPayments += 1;
+    }
+
+    return {
+      deletedOpeningPayments,
+      createdOpeningPayments,
+    };
+  });
+
+  return res.json({
+    appliedEntryCount: normalizedEntries.length,
+    ...result,
+    totalOpeningBalance: Number(
+      normalizedEntries.reduce((sum, entry) => sum + entry.openingBalance, 0).toFixed(2)
+    ),
+  });
+});
+
+router.post("/charges", async (req, res) => {
+  const schema = z.object({
+    apartmentId: z.string().min(1),
+    chargeTypeId: z.string().min(1),
+    periodYear: z.number().int().min(2000).max(2100),
+    periodMonth: z.number().int().min(1).max(12).optional(),
+    amount: z.number().min(0).optional(),
+    dueDate: z.string().datetime().optional(),
+    description: z.string().optional(),
+    entries: z
+      .array(
+        z.object({
+          periodMonth: z.number().int().min(1).max(12),
+          amount: z.number().min(0),
+          dueDate: z.string().datetime(),
+          description: z.string().optional(),
+        })
+      )
+      .min(1)
+      .max(24)
+      .optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const [chargeType, apartment] = await Promise.all([
+    prisma.chargeTypeDefinition.findUnique({
+      where: { id: parsed.data.chargeTypeId },
+      select: { id: true, code: true, name: true },
+    }),
+    prisma.apartment.findUnique({
+      where: { id: parsed.data.apartmentId },
+      select: { id: true, doorNo: true, ownerFullName: true, hasAidat: true, hasDogalgaz: true },
+    }),
+  ]);
+
+  if (!chargeType) {
+    return res.status(404).json({ message: "Tahakkuk tipi bulunamadi" });
+  }
+
+  if (!apartment) {
+    return res.status(404).json({ message: "Daire bulunamadi" });
+  }
+
+  const restrictedChargeType = getRestrictedChargeTypeCode(chargeType.code);
+  if (restrictedChargeType && isApartmentExemptForChargeType(apartment, restrictedChargeType)) {
+    const fullName = apartment.ownerFullName?.trim() || "Adsiz";
+    const apartmentLabel = `${apartment.doorNo}-${fullName}`;
+    return res.status(409).json({
+      message: `${apartmentLabel} dairesi ${restrictedChargeType} icin muaf oldugu icin tahakkuk olusturulamadi`,
+      warningCode: "APARTMENT_EXEMPT_FOR_CHARGE_TYPE",
+      blockedCount: 1,
+      blockedApartments: [apartmentLabel],
+    });
+  }
+
+  if (parsed.data.entries && parsed.data.entries.length > 0) {
+    const created = await prisma.$transaction(
+      parsed.data.entries.map((entry) =>
+        prisma.charge.create({
+          data: {
+            apartmentId: parsed.data.apartmentId,
+            chargeTypeId: parsed.data.chargeTypeId,
+            periodYear: parsed.data.periodYear,
+            periodMonth: entry.periodMonth,
+            amount: entry.amount,
+            dueDate: new Date(entry.dueDate),
+            description: entry.description,
+            createdByUserId: req.user?.userId,
+          },
+          select: { id: true },
+        })
+      )
+    );
+
+    return res.status(201).json({
+      createdCount: created.length,
+      createdIds: created.map((x) => x.id),
+      firstId: created[0]?.id ?? null,
+    });
+  }
+
+  if (
+    parsed.data.periodMonth === undefined ||
+    parsed.data.amount === undefined ||
+    parsed.data.dueDate === undefined
+  ) {
+    return res.status(400).json({
+      message: "Provide entries[] or periodMonth+amount+dueDate",
+    });
+  }
+
+  const charge = await prisma.charge.create({
+    data: {
+      apartmentId: parsed.data.apartmentId,
+      chargeTypeId: parsed.data.chargeTypeId,
+      periodYear: parsed.data.periodYear,
+      periodMonth: parsed.data.periodMonth,
+      amount: parsed.data.amount,
+      dueDate: new Date(parsed.data.dueDate),
+      description: parsed.data.description,
+      createdByUserId: req.user?.userId,
+    },
+  });
+
+  return res.status(201).json(charge);
+});
+
+router.post("/charges/bulk", async (req, res) => {
+  const schema = z.object({
+    chargeTypeId: z.string().min(1),
+    periodYear: z.number().int().min(2000).max(2100),
+    periodMonth: z.number().int().min(1).max(12).optional(),
+    periodMonths: z.array(z.number().int().min(1).max(12)).min(1).max(12).optional(),
+    dueDate: z.string().datetime().optional(),
+    dueDateByMonth: z.record(z.string().datetime()).optional(),
+    description: z.string().optional(),
+    apartmentType: z.nativeEnum(ApartmentType).optional(),
+    apartmentIds: z.array(z.string().min(1)).max(500).optional(),
+    amount: z.number().positive().optional(),
+    amountByType: z
+      .object({
+        KUCUK: z.number().positive(),
+        BUYUK: z.number().positive(),
+      })
+      .optional(),
+    skipIfExists: z.boolean().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const {
+    periodYear,
+    periodMonth,
+    periodMonths,
+    chargeTypeId,
+    dueDate,
+    dueDateByMonth,
+    description,
+    apartmentType,
+    apartmentIds,
+    amount,
+    amountByType,
+    skipIfExists,
+  } = parsed.data;
+
+  const chargeType = await prisma.chargeTypeDefinition.findUnique({
+    where: { id: chargeTypeId },
+    select: { id: true, code: true, name: true },
+  });
+  if (!chargeType) {
+    return res.status(404).json({ message: "Tahakkuk tipi bulunamadi" });
+  }
+
+  const restrictedChargeType = getRestrictedChargeTypeCode(chargeType.code);
+
+  if (!amount && !amountByType) {
+    return res.status(400).json({ message: "Provide amount or amountByType" });
+  }
+
+  const monthsRaw = periodMonths ?? (periodMonth ? [periodMonth] : []);
+  const months = [...new Set(monthsRaw)].sort((a, b) => a - b);
+  if (months.length === 0) {
+    return res.status(400).json({ message: "Provide periodMonth or periodMonths" });
+  }
+
+  const dueDateMap = new Map<number, Date>();
+  for (const month of months) {
+    const monthKey = String(month);
+    const perMonthDateRaw = dueDateByMonth?.[monthKey];
+    if (perMonthDateRaw) {
+      dueDateMap.set(month, new Date(perMonthDateRaw));
+      continue;
+    }
+
+    if (dueDate) {
+      dueDateMap.set(month, new Date(dueDate));
+      continue;
+    }
+
+    return res.status(400).json({ message: `Missing due date for month ${month}` });
+  }
+
+  const apartmentWhere: Prisma.ApartmentWhereInput = {
+    ...(apartmentType ? { type: apartmentType } : {}),
+    ...(apartmentIds?.length ? { id: { in: apartmentIds } } : {}),
+  };
+
+  const apartments = await prisma.apartment.findMany({
+    where: apartmentWhere,
+    select: {
+      id: true,
+      type: true,
+      doorNo: true,
+      ownerFullName: true,
+      hasAidat: true,
+      hasDogalgaz: true,
+    },
+  });
+
+  if (apartments.length === 0) {
+    return res.status(400).json({ message: "No apartments found for selected filter" });
+  }
+
+  if (restrictedChargeType) {
+    const blockedApartments = apartments
+      .filter((apartment) => isApartmentExemptForChargeType(apartment, restrictedChargeType))
+      .map((apartment) => `${apartment.doorNo}-${apartment.ownerFullName?.trim() || "Adsiz"}`);
+
+    if (blockedApartments.length > 0) {
+      const preview = blockedApartments.slice(0, 5).join(", ");
+      return res.status(409).json({
+        message: `${restrictedChargeType} muaf daire secildigi icin toplu tahakkuk olusturulamadi. Ornek: ${preview}`,
+        warningCode: "APARTMENT_EXEMPT_FOR_CHARGE_TYPE",
+        blockedCount: blockedApartments.length,
+        blockedApartments: blockedApartments.slice(0, 50),
+      });
+    }
+  }
+
+  const existing = await prisma.charge.findMany({
+    where: {
+      apartmentId: { in: apartments.map((a) => a.id) },
+      periodYear,
+      periodMonth: { in: months },
+      chargeTypeId,
+    },
+    select: { apartmentId: true, periodMonth: true },
+  });
+
+  const existingKeys = new Set(existing.map((x) => `${x.apartmentId}|${x.periodMonth}`));
+  const effectiveSkipIfExists = skipIfExists ?? true;
+
+  const records = apartments.flatMap((apt) =>
+    months
+      .filter((month) => !effectiveSkipIfExists || !existingKeys.has(`${apt.id}|${month}`))
+      .map((month) => ({
+        apartmentId: apt.id,
+        chargeTypeId,
+        periodYear,
+        periodMonth: month,
+        amount: amount ?? (apt.type === "KUCUK" ? amountByType?.KUCUK : amountByType?.BUYUK) ?? 0,
+        dueDate: dueDateMap.get(month) as Date,
+        description,
+        createdByUserId: req.user?.userId,
+      }))
+  );
+
+  if (records.length === 0) {
+    const totalTargetCount = apartments.length * months.length;
+    return res.json({
+      createdCount: 0,
+      skippedCount: totalTargetCount,
+      totalTargetCount,
+      months,
+      message: "All target apartments already have this charge",
+    });
+  }
+
+  const result = await prisma.charge.createMany({
+    data: records,
+  });
+
+  const totalTargetCount = apartments.length * months.length;
+
+  return res.status(201).json({
+    createdCount: result.count,
+    skippedCount: totalTargetCount - result.count,
+    totalTargetCount,
+    months,
+  });
+});
+
+router.post("/charges/distributed", async (req, res) => {
+  const schema = z.object({
+    chargeTypeId: z.string().min(1),
+    periodYear: z.number().int().min(2000).max(2100),
+    periodMonth: z.number().int().min(1).max(12),
+    dueDate: z.string().datetime(),
+    invoiceDate: z.string().datetime().optional(),
+    periodStartDate: z.string().datetime().optional(),
+    periodEndDate: z.string().datetime().optional(),
+    invoiceFileName: z.string().min(1).optional(),
+    invoiceAmount: z.number().positive().optional(),
+    description: z.string().optional(),
+    skipIfExists: z.boolean().optional(),
+    rows: z
+      .array(
+        z.object({
+          apartmentId: z.string().min(1),
+          amount: z.number().positive(),
+        })
+      )
+      .min(1)
+      .max(1000),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const {
+    chargeTypeId,
+    periodYear,
+    periodMonth,
+    dueDate,
+    invoiceDate,
+    periodStartDate,
+    periodEndDate,
+    invoiceFileName,
+    invoiceAmount,
+    description,
+    skipIfExists,
+    rows,
+  } = parsed.data;
+
+  const chargeType = await prisma.chargeTypeDefinition.findUnique({
+    where: { id: chargeTypeId },
+    select: { id: true, code: true, name: true },
+  });
+  if (!chargeType) {
+    return res.status(404).json({ message: "Tahakkuk tipi bulunamadi" });
+  }
+
+  const restrictedChargeType = getRestrictedChargeTypeCode(chargeType.code);
+
+  const uniqueRows = Array.from(
+    new Map(rows.map((row) => [row.apartmentId, row])).values()
+  );
+
+  const apartmentIds = uniqueRows.map((row) => row.apartmentId);
+  const existingApartments = await prisma.apartment.findMany({
+    where: { id: { in: apartmentIds } },
+    select: {
+      id: true,
+      doorNo: true,
+      ownerFullName: true,
+      hasAidat: true,
+      hasDogalgaz: true,
+    },
+  });
+  const existingApartmentIds = new Set(existingApartments.map((apt) => apt.id));
+  const missingApartmentIds = apartmentIds.filter((id) => !existingApartmentIds.has(id));
+  if (missingApartmentIds.length > 0) {
+    return res.status(400).json({ message: `Missing apartments: ${missingApartmentIds.join(", ")}` });
+  }
+
+  if (restrictedChargeType) {
+    const blockedApartments = existingApartments
+      .filter((apartment) => isApartmentExemptForChargeType(apartment, restrictedChargeType))
+      .map((apartment) => `${apartment.doorNo}-${apartment.ownerFullName?.trim() || "Adsiz"}`);
+
+    if (blockedApartments.length > 0) {
+      const preview = blockedApartments.slice(0, 5).join(", ");
+      return res.status(409).json({
+        message: `${restrictedChargeType} muaf daire secildigi icin dagitim tahakkuku olusturulamadi. Ornek: ${preview}`,
+        warningCode: "APARTMENT_EXEMPT_FOR_CHARGE_TYPE",
+        blockedCount: blockedApartments.length,
+        blockedApartments: blockedApartments.slice(0, 50),
+      });
+    }
+  }
+
+  const existingCharges = await prisma.charge.findMany({
+    where: {
+      apartmentId: { in: apartmentIds },
+      chargeTypeId,
+      periodYear,
+      periodMonth,
+    },
+    select: { apartmentId: true },
+  });
+  const existingChargeApartmentIds = new Set(existingCharges.map((row) => row.apartmentId));
+  const effectiveSkipIfExists = skipIfExists ?? true;
+
+  const invoiceDateDisplay = (() => {
+    if (!invoiceDate) {
+      return null;
+    }
+
+    const dateOnly = String(invoiceDate).match(/\d{4}-\d{2}-\d{2}/)?.[0];
+    if (!dateOnly) {
+      return String(invoiceDate).trim() || null;
+    }
+
+    const [year, month, day] = dateOnly.split("-");
+    return `${day}.${month}.${year}`;
+  })();
+
+  const isDogalgazCharge =
+    toAsciiLower(chargeType.code) === "dogalgaz" || toAsciiLower(chargeType.name).includes("dogalgaz");
+
+  let finalDescription: string | undefined;
+  if (isDogalgazCharge) {
+    const dogalgazParts = [
+      "Dogalgaz",
+      invoiceDate ? `Fatura tarihi: ${invoiceDate}` : "",
+      periodStartDate ? `Baslangic: ${periodStartDate}` : "",
+      periodEndDate ? `Bitis: ${periodEndDate}` : "",
+      invoiceFileName ? `Fatura: ${invoiceFileName}` : "",
+      invoiceAmount ? `Fatura tutari: ${invoiceAmount.toFixed(2)}` : "",
+      `Vade: ${dueDate}`,
+    ].filter(Boolean);
+    finalDescription = dogalgazParts.join(" | ");
+  } else {
+    const metaParts = [
+      description?.trim() || "",
+      invoiceAmount ? `Fatura tutari: ${invoiceAmount.toFixed(2)}` : "",
+      invoiceDate ? `Fatura tarihi: ${invoiceDate}` : "",
+      periodStartDate ? `Baslangic: ${periodStartDate}` : "",
+      periodEndDate ? `Bitis: ${periodEndDate}` : "",
+      invoiceFileName ? `Fatura: ${invoiceFileName}` : "",
+    ].filter(Boolean);
+    finalDescription = metaParts.length > 0 ? metaParts.join(" | ") : undefined;
+  }
+
+  const createRows = uniqueRows
+    .filter((row) => !effectiveSkipIfExists || !existingChargeApartmentIds.has(row.apartmentId))
+    .map((row) => ({
+      apartmentId: row.apartmentId,
+      chargeTypeId,
+      periodYear,
+      periodMonth,
+      amount: row.amount,
+      dueDate: new Date(dueDate),
+      description: finalDescription,
+      createdByUserId: req.user?.userId,
+    }));
+
+  if (createRows.length === 0) {
+    return res.json({
+      createdCount: 0,
+      skippedCount: uniqueRows.length,
+      totalTargetCount: uniqueRows.length,
+      message: "All target apartments already have this charge",
+    });
+  }
+
+  const result = await prisma.charge.createMany({
+    data: createRows,
+  });
+
+  return res.status(201).json({
+    createdCount: result.count,
+    skippedCount: uniqueRows.length - result.count,
+    totalTargetCount: uniqueRows.length,
+  });
+});
+
+router.post("/charges/distributed/invoices/list", async (req, res) => {
+  const schema = z.object({
+    periodYear: z.number().int().min(2000).max(2100).optional(),
+    periodMonths: z.array(z.number().int().min(1).max(12)).max(12).optional(),
+    chargeTypeId: z.string().min(1).optional(),
+  });
+
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const { periodYear, periodMonths, chargeTypeId } = parsed.data;
+  const months = periodMonths && periodMonths.length > 0 ? [...new Set(periodMonths)] : undefined;
+
+  const charges = await prisma.charge.findMany({
+    where: {
+      chargeTypeId,
+      periodYear,
+      periodMonth: months ? { in: months } : undefined,
+    },
+    select: {
+      id: true,
+      chargeTypeId: true,
+      periodYear: true,
+      periodMonth: true,
+      dueDate: true,
+      description: true,
+      amount: true,
+      createdAt: true,
+      _count: {
+        select: {
+          paymentItems: true,
+        },
+      },
+      chargeType: {
+        select: {
+          name: true,
+          code: true,
+        },
+      },
+    },
+    orderBy: [{ createdAt: "desc" }],
+  });
+
+  const grouped = new Map<
+    string,
+    {
+      chargeTypeId: string;
+      chargeTypeName: string;
+      chargeTypeCode: string;
+      periodYear: number;
+      periodMonth: number;
+      dueDate: string;
+      description: string | null;
+      invoiceFileName: string;
+      createdAt: string;
+      chargeCount: number;
+      totalAmount: number;
+      linkedPaymentCount: number;
+    }
+  >();
+
+  for (const charge of charges) {
+    const invoiceFileName = extractChargeInvoiceFileName(charge.description);
+    const normalizedDescription = charge.description ?? null;
+    const resolvedInvoiceName = invoiceFileName ?? "(Fatura dosyasi yok)";
+
+    const groupKey = [
+      charge.chargeTypeId,
+      charge.periodYear,
+      charge.periodMonth,
+      normalizedDescription ?? "(NULL)"
+    ].join("|");
+    const amount = Number(charge.amount);
+    const linkedPaymentCount = charge._count.paymentItems;
+
+    const existing = grouped.get(groupKey);
+    if (!existing) {
+      grouped.set(groupKey, {
+        chargeTypeId: charge.chargeTypeId,
+        chargeTypeName: charge.chargeType.name,
+        chargeTypeCode: charge.chargeType.code,
+        periodYear: charge.periodYear,
+        periodMonth: charge.periodMonth,
+        dueDate: charge.dueDate.toISOString(),
+        description: normalizedDescription,
+        invoiceFileName: resolvedInvoiceName,
+        createdAt: charge.createdAt.toISOString(),
+        chargeCount: 1,
+        totalAmount: amount,
+        linkedPaymentCount,
+      });
+      continue;
+    }
+
+    existing.chargeCount += 1;
+    existing.totalAmount += amount;
+    existing.linkedPaymentCount += linkedPaymentCount;
+    if (charge.createdAt.getTime() < new Date(existing.createdAt).getTime()) {
+      existing.createdAt = charge.createdAt.toISOString();
+    }
+  }
+
+  const rows = [...grouped.values()]
+    .map((row) => ({
+      ...row,
+      totalAmount: Number(row.totalAmount.toFixed(2)),
+      canDelete: row.linkedPaymentCount === 0,
+    }))
+    .sort((a, b) => {
+      if (a.periodYear !== b.periodYear) {
+        return b.periodYear - a.periodYear;
+      }
+      if (a.periodMonth !== b.periodMonth) {
+        return b.periodMonth - a.periodMonth;
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+  return res.json({ rows, totalCount: rows.length });
+});
+
+router.post("/charges/distributed/invoices/details", async (req, res) => {
+  const schema = z.object({
+    chargeTypeId: z.string().min(1),
+    periodYear: z.number().int().min(2000).max(2100),
+    periodMonth: z.number().int().min(1).max(12),
+    description: z.string().nullable().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const { chargeTypeId, periodYear, periodMonth, description } = parsed.data;
+
+  const charges = await prisma.charge.findMany({
+    where: {
+      chargeTypeId,
+      periodYear,
+      periodMonth,
+      description: description ?? null,
+    },
+    select: {
+      id: true,
+      apartmentId: true,
+      periodYear: true,
+      periodMonth: true,
+      amount: true,
+      dueDate: true,
+      description: true,
+      apartment: {
+        select: {
+          block: { select: { name: true } },
+          doorNo: true,
+          type: true,
+          ownerFullName: true,
+        },
+      },
+      chargeType: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+        },
+      },
+      _count: {
+        select: {
+          paymentItems: true,
+        },
+      },
+    },
+    orderBy: [{ apartment: { block: { name: "asc" } } }, { apartment: { doorNo: "asc" } }],
+  });
+
+  return res.json({
+    rows: charges.map((charge) => ({
+      id: charge.id,
+      apartmentId: charge.apartmentId,
+      blockName: charge.apartment.block.name,
+      doorNo: charge.apartment.doorNo,
+      apartmentType: charge.apartment.type,
+      ownerFullName: charge.apartment.ownerFullName,
+      chargeTypeId: charge.chargeType.id,
+      chargeTypeCode: charge.chargeType.code,
+      chargeTypeName: charge.chargeType.name,
+      periodYear: charge.periodYear,
+      periodMonth: charge.periodMonth,
+      amount: Number(charge.amount),
+      dueDate: charge.dueDate.toISOString(),
+      description: charge.description,
+      linkedPaymentCount: charge._count.paymentItems,
+    })),
+    totalCount: charges.length,
+  });
+});
+
+router.post("/charges/distributed/invoices/delete", async (req, res) => {
+  const schema = z.object({
+    chargeTypeId: z.string().min(1),
+    periodYear: z.number().int().min(2000).max(2100),
+    periodMonth: z.number().int().min(1).max(12),
+    description: z.string().nullable().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const { chargeTypeId, periodYear, periodMonth, description } = parsed.data;
+
+  const targetCharges = await prisma.charge.findMany({
+    where: {
+      chargeTypeId,
+      periodYear,
+      periodMonth,
+      description: description ?? null,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (targetCharges.length === 0) {
+    return res.status(404).json({ message: "Silinecek toplu dagitim bulunamadi" });
+  }
+
+  const targetChargeIds = targetCharges.map((x) => x.id);
+  const linkedPaymentCount = await prisma.paymentItem.count({
+    where: {
+      chargeId: { in: targetChargeIds },
+    },
+  });
+
+  if (linkedPaymentCount > 0) {
+    return res.status(409).json({
+      message: "Bu faturaya bagli tahsilat kayitlari oldugu icin toplu silme yapilamadi",
+      linkedPaymentCount,
+    });
+  }
+
+  const deleted = await prisma.charge.deleteMany({
+    where: {
+      id: { in: targetChargeIds },
+    },
+  });
+
+  return res.json({ deletedCount: deleted.count });
+});
+
+router.post("/charges/distributed/invoices/update", async (req, res) => {
+  const schema = z.object({
+    chargeTypeId: z.string().min(1),
+    periodYear: z.number().int().min(2000).max(2100),
+    periodMonth: z.number().int().min(1).max(12),
+    matchDescription: z.string().nullable().optional(),
+    dueDate: z.string().datetime().optional(),
+    description: z.string().nullable().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const { chargeTypeId, periodYear, periodMonth, matchDescription, dueDate, description } = parsed.data;
+
+  if (!dueDate && description === undefined) {
+    return res.status(400).json({ message: "Duzeltme icin en az bir alan gonderin" });
+  }
+
+  const targetCharges = await prisma.charge.findMany({
+    where: {
+      chargeTypeId,
+      periodYear,
+      periodMonth,
+      description: matchDescription ?? null,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (targetCharges.length === 0) {
+    return res.status(404).json({ message: "Duzeltilecek toplu dagitim bulunamadi" });
+  }
+
+  const updateData: { dueDate?: Date; description?: string | null } = {};
+  if (dueDate) {
+    updateData.dueDate = new Date(dueDate);
+  }
+  if (description !== undefined) {
+    const trimmed = description?.trim() ?? "";
+    updateData.description = trimmed.length > 0 ? trimmed : null;
+  }
+
+  const updated = await prisma.charge.updateMany({
+    where: {
+      id: { in: targetCharges.map((x) => x.id) },
+    },
+    data: updateData,
+  });
+
+  return res.json({ updatedCount: updated.count });
+});
+
+router.post("/charges/bulk-correct", async (req, res) => {
+  const schema = z.object({
+    chargeTypeId: z.string().min(1),
+    periodYear: z.number().int().min(2000).max(2100),
+    periodMonth: z.number().int().min(1).max(12).optional(),
+    periodMonths: z.array(z.number().int().min(1).max(12)).min(1).max(12).optional(),
+    apartmentType: z.nativeEnum(ApartmentType).optional(),
+    apartmentIds: z.array(z.string().min(1)).max(500).optional(),
+    amount: z.number().positive().optional(),
+    amountByType: z
+      .object({
+        KUCUK: z.number().positive(),
+        BUYUK: z.number().positive(),
+      })
+      .optional(),
+    dueDate: z.string().datetime().optional(),
+    dueDateByMonth: z.record(z.string().datetime()).optional(),
+    description: z.string().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const {
+    chargeTypeId,
+    periodYear,
+    periodMonth,
+    periodMonths,
+    apartmentType,
+    apartmentIds,
+    amount,
+    amountByType,
+    dueDate,
+    dueDateByMonth,
+    description,
+  } = parsed.data;
+
+  if (!amount && !amountByType && !dueDate && !dueDateByMonth && description === undefined) {
+    return res.status(400).json({ message: "At least one correction value is required" });
+  }
+
+  const monthsRaw = periodMonths ?? (periodMonth ? [periodMonth] : []);
+  const months = [...new Set(monthsRaw)].sort((a, b) => a - b);
+  if (months.length === 0) {
+    return res.status(400).json({ message: "Provide periodMonth or periodMonths" });
+  }
+
+  const dueDateMap = new Map<number, Date>();
+  if (dueDate || dueDateByMonth) {
+    for (const month of months) {
+      const monthKey = String(month);
+      const perMonthDateRaw = dueDateByMonth?.[monthKey];
+      if (perMonthDateRaw) {
+        dueDateMap.set(month, new Date(perMonthDateRaw));
+        continue;
+      }
+
+      if (dueDate) {
+        dueDateMap.set(month, new Date(dueDate));
+      }
+    }
+  }
+
+  const normalizedApartmentIds: string[] = apartmentIds && apartmentIds.length > 0 ? [...new Set(apartmentIds)] : [];
+
+  const charges = await prisma.charge.findMany({
+    where: {
+      chargeTypeId,
+      periodYear,
+      periodMonth: { in: months },
+      apartmentId: normalizedApartmentIds.length > 0 ? { in: normalizedApartmentIds } : undefined,
+      apartment: apartmentType ? { type: apartmentType } : undefined,
+    },
+    include: {
+      apartment: {
+        select: { type: true },
+      },
+    },
+  });
+
+  if (charges.length === 0) {
+    return res.json({ updatedCount: 0, matchedCount: 0, months });
+  }
+
+  const updates = charges.map((charge) => {
+    const data: { amount?: number; dueDate?: Date; description?: string | null } = {};
+
+    if (typeof amount === "number") {
+      data.amount = amount;
+    } else if (amountByType) {
+      data.amount = charge.apartment.type === "KUCUK" ? amountByType.KUCUK : amountByType.BUYUK;
+    }
+
+    const byMonthDate = dueDateMap.get(charge.periodMonth);
+    if (byMonthDate) {
+      data.dueDate = byMonthDate;
+    }
+
+    if (description !== undefined) {
+      const trimmed = description.trim();
+      data.description = trimmed.length > 0 ? trimmed : null;
+    }
+
+    return prisma.charge.update({
+      where: { id: charge.id },
+      data,
+    });
+  });
+
+  await prisma.$transaction(updates);
+
+  return res.json({
+    updatedCount: updates.length,
+    matchedCount: charges.length,
+    months,
+  });
+});
+
+router.post("/payments", async (req, res) => {
+  const schema = z.object({
+    paidAt: z.string().datetime(),
+    method: z.nativeEnum(PaymentMethod).optional(),
+    reference: z.string().optional(),
+    note: z.string().optional(),
+    items: z.array(
+      z.object({
+        chargeId: z.string().min(1),
+        amount: z.number().positive(),
+      })
+    ).min(1),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const totalAmount = parsed.data.items.reduce((sum, item) => sum + item.amount, 0);
+  const method = parsed.data.method ?? PaymentMethod.BANK_TRANSFER;
+  const normalizedNote = buildPaymentNote(null, parsed.data.note, parsed.data.reference);
+  const chargeIds = [...new Set(parsed.data.items.map((item) => item.chargeId))];
+
+  const existingCharges = await prisma.charge.findMany({
+    where: { id: { in: chargeIds } },
+    select: { id: true },
+  });
+  const existingChargeIdSet = new Set(existingCharges.map((row) => row.id));
+  const missingChargeIds = chargeIds.filter((id) => !existingChargeIdSet.has(id));
+  if (missingChargeIds.length > 0) {
+    return res.status(400).json({
+      message: `Charge ID bulunamadi: ${missingChargeIds.join(", ")}`,
+    });
+  }
+
+  await ensurePaymentMethodDefinitions();
+  const methodDefinition = await prisma.paymentMethodDefinition.findUnique({ where: { code: method } });
+  if (!methodDefinition || !methodDefinition.isActive) {
+    return res.status(400).json({ message: "Selected payment method is not active" });
+  }
+
+  try {
+    const payment = await prisma.$transaction(async (tx) => {
+      const createdPayment = await tx.payment.create({
+        data: {
+          paidAt: new Date(parsed.data.paidAt),
+          method,
+          note: normalizedNote,
+          totalAmount,
+          createdById: req.user?.userId,
+        },
+      });
+
+      for (const item of parsed.data.items) {
+        await tx.paymentItem.create({
+          data: {
+            paymentId: createdPayment.id,
+            chargeId: item.chargeId,
+            amount: item.amount,
+          },
+        });
+      }
+
+      return createdPayment;
+    });
+
+    await refreshChargeStatusesForIds(chargeIds);
+
+    return res.status(201).json(payment);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+      return res.status(400).json({ message: "Gecersiz Charge ID veya bagli tahakkuk iliskisi" });
+    }
+    throw error;
+  }
+});
+
+router.post("/payments/carry-forward", async (req, res) => {
+  const schema = z.object({
+    apartmentId: z.string().min(1),
+    paidAt: z.string().datetime(),
+    amount: z.number().positive(),
+    reference: z.string().optional(),
+    note: z.string().optional(),
+    autoReconcile: z.boolean().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const apartment = await prisma.apartment.findUnique({
+    where: { id: parsed.data.apartmentId },
+    select: { id: true, doorNo: true },
+  });
+  if (!apartment) {
+    return res.status(404).json({ message: "Daire bulunamadi" });
+  }
+
+  const normalizedAmount = Number(parsed.data.amount.toFixed(2));
+  const normalizedDoorNo = apartment.doorNo.trim();
+  if (!normalizedDoorNo) {
+    return res.status(400).json({ message: "Daire kapi numarasi eksik" });
+  }
+
+  const noteParts = [
+    CARRY_FORWARD_PAYMENT_NOTE_TAG,
+    `DOOR:${normalizedDoorNo}`,
+    "UNAPPLIED:CARRY_FORWARD",
+    parsed.data.reference?.trim() ? `REF:${parsed.data.reference.trim()}` : undefined,
+    parsed.data.note?.trim() || undefined,
+  ].filter(Boolean) as string[];
+
+  const created = await prisma.payment.create({
+    data: {
+      paidAt: new Date(parsed.data.paidAt),
+      method: PaymentMethod.CASH,
+      totalAmount: normalizedAmount,
+      note: noteParts.join(" | "),
+      createdById: req.user?.userId,
+    },
+    select: { id: true },
+  });
+
+  const autoReconcile = parsed.data.autoReconcile ?? true;
+  const reconcileResult = autoReconcile ? await reconcileApartmentPaymentLinks(apartment.id) : null;
+
+  return res.status(201).json({
+    id: created.id,
+    apartmentId: apartment.id,
+    doorNo: apartment.doorNo,
+    amount: normalizedAmount,
+    autoReconcileApplied: Boolean(reconcileResult),
+    reconcileResult,
+  });
+});
+
+router.get("/payments/list", async (req, res) => {
+  const querySchema = z.object({
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+    source: z.enum(["MANUAL", "BANK_STATEMENT_UPLOAD", "PAYMENT_UPLOAD"]).optional(),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const { from, to, source } = parsed.data;
+
+  const payments = await prisma.payment.findMany({
+    where: {
+      paidAt:
+        from || to
+          ? {
+              gte: from ? new Date(from) : undefined,
+              lte: to ? new Date(to) : undefined,
+            }
+          : undefined,
+    },
+    include: {
+      importBatch: {
+        select: { kind: true },
+      },
+      itemLinks: {
+        include: {
+          charge: {
+            include: {
+              apartment: {
+                include: {
+                  block: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+  });
+
+  const creatorIds = [...new Set(payments.map((p) => p.createdById).filter(Boolean))] as string[];
+  const creators = creatorIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: creatorIds } },
+        select: { id: true, fullName: true, email: true },
+      })
+    : [];
+  const creatorMap = new Map(creators.map((x) => [x.id, x]));
+
+  function detectSource(payment: (typeof payments)[number]): "MANUAL" | "BANK_STATEMENT_UPLOAD" | "PAYMENT_UPLOAD" {
+    if (payment.importBatch?.kind === ImportBatchType.BANK_STATEMENT_UPLOAD) {
+      return "BANK_STATEMENT_UPLOAD";
+    }
+    if (payment.importBatch?.kind === ImportBatchType.PAYMENT_UPLOAD) {
+      return "PAYMENT_UPLOAD";
+    }
+
+    const value = (payment.note ?? "").toUpperCase();
+    if (value.includes("BANK_REF:")) {
+      return "BANK_STATEMENT_UPLOAD";
+    }
+    if (value.includes("PAYMENT_UPLOAD:")) {
+      return "PAYMENT_UPLOAD";
+    }
+    return "MANUAL";
+  }
+
+  function parsePaymentNote(note: string | null): { reference: string | null; description: string | null } {
+    if (!note) {
+      return { reference: null, description: null };
+    }
+
+    const parts = note
+      .split(" | ")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    let reference: string | null = null;
+    let bankDescription: string | null = null;
+    const descriptionParts: string[] = [];
+
+    for (const part of parts) {
+      if (part.startsWith("BANK_REF:")) {
+        reference = part.slice("BANK_REF:".length).trim() || null;
+        continue;
+      }
+      if (part.startsWith("REF:")) {
+        reference = reference ?? (part.slice("REF:".length).trim() || null);
+        continue;
+      }
+      if (part.startsWith("BANK_DESC:")) {
+        bankDescription = part.slice("BANK_DESC:".length).trim() || null;
+        continue;
+      }
+      if (part.startsWith("PAYMENT_UPLOAD:")) {
+        continue;
+      }
+      if (part.startsWith("DOOR:")) {
+        continue;
+      }
+      if (part.startsWith("UNAPPLIED:")) {
+        continue;
+      }
+      if (part.startsWith("CARRY_FORWARD:")) {
+        continue;
+      }
+
+      descriptionParts.push(part);
+    }
+
+    const isCarryForward = parts.some((part) => part.startsWith("CARRY_FORWARD:"));
+
+    return {
+      reference,
+      description:
+        bankDescription ??
+        (descriptionParts.length > 0 ? descriptionParts.join(" | ") : isCarryForward ? "Devir alacak girisi" : null),
+    };
+  }
+
+    const rows = payments.map((payment) => {
+      const apartmentDoorNos = [...new Set(payment.itemLinks.map((item) => item.charge.apartment.doorNo))];
+      const apartmentIds = [...new Set(payment.itemLinks.map((item) => item.charge.apartment.id))];
+
+      const creator = payment.createdById ? creatorMap.get(payment.createdById) : undefined;
+      const detectedSource = detectSource(payment);
+      const noteParts = parsePaymentNote(payment.note);
+
+      return {
+        id: payment.id,
+        paidAt: payment.paidAt,
+        totalAmount: Number(payment.totalAmount),
+        method: payment.method,
+        note: payment.note,
+        reference: noteParts.reference,
+        description: noteParts.description,
+        createdAt: payment.createdAt,
+        source: detectedSource,
+        createdByUserId: payment.createdById,
+        createdByName: creator?.fullName ?? null,
+        createdByEmail: creator?.email ?? null,
+        apartments: apartmentDoorNos,
+        apartmentId: apartmentIds.length === 1 ? apartmentIds[0] : null,
+      };
+    });
+
+  if (!source) {
+    return res.json(rows);
+  }
+
+  return res.json(rows.filter((x) => x.source === source));
+});
+
+router.get("/reports/reference-search", async (req, res) => {
+  const querySchema = z.object({
+    reference: z.string().min(1).max(200),
+    limit: z.coerce.number().int().min(1).max(2000).optional(),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const reference = parsed.data.reference.trim();
+  if (!reference) {
+    return res.status(400).json({ message: "Reference is required" });
+  }
+
+  const referenceLower = reference.toLocaleLowerCase("tr");
+  const limit = parsed.data.limit ?? 500;
+
+  function parsePaymentNoteReference(note: string | null): string | null {
+    if (!note) {
+      return null;
+    }
+
+    const parts = note
+      .split(" | ")
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    for (const part of parts) {
+      if (part.startsWith("BANK_REF:")) {
+        return part.slice("BANK_REF:".length).trim() || null;
+      }
+      if (part.startsWith("REF:")) {
+        return part.slice("REF:".length).trim() || null;
+      }
+    }
+
+    return null;
+  }
+
+  function detectPaymentSource(payment: {
+    importBatch: { kind: ImportBatchType; fileName: string | null } | null;
+    note: string | null;
+  }): "MANUAL" | "BANK_STATEMENT_UPLOAD" | "PAYMENT_UPLOAD" {
+    if (payment.importBatch?.kind === ImportBatchType.BANK_STATEMENT_UPLOAD) {
+      return "BANK_STATEMENT_UPLOAD";
+    }
+    if (payment.importBatch?.kind === ImportBatchType.PAYMENT_UPLOAD) {
+      return "PAYMENT_UPLOAD";
+    }
+
+    const noteUpper = (payment.note ?? "").toUpperCase();
+    if (noteUpper.includes("BANK_REF:")) {
+      return "BANK_STATEMENT_UPLOAD";
+    }
+    if (noteUpper.includes("PAYMENT_UPLOAD:")) {
+      return "PAYMENT_UPLOAD";
+    }
+
+    return "MANUAL";
+  }
+
+  const [paymentsRaw, expensesRaw] = await Promise.all([
+    prisma.payment.findMany({
+      where: {
+        note: {
+          contains: reference,
+          mode: "insensitive",
+        },
+      },
+      include: {
+        importBatch: {
+          select: { kind: true, fileName: true },
+        },
+        itemLinks: {
+          select: {
+            charge: {
+              select: {
+                apartment: {
+                  select: {
+                    doorNo: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+      take: limit,
+    }),
+    prisma.expense.findMany({
+      where: {
+        OR: [
+          {
+            reference: {
+              contains: reference,
+              mode: "insensitive",
+            },
+          },
+          {
+            description: {
+              contains: reference,
+              mode: "insensitive",
+            },
+          },
+        ],
+      },
+      include: {
+        expenseItem: {
+          select: { id: true },
+        },
+        importBatch: {
+          select: { kind: true, fileName: true },
+        },
+      },
+      orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
+      take: limit,
+    }),
+  ]);
+
+  const payments = paymentsRaw.filter((payment) => {
+    const parsedReference = parsePaymentNoteReference(payment.note);
+    if (!parsedReference) {
+      return false;
+    }
+    return parsedReference.toLocaleLowerCase("tr") === referenceLower;
+  });
+
+  const expenses = expensesRaw.filter((expense) => {
+    const expenseReference = expense.reference?.trim();
+    if (expenseReference && expenseReference.toLocaleLowerCase("tr") === referenceLower) {
+      return true;
+    }
+
+    const parsedFromDescription = (expense.description ?? "")
+      .split(" | ")
+      .map((x) => x.trim())
+      .find((part) => part.startsWith("BANK_REF:"))
+      ?.slice("BANK_REF:".length)
+      .trim();
+
+    return (parsedFromDescription ?? "").toLocaleLowerCase("tr") === referenceLower;
+  });
+
+  const rows = [
+    ...payments.map((payment) => ({
+      movementId: payment.id,
+      movementType: "PAYMENT" as const,
+      expenseItemId: undefined,
+      occurredAt: payment.paidAt,
+      amount: Number(payment.totalAmount),
+      method: payment.method,
+      reference: parsePaymentNoteReference(payment.note),
+      description: payment.note,
+      source: detectPaymentSource(payment),
+      apartmentDoorNos: [...new Set(payment.itemLinks.map((item) => item.charge.apartment.doorNo))],
+      fileName: payment.importBatch?.fileName ?? null,
+      createdAt: payment.createdAt,
+    })),
+    ...expenses.map((expense) => ({
+      movementId: expense.id,
+      movementType: "EXPENSE" as const,
+      expenseItemId: expense.expenseItem.id,
+      occurredAt: expense.spentAt,
+      amount: Number(expense.amount),
+      method: expense.paymentMethod,
+      reference: expense.reference,
+      description: expense.description,
+      source:
+        expense.importBatch?.kind === ImportBatchType.BANK_STATEMENT_UPLOAD
+          ? "BANK_STATEMENT_UPLOAD"
+          : expense.importBatch?.kind === ImportBatchType.PAYMENT_UPLOAD
+            ? "PAYMENT_UPLOAD"
+            : "MANUAL",
+      apartmentDoorNos: [],
+      fileName: expense.importBatch?.fileName ?? null,
+      createdAt: expense.createdAt,
+    })),
+  ]
+    .sort((a, b) => {
+      const occurredDiff = b.occurredAt.getTime() - a.occurredAt.getTime();
+      if (occurredDiff !== 0) {
+        return occurredDiff;
+      }
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    })
+    .slice(0, limit)
+    .map((row) => ({
+      movementId: row.movementId,
+      movementType: row.movementType,
+      expenseItemId: row.expenseItemId,
+      occurredAt: row.occurredAt.toISOString(),
+      amount: Number(row.amount.toFixed(2)),
+      method: row.method,
+      reference: row.reference,
+      description: row.description,
+      source: row.source,
+      apartmentDoorNos: row.apartmentDoorNos,
+      fileName: row.fileName,
+    }));
+
+  const paymentTotal = Number(
+    rows
+      .filter((row) => row.movementType === "PAYMENT")
+      .reduce((sum, row) => sum + row.amount, 0)
+      .toFixed(2)
+  );
+  const expenseTotal = Number(
+    rows
+      .filter((row) => row.movementType === "EXPENSE")
+      .reduce((sum, row) => sum + row.amount, 0)
+      .toFixed(2)
+  );
+
+  return res.json({
+    snapshotAt: new Date(),
+    criteria: {
+      reference,
+    },
+    totals: {
+      movementCount: rows.length,
+      paymentCount: rows.filter((row) => row.movementType === "PAYMENT").length,
+      expenseCount: rows.filter((row) => row.movementType === "EXPENSE").length,
+      paymentTotal,
+      expenseTotal,
+      net: Number((paymentTotal - expenseTotal).toFixed(2)),
+    },
+    rows,
+  });
+});
+
+router.put("/payments/:paymentId", async (req, res) => {
+  const { paymentId } = req.params;
+  const schema = z.object({
+    paidAt: z.string().datetime(),
+    amount: z.number().positive().optional(),
+    allowImportedAmountEdit: z.boolean().optional(),
+    method: z.nativeEnum(PaymentMethod),
+    description: z.string().optional(),
+    reference: z.string().optional(),
+    apartmentId: z.string().min(1).optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  await ensurePaymentMethodDefinitions();
+  const methodDefinition = await prisma.paymentMethodDefinition.findUnique({ where: { code: parsed.data.method } });
+  if (!methodDefinition || !methodDefinition.isActive) {
+    return res.status(400).json({ message: "Selected payment method is not active" });
+  }
+
+  const existing = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    include: {
+      itemLinks: {
+        select: { id: true, chargeId: true, amount: true, charge: { select: { apartmentId: true } } },
+        orderBy: [{ id: "asc" }],
+      },
+    },
+  });
+  if (!existing) {
+    return res.status(404).json({ message: "Payment not found" });
+  }
+
+  const paymentSource = detectPaymentSourceForEdit(existing);
+  const currentTotal = Number(existing.totalAmount);
+  const requestedAmount = parsed.data.amount;
+  if (
+    paymentSource === "UPLOAD" &&
+    typeof requestedAmount === "number" &&
+    Math.abs(requestedAmount - currentTotal) > 0.0001 &&
+    !parsed.data.allowImportedAmountEdit
+  ) {
+    return res.status(409).json({
+      message: "Kaynakli odemede tutar degisimi kilitli. Onay kutusunu acip tekrar deneyin.",
+    });
+  }
+
+  const currentApartmentIdSet = new Set(existing.itemLinks.map((item) => item.charge.apartmentId));
+  const requestedApartmentId = parsed.data.apartmentId?.trim();
+  const affectedApartmentIdSet = new Set(currentApartmentIdSet);
+  if (requestedApartmentId) {
+    affectedApartmentIdSet.add(requestedApartmentId);
+  }
+
+  const shouldReassignApartment =
+    !!requestedApartmentId &&
+    (currentApartmentIdSet.size !== 1 || !currentApartmentIdSet.has(requestedApartmentId));
+
+  const targetApartment = requestedApartmentId
+    ? await prisma.apartment.findUnique({
+        where: { id: requestedApartmentId },
+        select: { id: true, doorNo: true },
+      })
+    : null;
+
+  if (requestedApartmentId && !targetApartment) {
+    return res.status(400).json({ message: "Hedef daire bulunamadi" });
+  }
+
+  const note = buildPaymentNote(
+    existing.note,
+    parsed.data.description,
+    parsed.data.reference,
+    shouldReassignApartment ? targetApartment?.doorNo : undefined
+  );
+
+  const beforeSnapshot = mapPaymentSnapshot(existing);
+  const affectedChargeIdSet = new Set(existing.itemLinks.map((x) => x.chargeId));
+
+  await prisma.$transaction(async (tx) => {
+    if (shouldReassignApartment && requestedApartmentId) {
+      const effectiveAmount = typeof requestedAmount === "number" ? requestedAmount : currentTotal;
+      if (!Number.isFinite(effectiveAmount) || effectiveAmount <= 0) {
+        throw new Error("Tutar gecersiz. Daire degisikligi icin pozitif tutar gerekli.");
+      }
+
+      const targetCharges = await tx.charge.findMany({
+        where: {
+          apartmentId: requestedApartmentId,
+        },
+        select: {
+          id: true,
+          amount: true,
+          dueDate: true,
+          createdAt: true,
+        },
+        orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+      });
+
+      if (targetCharges.length === 0) {
+        throw new Error("Hedef dairede tahakkuk bulunamadi. Esleme degistirilemedi.");
+      }
+
+      const chargeIds = targetCharges.map((charge) => charge.id);
+      const paidSums = await tx.paymentItem.groupBy({
+        by: ["chargeId"],
+        where: {
+          chargeId: { in: chargeIds },
+          paymentId: { not: paymentId },
+        },
+        _sum: { amount: true },
+      });
+      const paidByChargeId = new Map(paidSums.map((row) => [row.chargeId, Number(row._sum.amount ?? 0)]));
+
+      const allocations: Array<{ chargeId: string; amount: number }> = [];
+      let remainingToAllocate = Number(effectiveAmount.toFixed(2));
+
+      for (const charge of targetCharges) {
+        if (remainingToAllocate <= 0.0001) {
+          break;
+        }
+
+        const paid = paidByChargeId.get(charge.id) ?? 0;
+        const remainingDebt = Number((Number(charge.amount) - paid).toFixed(2));
+        if (remainingDebt <= 0.0001) {
+          continue;
+        }
+
+        const alloc = Math.min(remainingToAllocate, remainingDebt);
+        if (alloc > 0.0001) {
+          allocations.push({ chargeId: charge.id, amount: Number(alloc.toFixed(2)) });
+          remainingToAllocate = Number((remainingToAllocate - alloc).toFixed(2));
+        }
+      }
+
+      if (allocations.length === 0 || remainingToAllocate > 0.01) {
+        throw new Error("Hedef dairede yeterli acik borc yok. Esleme degistirilemedi.");
+      }
+
+      await tx.paymentItem.deleteMany({ where: { paymentId } });
+      await tx.paymentItem.createMany({
+        data: allocations.map((item) => ({
+          paymentId,
+          chargeId: item.chargeId,
+          amount: item.amount,
+        })),
+      });
+
+      for (const item of allocations) {
+        affectedChargeIdSet.add(item.chargeId);
+      }
+    } else if (typeof requestedAmount === "number" && existing.itemLinks.length > 0) {
+      const currentItemTotal = existing.itemLinks.reduce((sum, item) => sum + Number(item.amount), 0);
+      if (currentItemTotal <= 0) {
+        return;
+      }
+
+      if (requestedAmount < existing.itemLinks.length * 0.01) {
+        throw new Error("Tutar, dagitim satir sayisina gore cok kucuk. Daha buyuk bir tutar girin.");
+      }
+
+      if (existing.itemLinks.length === 1) {
+        await tx.paymentItem.update({
+          where: { id: existing.itemLinks[0].id },
+          data: { amount: Number(requestedAmount.toFixed(2)) },
+        });
+      } else {
+        let allocated = 0;
+        for (let i = 0; i < existing.itemLinks.length; i += 1) {
+          const item = existing.itemLinks[i];
+          const isLast = i === existing.itemLinks.length - 1;
+          const nextAmount = isLast
+            ? Number((requestedAmount - allocated).toFixed(2))
+            : Number(((Number(item.amount) / currentItemTotal) * requestedAmount).toFixed(2));
+          allocated += nextAmount;
+
+          await tx.paymentItem.update({
+            where: { id: item.id },
+            data: { amount: Math.max(0.01, nextAmount) },
+          });
+        }
+      }
+    }
+
+    const total = await tx.paymentItem.aggregate({
+      where: { paymentId },
+      _sum: { amount: true },
+    });
+
+    await tx.payment.update({
+      where: { id: paymentId },
+      data: {
+        paidAt: new Date(parsed.data.paidAt),
+        totalAmount: Number(total._sum.amount ?? 0),
+        method: parsed.data.method,
+        note,
+      },
+    });
+  });
+
+  if (affectedApartmentIdSet.size > 0) {
+    const apartmentChargeIds = await prisma.charge.findMany({
+      where: { apartmentId: { in: [...affectedApartmentIdSet] } },
+      select: { id: true },
+    });
+    for (const charge of apartmentChargeIds) {
+      affectedChargeIdSet.add(charge.id);
+    }
+  }
+
+  await refreshChargeStatusesForIds([...affectedChargeIdSet]);
+
+  const updated = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    include: {
+      itemLinks: {
+        select: { id: true, chargeId: true, amount: true },
+        orderBy: [{ id: "asc" }],
+      },
+    },
+  });
+  if (!updated) {
+    return res.status(404).json({ message: "Payment not found" });
+  }
+
+  const afterSnapshot = mapPaymentSnapshot(updated);
+  const actionLog = await pushActionLog({
+    actionType: "EDIT",
+    entityType: "PAYMENT",
+    entityId: updated.id,
+    actorUserId: req.user?.userId ?? null,
+    before: beforeSnapshot,
+    after: afterSnapshot,
+    undoKind: "PAYMENT_EDIT",
+    undoPayload: {
+      paymentId: updated.id,
+      before: beforeSnapshot,
+    },
+    undoable: true,
+  });
+
+  return res.json({
+    id: updated.id,
+    paidAt: updated.paidAt,
+    amount: Number(updated.totalAmount),
+    method: updated.method,
+    note: updated.note,
+    actionLogId: actionLog.id,
+    undoUntil: actionLog.undoUntil,
+  });
+});
+
+router.delete("/payments/:paymentId", async (req, res) => {
+  const { paymentId } = req.params;
+
+  const existing = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    include: {
+      itemLinks: {
+        select: { id: true, chargeId: true, amount: true },
+      },
+    },
+  });
+
+  if (!existing) {
+    return res.status(404).json({ message: "Payment not found" });
+  }
+
+  const paymentSnapshot = mapPaymentSnapshot(existing);
+  const affectedChargeIds = [...new Set(existing.itemLinks.map((x) => x.chargeId))];
+
+  await prisma.payment.delete({ where: { id: paymentId } });
+  await refreshChargeStatusesForIds(affectedChargeIds);
+
+  const actionLog = await pushActionLog({
+    actionType: "DELETE",
+    entityType: "PAYMENT",
+    entityId: paymentId,
+    actorUserId: req.user?.userId ?? null,
+    before: paymentSnapshot,
+    after: null,
+    undoKind: "PAYMENT_DELETE",
+    undoPayload: {
+      snapshot: paymentSnapshot,
+    },
+    undoable: true,
+  });
+
+  return res.json({
+    deletedPaymentId: paymentId,
+    actionLogId: actionLog.id,
+    undoUntil: actionLog.undoUntil,
+  });
+});
+
+router.get("/actions/logs", async (req, res) => {
+  const schema = z.object({
+    limit: z.coerce.number().int().positive().max(200).optional(),
+  });
+  const parsed = schema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  await pruneActionLogs();
+  const limit = parsed.data.limit ?? 50;
+  const rowsRaw = await prisma.auditActionLog.findMany({
+    take: limit,
+    orderBy: [{ createdAt: "desc" }],
+  });
+  const rows = rowsRaw.map((x) => mapAuditEntry(x));
+  const userIds = [...new Set(rows.map((x) => x.actorUserId).filter(Boolean))] as string[];
+  const users = userIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, fullName: true, email: true },
+      })
+    : [];
+  const userMap = new Map(users.map((x) => [x.id, x]));
+
+  return res.json(
+    rows.map((row) => ({
+      ...row,
+      canUndo: isUndoAvailable(row),
+      actorName: row.actorUserId ? userMap.get(row.actorUserId)?.fullName ?? null : null,
+      actorEmail: row.actorUserId ? userMap.get(row.actorUserId)?.email ?? null : null,
+    }))
+  );
+});
+
+router.post("/actions/undo/:actionId", async (req, res) => {
+  const { actionId } = req.params;
+  await pruneActionLogs();
+
+  const targetRaw = await prisma.auditActionLog.findUnique({ where: { id: actionId } });
+  const target = targetRaw ? mapAuditEntry(targetRaw) : null;
+  if (!target) {
+    return res.status(404).json({ message: "Action log not found" });
+  }
+  if (!isUndoAvailable(target) || !target.undoKind) {
+    return res.status(409).json({ message: "Bu islem artik geri alinamaz" });
+  }
+
+  if (target.undoKind === "PAYMENT_EDIT") {
+    const payload = target.undoPayload as { paymentId: string; before: PaymentSnapshot };
+    const before = payload.before;
+    const affectedChargeIds = [...new Set(before.items.map((x) => x.chargeId))];
+
+    await prisma.$transaction(async (tx) => {
+      for (const item of before.items) {
+        await tx.paymentItem.update({
+          where: { id: item.id },
+          data: { chargeId: item.chargeId, amount: item.amount },
+        });
+      }
+
+      await tx.payment.update({
+        where: { id: payload.paymentId },
+        data: {
+          paidAt: new Date(before.paidAt),
+          totalAmount: before.totalAmount,
+          method: before.method,
+          note: before.note,
+        },
+      });
+    });
+
+    await refreshChargeStatusesForIds(affectedChargeIds);
+  }
+
+  if (target.undoKind === "PAYMENT_DELETE") {
+    const payload = target.undoPayload as { snapshot: PaymentSnapshot };
+    const snapshot = payload.snapshot;
+
+    const alreadyExists = await prisma.payment.findUnique({ where: { id: snapshot.id } });
+    if (!alreadyExists) {
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.create({
+          data: {
+            id: snapshot.id,
+            importBatchId: snapshot.importBatchId,
+            paidAt: new Date(snapshot.paidAt),
+            totalAmount: snapshot.totalAmount,
+            method: snapshot.method,
+            note: snapshot.note,
+            createdById: snapshot.createdById,
+            createdAt: new Date(snapshot.createdAt),
+          },
+        });
+
+        for (const item of snapshot.items) {
+          await tx.paymentItem.create({
+            data: {
+              id: item.id,
+              paymentId: snapshot.id,
+              chargeId: item.chargeId,
+              amount: item.amount,
+            },
+          });
+        }
+      });
+    }
+
+    await refreshChargeStatusesForIds(snapshot.items.map((x) => x.chargeId));
+  }
+
+  if (target.undoKind === "EXPENSE_EDIT") {
+    const payload = target.undoPayload as { expenseId: string; before: ExpenseSnapshot };
+    const before = payload.before;
+
+    await prisma.expense.update({
+      where: { id: payload.expenseId },
+      data: {
+        expenseItemId: before.expenseItemId,
+        importBatchId: before.importBatchId,
+        spentAt: new Date(before.spentAt),
+        amount: before.amount,
+        paymentMethod: before.paymentMethod,
+        description: before.description,
+        reference: before.reference,
+      },
+    });
+  }
+
+  if (target.undoKind === "EXPENSE_DELETE") {
+    const payload = target.undoPayload as { snapshot: ExpenseSnapshot };
+    const snapshot = payload.snapshot;
+
+    const exists = await prisma.expense.findUnique({ where: { id: snapshot.id } });
+    if (!exists) {
+      await prisma.expense.create({
+        data: {
+          id: snapshot.id,
+          expenseItemId: snapshot.expenseItemId,
+          importBatchId: snapshot.importBatchId,
+          spentAt: new Date(snapshot.spentAt),
+          amount: snapshot.amount,
+          paymentMethod: snapshot.paymentMethod,
+          description: snapshot.description,
+          reference: snapshot.reference,
+          createdById: snapshot.createdById,
+          createdAt: new Date(snapshot.createdAt),
+        },
+      });
+    }
+  }
+
+  const undoneAt = new Date();
+  await prisma.auditActionLog.update({
+    where: { id: target.id },
+    data: { undoneAt },
+  });
+
+  await pushActionLog({
+    actionType: "UNDO",
+    entityType: target.entityType,
+    entityId: target.entityId,
+    actorUserId: req.user?.userId ?? null,
+    before: { actionId: target.id },
+    after: { undoneAt: undoneAt.toISOString() },
+    undoKind: null,
+    undoPayload: null,
+    undoable: false,
+  });
+
+  return res.json({ undoneActionId: target.id });
+});
+
+router.get("/upload-batches/uploaders", async (_req, res) => {
+  const batches = await prisma.importBatch.findMany({
+    where: { uploadedById: { not: null } },
+    select: { uploadedById: true },
+    distinct: ["uploadedById"],
+  });
+
+  const ids = batches.map((x) => x.uploadedById).filter(Boolean) as string[];
+  if (ids.length === 0) {
+    return res.json([]);
+  }
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, fullName: true, email: true },
+    orderBy: [{ fullName: "asc" }],
+  });
+
+  return res.json(users);
+});
+
+router.get("/upload-batches", async (req, res) => {
+  const querySchema = z.object({
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+    uploadedByUserId: z.string().optional(),
+    kind: z.nativeEnum(ImportBatchType).optional(),
+    limit: z.coerce.number().int().min(1).max(1000).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const { from, to, uploadedByUserId, kind } = parsed.data;
+  const limit = parsed.data.limit ?? 200;
+  const offset = parsed.data.offset ?? 0;
+
+  const batches = await prisma.importBatch.findMany({
+    where: {
+      uploadedAt:
+        from || to
+          ? {
+              gte: from ? new Date(from) : undefined,
+              lte: to ? new Date(to) : undefined,
+            }
+          : undefined,
+      uploadedById: uploadedByUserId || undefined,
+      kind: kind || undefined,
+    },
+    include: {
+      uploadedBy: {
+        select: {
+          fullName: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: [{ uploadedAt: "desc" }],
+    take: limit,
+    skip: offset,
+  });
+
+  return res.json(
+    batches.map((batch) => ({
+      id: batch.id,
+      kind: batch.kind,
+      fileName: batch.fileName,
+      uploadedAt: batch.uploadedAt,
+      uploadedByUserId: batch.uploadedById,
+      uploadedByName: batch.uploadedBy?.fullName ?? null,
+      uploadedByEmail: batch.uploadedBy?.email ?? null,
+      totalRows: batch.totalRows,
+      createdPaymentCount: batch.createdPaymentCount,
+      createdExpenseCount: batch.createdExpenseCount,
+      skippedCount: batch.skippedCount,
+    }))
+  );
+});
+
+router.get("/upload-batches/:batchId/details", async (req, res) => {
+  const { batchId } = req.params;
+
+  const extractPaymentReference = (note: string | null): string | null => {
+    if (!note) {
+      return null;
+    }
+    const match = note.match(/(?:^|\|)\s*(?:BANK_REF|REF):\s*([^|]+)/i);
+    return match?.[1]?.trim() || null;
+  };
+
+  const batch = await prisma.importBatch.findUnique({
+    where: { id: batchId },
+    include: {
+      uploadedBy: {
+        select: {
+          fullName: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  if (!batch) {
+    return res.status(404).json({ message: "Upload batch not found" });
+  }
+
+  const [payments, expenses] = await Promise.all([
+    prisma.payment.findMany({
+      where: { importBatchId: batchId },
+      select: {
+        id: true,
+        paidAt: true,
+        totalAmount: true,
+        method: true,
+        note: true,
+        itemLinks: {
+          select: {
+            charge: {
+              select: {
+                apartment: {
+                  select: {
+                    doorNo: true,
+                    block: {
+                      select: { name: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ paidAt: "desc" }, { id: "desc" }],
+    }),
+    prisma.expense.findMany({
+      where: { importBatchId: batchId },
+      select: {
+        id: true,
+        spentAt: true,
+        amount: true,
+        paymentMethod: true,
+        description: true,
+        reference: true,
+        expenseItem: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: [{ spentAt: "desc" }, { id: "desc" }],
+    }),
+  ]);
+
+  return res.json({
+    batch: {
+      id: batch.id,
+      kind: batch.kind,
+      fileName: batch.fileName,
+      uploadedAt: batch.uploadedAt,
+      uploadedByName: batch.uploadedBy?.fullName ?? null,
+      uploadedByEmail: batch.uploadedBy?.email ?? null,
+      totalRows: batch.totalRows,
+      createdPaymentCount: batch.createdPaymentCount,
+      createdExpenseCount: batch.createdExpenseCount,
+      skippedCount: batch.skippedCount,
+    },
+    payments: payments.map((payment) => ({
+      id: payment.id,
+      paidAt: payment.paidAt,
+      totalAmount: Number(payment.totalAmount),
+      method: payment.method,
+      reference: extractPaymentReference(payment.note),
+      note: payment.note,
+      apartmentLabels: [
+        ...new Set(
+          payment.itemLinks.map((item) => `${item.charge.apartment.block.name}/${item.charge.apartment.doorNo}`)
+        ),
+      ],
+    })),
+    expenses: expenses.map((expense) => ({
+      id: expense.id,
+      spentAt: expense.spentAt,
+      amount: Number(expense.amount),
+      paymentMethod: expense.paymentMethod,
+      expenseItemName: expense.expenseItem.name,
+      description: expense.description,
+      reference: expense.reference,
+    })),
+  });
+});
+
+router.delete("/upload-batches/:batchId", async (req, res) => {
+  const { batchId } = req.params;
+
+  try {
+    const batch = await prisma.importBatch.findUnique({
+      where: { id: batchId },
+      include: {
+        payments: {
+          include: {
+            itemLinks: {
+              select: { chargeId: true },
+            },
+          },
+        },
+        expenses: {
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!batch) {
+      return res.status(404).json({ message: "Upload batch not found" });
+    }
+
+    const paymentIds = batch.payments.map((x) => x.id);
+    const expenseIds = batch.expenses.map((x) => x.id);
+    const affectedChargeIds = [...new Set(batch.payments.flatMap((x) => x.itemLinks.map((i) => i.chargeId)))];
+
+    await prisma.$transaction(async (tx) => {
+      if (paymentIds.length > 0) {
+        await tx.payment.deleteMany({ where: { id: { in: paymentIds } } });
+      }
+
+      if (expenseIds.length > 0) {
+        await tx.expense.deleteMany({ where: { id: { in: expenseIds } } });
+      }
+
+      await tx.importBatch.delete({ where: { id: batchId } });
+    });
+
+    await refreshChargeStatusesForIds(affectedChargeIds);
+
+    return res.json({
+      deletedBatchId: batchId,
+      deletedPayments: paymentIds.length,
+      deletedExpenses: expenseIds.length,
+      affectedCharges: affectedChargeIds.length,
+    });
+  } catch (err) {
+    console.error("upload-batch delete failed", { batchId, err });
+    return res.status(500).json({ message: "Yukleme silinirken hata olustu. Islem tamamlanmadi." });
+  }
+});
+
+router.post("/payments/upload", upload.single("file"), async (req, res) => {
+  const methodSchema = z.object({
+    method: z.nativeEnum(PaymentMethod).optional(),
+  });
+
+  const parsedMethod = methodSchema.safeParse(req.body);
+  if (!parsedMethod.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsedMethod.error.issues });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ message: "File is required" });
+  }
+
+  if (req.file.originalname.toLowerCase().endsWith(".xls")) {
+    return res.status(400).json({ message: LEGACY_XLS_UNSUPPORTED_MESSAGE });
+  }
+
+  await ensurePaymentMethodDefinitions();
+  const method = parsedMethod.data.method ?? PaymentMethod.BANK_TRANSFER;
+  const methodDefinition = await prisma.paymentMethodDefinition.findUnique({ where: { code: method } });
+  if (!methodDefinition || !methodDefinition.isActive) {
+    return res.status(400).json({ message: "Selected payment method is not active" });
+  }
+
+  const rows = await parseUploadRows(req.file);
+  if (rows.length === 0) {
+    return res.status(400).json({ message: "No valid rows found in file" });
+  }
+
+  const batch = await prisma.importBatch.create({
+    data: {
+      kind: ImportBatchType.PAYMENT_UPLOAD,
+      fileName: req.file.originalname,
+      uploadedById: req.user?.userId,
+      totalRows: rows.length,
+    },
+  });
+
+  let createdCount = 0;
+  let skippedCount = 0;
+  const errors: string[] = [];
+
+  for (let idx = 0; idx < rows.length; idx += 1) {
+    const row = rows[idx];
+
+    try {
+      const apartment = await prisma.apartment.findFirst({
+        where: { doorNo: row.doorNo },
+        orderBy: [{ block: { name: "asc" } }],
+      });
+
+      if (!apartment) {
+        skippedCount += 1;
+        errors.push(`Satir ${idx + 1}: Daire bulunamadi (${row.doorNo})`);
+        continue;
+      }
+
+      const charges = await prisma.charge.findMany({
+        where: {
+          apartmentId: apartment.id,
+        },
+        include: {
+          paymentItems: true,
+        },
+        orderBy: [{ periodYear: "asc" }, { periodMonth: "asc" }, { createdAt: "asc" }],
+      });
+
+      const openCharges = charges
+        .map((charge) => {
+          const paid = charge.paymentItems.reduce((sum, item) => sum + Number(item.amount), 0);
+          const remaining = Number(charge.amount) - paid;
+          return { chargeId: charge.id, remaining };
+        })
+        .filter((x) => x.remaining > 0.0001);
+
+      if (openCharges.length === 0) {
+        skippedCount += 1;
+        errors.push(`Satir ${idx + 1}: Daire icin acik borc yok (${row.doorNo})`);
+        continue;
+      }
+
+      const totalRemaining = openCharges.reduce((sum, x) => sum + x.remaining, 0);
+      if (row.amount - totalRemaining > 0.0001) {
+        skippedCount += 1;
+        errors.push(
+          `Satir ${idx + 1}: Tutar kalan borctan buyuk (${row.doorNo}, tutar=${row.amount}, kalan=${totalRemaining.toFixed(2)})`
+        );
+        continue;
+      }
+
+      let remainingToAllocate = row.amount;
+      const items: Array<{ chargeId: string; amount: number }> = [];
+
+      for (const charge of openCharges) {
+        if (remainingToAllocate <= 0.0001) {
+          break;
+        }
+
+        const allocate = Math.min(remainingToAllocate, charge.remaining);
+        if (allocate > 0.0001) {
+          items.push({ chargeId: charge.chargeId, amount: Number(allocate.toFixed(2)) });
+          remainingToAllocate -= allocate;
+        }
+      }
+
+      const noteParts = [
+        "PAYMENT_UPLOAD:1",
+        row.description?.trim(),
+        row.reference?.trim() ? `REF:${row.reference.trim()}` : undefined,
+      ].filter(Boolean) as string[];
+      const note = noteParts.length > 0 ? noteParts.join(" | ") : undefined;
+
+      await prisma.$transaction(async (tx) => {
+        const createdPayment = await tx.payment.create({
+          data: {
+            importBatchId: batch.id,
+            paidAt: row.paidAt,
+            method,
+            note,
+            totalAmount: row.amount,
+            createdById: req.user?.userId,
+          },
+        });
+
+        for (const item of items) {
+          await tx.paymentItem.create({
+            data: {
+              paymentId: createdPayment.id,
+              chargeId: item.chargeId,
+              amount: item.amount,
+            },
+          });
+        }
+      });
+
+      createdCount += 1;
+    } catch (err) {
+      skippedCount += 1;
+      errors.push(`Satir ${idx + 1}: Beklenmeyen hata`);
+      console.error(err);
+    }
+  }
+
+  await prisma.importBatch.update({
+    where: { id: batch.id },
+    data: {
+      createdPaymentCount: createdCount,
+      createdExpenseCount: 0,
+      skippedCount,
+    },
+  });
+
+  return res.json({
+    batchId: batch.id,
+    totalRows: rows.length,
+    createdCount,
+    skippedCount,
+    errors: errors.slice(0, 100),
+  });
+});
+
+router.post("/bank-statement/preview", upload.single("file"), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: "File is required" });
+  }
+
+  if (req.file.originalname.toLowerCase().endsWith(".xls")) {
+    return res.status(400).json({ message: LEGACY_XLS_UNSUPPORTED_MESSAGE });
+  }
+
+  const rows = await parseBankStatementRows(req.file);
+  if (rows.length === 0) {
+    return res.status(400).json({ message: "No valid bank statement rows found" });
+  }
+
+  const apartments = await prisma.apartment.findMany({
+    select: { doorNo: true },
+  });
+  const doorNoSet = new Set<string>();
+  for (const apt of apartments) {
+    doorNoSet.add(apt.doorNo);
+    doorNoSet.add(String(Number(apt.doorNo)));
+  }
+
+  const expenseItems = await prisma.expenseItemDefinition.findMany({
+    where: { isActive: true },
+    select: { id: true, code: true, name: true },
+  });
+
+  const activeDoorNoRules: DescriptionDoorNoRuleLookup[] = (
+    await prisma.descriptionDoorNoRule.findMany({
+      where: { isActive: true },
+      select: { keyword: true, normalizedKeyword: true, doorNo: true },
+      orderBy: [{ updatedAt: "desc" }],
+    })
+  ).map((rule) => ({
+    keyword: rule.keyword,
+    normalizedKeyword: rule.normalizedKeyword,
+    doorNo: rule.doorNo,
+  }));
+
+  const activeExpenseRules: DescriptionExpenseRuleLookup[] = (
+    await prisma.descriptionExpenseRule.findMany({
+      where: { isActive: true, expenseItem: { isActive: true } },
+      select: { normalizedKeyword: true, expenseItemId: true },
+      orderBy: [{ updatedAt: "desc" }],
+    })
+  ).map((rule) => ({
+    normalizedKeyword: rule.normalizedKeyword,
+    expenseItemId: rule.expenseItemId,
+  }));
+
+  const previewRows = rows.map((row, idx) => {
+    const isPayment = row.amount > 0;
+    return {
+      rowNo: idx + 1,
+      occurredAt: row.occurredAt.toISOString(),
+      amount: Number(Math.abs(row.amount).toFixed(2)),
+      entryType: isPayment ? "PAYMENT" : "EXPENSE",
+      doorNo: isPayment ? extractDoorNoFromDescription(row.description, doorNoSet, activeDoorNoRules) : null,
+      expenseItemId: !isPayment ? matchExpenseItemId(row.description, expenseItems, activeExpenseRules) : null,
+      description: row.description,
+      reference: row.reference ?? null,
+      txType: row.txType ?? null,
+      paymentMethod: derivePaymentMethod(row.txType),
+    };
+  });
+
+  return res.json({
+    fileName: req.file.originalname,
+    totalRows: rows.length,
+    rows: previewRows,
+  });
+});
+
+router.post("/bank-statement/commit", async (req, res) => {
+  await ensurePaymentMethodDefinitions();
+
+  const commitSchema = z.object({
+    fileName: z.string().min(1).optional(),
+    rows: z
+      .array(
+        z.object({
+          occurredAt: z.string().datetime(),
+          amount: z.number().positive(),
+          entryType: z.enum(["PAYMENT", "EXPENSE"]),
+          isAutoSplit: z.boolean().optional(),
+          splitSourceRowNo: z.number().int().positive().optional(),
+          doorNo: z.string().optional(),
+          expenseItemId: z.string().optional(),
+          description: z.string().min(1),
+          reference: z.string().optional(),
+          txType: z.string().optional(),
+          paymentMethod: z.nativeEnum(PaymentMethod).optional(),
+        })
+      )
+      .min(1),
+  });
+
+  const parsed = commitSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const commitRows: BankStatementCommitRow[] = parsed.data.rows.map((row) => ({
+    occurredAt: new Date(row.occurredAt),
+    amount: row.amount,
+    entryType: row.entryType,
+    isAutoSplit: row.isAutoSplit,
+    splitSourceRowNo: row.splitSourceRowNo,
+    doorNo: row.doorNo?.trim() || undefined,
+    expenseItemId: row.expenseItemId?.trim() || undefined,
+    description: row.description.trim(),
+    reference: row.reference?.trim() || undefined,
+    txType: row.txType?.trim() || undefined,
+    paymentMethod: row.paymentMethod,
+  }));
+
+  const result = await processBankStatementImport({
+    rows: commitRows,
+    fileName: parsed.data.fileName ?? "bank-statement-review",
+    uploadedById: req.user?.userId,
+  });
+
+  return res.json(result);
+});
+
+router.post("/bank-statement/import", upload.single("file"), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: "File is required" });
+  }
+
+  if (req.file.originalname.toLowerCase().endsWith(".xls")) {
+    return res.status(400).json({ message: LEGACY_XLS_UNSUPPORTED_MESSAGE });
+  }
+
+  await ensurePaymentMethodDefinitions();
+
+  const rows = await parseBankStatementRows(req.file);
+  if (rows.length === 0) {
+    return res.status(400).json({ message: "No valid bank statement rows found" });
+  }
+
+  const commitRows: BankStatementCommitRow[] = rows.map((row) => ({
+    occurredAt: row.occurredAt,
+    amount: Number(Math.abs(row.amount).toFixed(2)),
+    entryType: row.amount > 0 ? "PAYMENT" : "EXPENSE",
+    description: row.description,
+    reference: row.reference,
+    txType: row.txType,
+    paymentMethod: derivePaymentMethod(row.txType),
+  }));
+
+  const result = await processBankStatementImport({
+    rows: commitRows,
+    fileName: req.file.originalname,
+    uploadedById: req.user?.userId,
+  });
+
+  return res.json(result);
+});
+
+router.post("/charges/:chargeId/close", async (req, res) => {
+  const { chargeId } = req.params;
+
+  const totals = await prisma.paymentItem.aggregate({
+    where: { chargeId },
+    _sum: { amount: true },
+  });
+
+  const charge = await prisma.charge.findUnique({ where: { id: chargeId } });
+  if (!charge) {
+    return res.status(404).json({ message: "Charge not found" });
+  }
+
+  const paid = Number(totals._sum.amount ?? 0);
+  const chargeAmount = Number(charge.amount);
+
+  if (paid + 0.0001 < chargeAmount) {
+    return res.status(400).json({
+      message: "Cannot close charge before full payment",
+      paid,
+      chargeAmount,
+    });
+  }
+
+  const updated = await prisma.charge.update({
+    where: { id: chargeId },
+    data: {
+      status: "CLOSED",
+      closedAt: new Date(),
+    },
+  });
+
+  return res.json(updated);
+});
+
+router.get("/apartments/:apartmentId/statement", async (req, res) => {
+  const { apartmentId } = req.params;
+  const { statement, accountingStatement } = await getApartmentStatements(apartmentId);
+
+  return res.json({ apartmentId, statement, accountingStatement });
+});
+
+router.post("/apartments/:apartmentId/reconcile", async (req, res) => {
+  const { apartmentId } = req.params;
+  const result = await reconcileApartmentPaymentLinks(apartmentId);
+
+  if (!result) {
+    return res.status(404).json({ message: "Apartment not found" });
+  }
+
+  return res.json({
+    ...result,
+    message: "Daire yeniden eslestirme tamamlandi",
+  });
+});
+
+router.post("/reconcile/all", async (_req, res) => {
+  const apartments = await prisma.apartment.findMany({
+    select: { id: true },
+    orderBy: [{ doorNo: "asc" }, { createdAt: "asc" }],
+  });
+
+  const results: ReconcileApartmentResult[] = [];
+  for (const apartment of apartments) {
+    const row = await reconcileApartmentPaymentLinks(apartment.id);
+    if (row) {
+      results.push(row);
+    }
+  }
+
+  return res.json({
+    apartmentCount: results.length,
+    totals: {
+      chargeCount: results.reduce((sum, row) => sum + row.chargeCount, 0),
+      processedPaymentCount: results.reduce((sum, row) => sum + row.processedPaymentCount, 0),
+      skippedMixedPaymentCount: results.reduce((sum, row) => sum + row.skippedMixedPaymentCount, 0),
+      createdPaymentItemCount: results.reduce((sum, row) => sum + row.createdPaymentItemCount, 0),
+      unappliedPaymentCount: results.reduce((sum, row) => sum + row.unappliedPaymentCount, 0),
+      unappliedTotal: Number(results.reduce((sum, row) => sum + row.unappliedTotal, 0).toFixed(2)),
+    },
+    results,
+    message: "Tum daireler icin toplu yeniden eslestirme tamamlandi",
+  });
+});
+
+router.get("/reconcile/mixed-payments", async (req, res) => {
+  const schema = z.object({
+    apartmentId: z.string().optional(),
+    limit: z.coerce.number().int().positive().max(1000).optional(),
+  });
+
+  const parsed = schema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const { apartmentId, limit } = parsed.data;
+  const rows = await buildMixedPaymentReport(apartmentId);
+  const effectiveLimit = limit ?? 200;
+
+  return res.json({
+    totalCount: rows.length,
+    rows: rows.slice(0, effectiveLimit),
+  });
+});
+
+router.get("/reconcile/door-mismatch-report", async (req, res) => {
+  const querySchema = z.object({
+    limit: z.coerce.number().int().positive().max(1000).optional(),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const links = await prisma.paymentItem.findMany({
+    where: {
+      payment: {
+        importBatch: { kind: ImportBatchType.BANK_STATEMENT_UPLOAD },
+      },
+    },
+    select: {
+      id: true,
+      amount: true,
+      payment: {
+        select: {
+          id: true,
+          paidAt: true,
+          totalAmount: true,
+          note: true,
+          importBatch: { select: { fileName: true, uploadedAt: true } },
+        },
+      },
+      charge: {
+        select: {
+          id: true,
+          periodYear: true,
+          periodMonth: true,
+          description: true,
+          chargeType: { select: { name: true } },
+          apartment: { select: { doorNo: true, block: { select: { name: true } } } },
+        },
+      },
+    },
+    orderBy: [{ payment: { paidAt: "desc" } }, { id: "desc" }],
+  });
+
+  const rows = links
+    .map((link) => {
+      const paymentDoorNoRaw = extractDoorNoTagFromPaymentNote(link.payment.note);
+      const paymentDoorNoNormalized = normalizeDoorNoForCompare(paymentDoorNoRaw);
+      if (!paymentDoorNoNormalized) {
+        return null;
+      }
+
+      const chargeDoorNoNormalized = normalizeDoorNoForCompare(link.charge.apartment.doorNo);
+      if (paymentDoorNoNormalized === chargeDoorNoNormalized) {
+        return null;
+      }
+
+      return {
+        paymentItemId: link.id,
+        paymentId: link.payment.id,
+        paidAt: link.payment.paidAt,
+        paymentTotal: Number(link.payment.totalAmount),
+        allocatedAmount: Number(link.amount),
+        paymentDoorNo: paymentDoorNoRaw,
+        linkedDoorNo: link.charge.apartment.doorNo,
+        linkedBlockName: link.charge.apartment.block.name,
+        periodYear: link.charge.periodYear,
+        periodMonth: link.charge.periodMonth,
+        chargeTypeName: link.charge.chargeType.name,
+        chargeDescription: link.charge.description,
+        paymentNote: link.payment.note,
+        sourceFileName: link.payment.importBatch?.fileName ?? null,
+        sourceUploadedAt: link.payment.importBatch?.uploadedAt ?? null,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+  const limit = parsed.data.limit ?? 200;
+
+  return res.json({
+    totals: {
+      bankStatementPaymentItemCount: links.length,
+      mismatchPaymentItemCount: rows.length,
+      mismatchPaymentCount: new Set(rows.map((row) => row.paymentId)).size,
+      mismatchAllocatedTotal: Number(rows.reduce((sum, row) => sum + row.allocatedAmount, 0).toFixed(2)),
+    },
+    rows: rows.slice(0, limit),
+  });
+});
+
+router.get("/reports/overdue-payments", async (req, res) => {
+  const querySchema = z.object({
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+    blockId: z.string().optional(),
+    doorNo: z.string().optional(),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const { from, to, blockId, doorNo } = parsed.data;
+  const now = new Date();
+
+  function formatOverdueChargeDescription(
+    description: string | null,
+    chargeTypeName: string | null | undefined
+  ): string | null {
+    if (!description) {
+      return null;
+    }
+
+    const parts = description
+      .split("|")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    if (parts.length === 0) {
+      return null;
+    }
+
+    const title = parts[0] ?? "";
+    const normalizedTitle = toAsciiLower(title).replace(/\s+/g, " ").trim();
+    const normalizedChargeType = toAsciiLower(chargeTypeName ?? "").replace(/\s+/g, " ").trim();
+    const normalizedDescription = toAsciiLower(description).replace(/\s+/g, " ").trim();
+    const isDistribution = normalizedChargeType.includes("dagitim");
+    const isDogalgaz =
+      normalizedChargeType.includes("dogalgaz") ||
+      normalizedTitle.includes("dogalgaz") ||
+      normalizedDescription.includes("dogalgaz");
+    const shouldCompact = isDistribution || isDogalgaz;
+    if (!shouldCompact) {
+      return description;
+    }
+
+    const normalizedDisplayTitle = title.replace(/\s+/g, " ").trim();
+    const displayTitle = normalizedDisplayTitle || (isDogalgaz ? "Dogalgaz" : "Dagitim");
+
+    const isoDate = description.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+    if (isoDate) {
+      const [year, month, day] = isoDate.split("-");
+      return `${displayTitle} | Fatura tarihi: ${day}.${month}.${year}`;
+    }
+
+    const trDate = description.match(/\d{2}\.\d{2}\.\d{4}/)?.[0] ?? null;
+    if (trDate) {
+      return `${displayTitle} | Fatura tarihi: ${trDate}`;
+    }
+
+    return displayTitle;
+  }
+
+  const charges = await prisma.charge.findMany({
+    where: {
+      status: "OPEN",
+      dueDate: {
+        lt: now,
+        gte: from ? new Date(from) : undefined,
+        lte: to ? new Date(to) : undefined,
+      },
+      apartment: {
+        blockId: blockId || undefined,
+        doorNo: doorNo?.trim() ? { equals: doorNo.trim() } : undefined,
+      },
+    },
+    include: {
+      chargeType: {
+        select: { name: true },
+      },
+      apartment: {
+        include: {
+          block: {
+            select: { name: true },
+          },
+        },
+      },
+      paymentItems: {
+        select: {
+          amount: true,
+          payment: {
+            select: {
+              paidAt: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+  });
+
+  const rows = charges
+    .map((charge) => {
+      const paidTotal = charge.paymentItems.reduce((sum, x) => sum + Number(x.amount), 0);
+      const remaining = Math.max(0, Number(charge.amount) - paidTotal);
+      const lastPaymentAt =
+        charge.paymentItems.length > 0
+          ? charge.paymentItems
+              .map((x) => x.payment.paidAt)
+              .sort((a, b) => b.getTime() - a.getTime())[0]
+          : null;
+
+      const overdueDays = Math.max(
+        1,
+        Math.floor((now.getTime() - new Date(charge.dueDate).getTime()) / (1000 * 60 * 60 * 24))
+      );
+
+      return {
+        chargeId: charge.id,
+        blockName: charge.apartment.block.name,
+        apartmentDoorNo: charge.apartment.doorNo,
+        apartmentOwnerName: charge.apartment.ownerFullName,
+        chargeTypeName: charge.chargeType.name,
+        periodYear: charge.periodYear,
+        periodMonth: charge.periodMonth,
+        dueDate: charge.dueDate,
+        amount: Number(charge.amount),
+        paidTotal: Number(paidTotal.toFixed(2)),
+        remaining: Number(remaining.toFixed(2)),
+        overdueDays,
+        description: formatOverdueChargeDescription(charge.description, charge.chargeType.name),
+        lastPaymentAt,
+      };
+    })
+    .filter((x) => x.remaining > 0.0001);
+
+  const responseRows = rows.map((row) => ({
+    ...row,
+    dueDate: row.dueDate.toISOString(),
+    lastPaymentAt: row.lastPaymentAt ? row.lastPaymentAt.toISOString() : null,
+  }));
+
+  const totals = {
+    rowCount: rows.length,
+    totalAmount: Number(rows.reduce((sum, x) => sum + x.amount, 0).toFixed(2)),
+    totalPaid: Number(rows.reduce((sum, x) => sum + x.paidTotal, 0).toFixed(2)),
+    totalRemaining: Number(rows.reduce((sum, x) => sum + x.remaining, 0).toFixed(2)),
+  };
+
+  return res.json({
+    snapshotAt: now,
+    totals,
+    rows: responseRows,
+  });
+});
+
+router.get("/reports/fractional-closures", async (req, res) => {
+  const querySchema = z.object({});
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const now = new Date();
+
+  const charges = await prisma.charge.findMany({
+    where: {
+      status: "OPEN",
+      paymentItems: {
+        some: {},
+      },
+    },
+    include: {
+      chargeType: {
+        select: { name: true },
+      },
+      apartment: {
+        include: {
+          block: {
+            select: { name: true },
+          },
+        },
+      },
+      paymentItems: {
+        select: {
+          amount: true,
+          payment: {
+            select: {
+              paidAt: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+  });
+
+  const rows = charges
+    .map((charge) => {
+      const paidTotal = charge.paymentItems.reduce((sum, x) => sum + Number(x.amount), 0);
+      const remaining = Number((Math.max(0, Number(charge.amount) - paidTotal)).toFixed(2));
+      if (paidTotal <= 0.0001 || remaining <= 0.0001) {
+        return null;
+      }
+
+      const lastPaymentAt =
+        charge.paymentItems.length > 0
+          ? charge.paymentItems
+              .map((x) => x.payment.paidAt)
+              .sort((a, b) => b.getTime() - a.getTime())[0]
+          : null;
+
+      return {
+        chargeId: charge.id,
+        blockName: charge.apartment.block.name,
+        apartmentDoorNo: charge.apartment.doorNo,
+        apartmentOwnerName: charge.apartment.ownerFullName,
+        chargeTypeName: charge.chargeType.name,
+        periodYear: charge.periodYear,
+        periodMonth: charge.periodMonth,
+        dueDate: charge.dueDate,
+        amount: Number(charge.amount),
+        paidTotal: Number(paidTotal.toFixed(2)),
+        remaining,
+        description: charge.description,
+        lastPaymentAt,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+  const responseRows = rows.map((row) => ({
+    ...row,
+    dueDate: row.dueDate.toISOString(),
+    lastPaymentAt: row.lastPaymentAt ? row.lastPaymentAt.toISOString() : null,
+  }));
+
+  const totals = {
+    rowCount: rows.length,
+    totalAmount: Number(rows.reduce((sum, x) => sum + x.amount, 0).toFixed(2)),
+    totalPaid: Number(rows.reduce((sum, x) => sum + x.paidTotal, 0).toFixed(2)),
+    totalRemaining: Number(rows.reduce((sum, x) => sum + x.remaining, 0).toFixed(2)),
+  };
+
+  return res.json({
+    snapshotAt: now,
+    criteria: {
+      openPartialOnly: true,
+    },
+    totals,
+    rows: responseRows,
+  });
+});
+
+router.get("/reports/summary", async (_req, res) => {
+  const now = new Date();
+  const endOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const next30Days = new Date(now);
+  next30Days.setDate(next30Days.getDate() + 30);
+
+  const [
+    apartmentCount,
+    residentCount,
+    apartmentsForOverview,
+    openCharges,
+    paymentTotalAgg,
+    expenseTotalAgg,
+    bankInAgg,
+    bankOutAgg,
+    latestBankPayment,
+    latestBankExpense,
+    latestUploadBatches,
+    topExpenseGroups,
+  ] = await Promise.all([
+    prisma.apartment.count(),
+    prisma.user.count({ where: { role: UserRole.RESIDENT } }),
+    prisma.apartment.findMany({
+      select: {
+        doorNo: true,
+        ownerFullName: true,
+        type: true,
+        hasAidat: true,
+        hasDogalgaz: true,
+        apartmentDuty: {
+          select: { code: true, name: true },
+        },
+      },
+      orderBy: [{ doorNo: "asc" }],
+    }),
+    prisma.charge.findMany({
+      where: { status: "OPEN" },
+      select: { id: true, amount: true, dueDate: true, apartmentId: true },
+    }),
+    prisma.payment.aggregate({
+      where: {
+        NOT: {
+          OR: [
+            { note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX } },
+            { note: { contains: CARRY_FORWARD_PAYMENT_NOTE_TAG } },
+          ],
+        },
+      },
+      _sum: { totalAmount: true },
+    }),
+    prisma.expense.aggregate({ _sum: { amount: true } }),
+    prisma.payment.aggregate({ where: { method: PaymentMethod.BANK_TRANSFER }, _sum: { totalAmount: true } }),
+    prisma.expense.aggregate({ where: { paymentMethod: PaymentMethod.BANK_TRANSFER }, _sum: { amount: true } }),
+    prisma.payment.findFirst({
+      where: { method: PaymentMethod.BANK_TRANSFER },
+      orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+      select: { paidAt: true },
+    }),
+    prisma.expense.findFirst({
+      where: { paymentMethod: PaymentMethod.BANK_TRANSFER },
+      orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
+      select: { spentAt: true },
+    }),
+    prisma.importBatch.findMany({
+      orderBy: [{ uploadedAt: "desc" }],
+      take: 10,
+      select: {
+        id: true,
+        kind: true,
+        fileName: true,
+        uploadedAt: true,
+        totalRows: true,
+        createdPaymentCount: true,
+        createdExpenseCount: true,
+        skippedCount: true,
+      },
+    }),
+    prisma.expense.groupBy({
+      by: ["expenseItemId"],
+      _sum: { amount: true },
+      _count: { _all: true },
+      _max: { spentAt: true },
+      orderBy: {
+        _sum: {
+          amount: "desc",
+        },
+      },
+      take: 10,
+    }),
+  ]);
+
+  const topExpenseItemIds = topExpenseGroups.map((item) => item.expenseItemId).filter(Boolean);
+  const topExpenseItems =
+    topExpenseItemIds.length > 0
+      ? await prisma.expenseItemDefinition.findMany({
+          where: { id: { in: topExpenseItemIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+  const topExpenseItemNameMap = new Map(topExpenseItems.map((item) => [item.id, item.name]));
+
+  const openChargeIds = openCharges.map((x) => x.id);
+  const paidGrouped =
+    openChargeIds.length > 0
+      ? await prisma.paymentItem.groupBy({
+          by: ["chargeId"],
+          where: { chargeId: { in: openChargeIds } },
+          _sum: { amount: true },
+        })
+      : [];
+
+  const paidMap = new Map(paidGrouped.map((x) => [x.chargeId, Number(x._sum.amount ?? 0)]));
+
+  let openRemainingTotal = 0;
+  let overdueRemainingTotal = 0;
+  let overdueChargeCount = 0;
+  const overdueApartmentSet = new Set<string>();
+  const overdueByApartmentId = new Map<string, { remainingTotal: number; chargeCount: number }>();
+  let monthEndUpcomingTotal = 0;
+  let upcoming30DaysTotal = 0;
+  let oldestOverdueDate: Date | null = null;
+
+  for (const charge of openCharges) {
+    const remaining = Math.max(0, Number(charge.amount) - (paidMap.get(charge.id) ?? 0));
+    openRemainingTotal += remaining;
+
+    if (remaining <= 0) {
+      continue;
+    }
+
+    if (charge.dueDate < now) {
+      overdueRemainingTotal += remaining;
+      overdueChargeCount += 1;
+      overdueApartmentSet.add(charge.apartmentId);
+      const existing = overdueByApartmentId.get(charge.apartmentId) ?? { remainingTotal: 0, chargeCount: 0 };
+      overdueByApartmentId.set(charge.apartmentId, {
+        remainingTotal: Number((existing.remainingTotal + remaining).toFixed(2)),
+        chargeCount: existing.chargeCount + 1,
+      });
+      if (!oldestOverdueDate || charge.dueDate < oldestOverdueDate) {
+        oldestOverdueDate = charge.dueDate;
+      }
+      continue;
+    }
+
+    if (charge.dueDate <= endOfCurrentMonth) {
+      monthEndUpcomingTotal += remaining;
+    }
+
+    if (charge.dueDate <= next30Days) {
+      upcoming30DaysTotal += remaining;
+    }
+  }
+
+  const bankInTotal = Number(bankInAgg._sum.totalAmount ?? 0);
+  const bankOutTotal = Number(bankOutAgg._sum.amount ?? 0);
+  const estimatedBankBalance = bankInTotal - bankOutTotal;
+
+  const kucukApartmentCount = apartmentsForOverview.filter((x) => x.type === ApartmentType.KUCUK).length;
+  const buyukApartmentCount = apartmentsForOverview.filter((x) => x.type === ApartmentType.BUYUK).length;
+  const aidatMuafCount = apartmentsForOverview.filter((x) => !x.hasAidat).length;
+  const dogalgazMuafCount = apartmentsForOverview.filter((x) => !x.hasDogalgaz).length;
+  const aidatMuafApartments = apartmentsForOverview
+    .filter((x) => !x.hasAidat)
+    .map((x) => `${x.doorNo}-${x.ownerFullName?.trim() || "Adsiz"}`);
+  const dogalgazMuafApartments = apartmentsForOverview
+    .filter((x) => !x.hasDogalgaz)
+    .map((x) => `${x.doorNo}-${x.ownerFullName?.trim() || "Adsiz"}`);
+  const managers = apartmentsForOverview
+    .filter((x) => x.apartmentDuty?.code === "YONETICI")
+    .map((x) => `${x.doorNo}-${x.ownerFullName?.trim() || "Adsiz"}`);
+  const dutyAssignments = apartmentsForOverview
+    .filter((x) => x.apartmentDuty && x.apartmentDuty.code !== "YONETICI")
+    .map((x) => ({
+      dutyName: x.apartmentDuty?.name ?? "Gorev",
+      apartment: `${x.doorNo}-${x.ownerFullName?.trim() || "Adsiz"}`,
+    }));
+
+  const latestBankMovementAt =
+    latestBankPayment?.paidAt && latestBankExpense?.spentAt
+      ? latestBankPayment.paidAt > latestBankExpense.spentAt
+        ? latestBankPayment.paidAt
+        : latestBankExpense.spentAt
+      : latestBankPayment?.paidAt ?? latestBankExpense?.spentAt ?? null;
+
+  const overdueApartmentIds = [...overdueByApartmentId.keys()];
+  const overdueApartments =
+    overdueApartmentIds.length > 0
+      ? await prisma.apartment.findMany({
+          where: { id: { in: overdueApartmentIds } },
+          select: {
+            id: true,
+            doorNo: true,
+            ownerFullName: true,
+          },
+        })
+      : [];
+  const overdueApartmentMap = new Map(overdueApartments.map((item) => [item.id, item]));
+  const topOverdueApartments = overdueApartmentIds
+    .map((apartmentId) => {
+      const summary = overdueByApartmentId.get(apartmentId);
+      const apartment = overdueApartmentMap.get(apartmentId);
+      if (!summary || !apartment) {
+        return null;
+      }
+
+      return {
+        apartmentId,
+        apartmentLabel: `${apartment.doorNo}-${apartment.ownerFullName?.trim() || "Adsiz"}`,
+        remainingTotal: Number(summary.remainingTotal.toFixed(2)),
+        overdueChargeCount: summary.chargeCount,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .sort((a, b) => b.remainingTotal - a.remainingTotal)
+    .slice(0, 5);
+
+  return res.json({
+    snapshotAt: now,
+    bankBalance: {
+      estimatedBalance: Number(estimatedBankBalance.toFixed(2)),
+      totalBankIn: Number(bankInTotal.toFixed(2)),
+      totalBankOut: Number(bankOutTotal.toFixed(2)),
+      latestMovementAt: latestBankMovementAt,
+    },
+    collectionsAndExpenses: {
+      totalCollections: Number(Number(paymentTotalAgg._sum.totalAmount ?? 0).toFixed(2)),
+      totalExpenses: Number(Number(expenseTotalAgg._sum.amount ?? 0).toFixed(2)),
+      netCollections: Number(
+        (Number(paymentTotalAgg._sum.totalAmount ?? 0) - Number(expenseTotalAgg._sum.amount ?? 0)).toFixed(2)
+      ),
+    },
+    receivables: {
+      openChargeCount: openCharges.length,
+      openRemainingTotal: Number(openRemainingTotal.toFixed(2)),
+      overdueChargeCount,
+      overdueApartmentCount: overdueApartmentSet.size,
+      overdueRemainingTotal: Number(overdueRemainingTotal.toFixed(2)),
+      monthEndUpcomingTotal: Number(monthEndUpcomingTotal.toFixed(2)),
+      upcoming30DaysTotal: Number(upcoming30DaysTotal.toFixed(2)),
+      oldestOverdueDate,
+    },
+    occupancy: {
+      apartmentCount,
+      residentUserCount: residentCount,
+    },
+    apartmentOverview: {
+      totalApartmentCount: apartmentCount,
+      kucukApartmentCount,
+      buyukApartmentCount,
+      aidatMuafCount,
+      dogalgazMuafCount,
+      aidatMuafApartments,
+      dogalgazMuafApartments,
+      managers,
+      dutyAssignments,
+    },
+    latestUploadBatches,
+    topExpenses: topExpenseGroups.map((item) => ({
+      id: item.expenseItemId,
+      expenseItemName: topExpenseItemNameMap.get(item.expenseItemId) ?? "Bilinmeyen Gider Kalemi",
+      totalAmount: Number(item._sum.amount ?? 0),
+      expenseCount: item._count._all,
+      latestSpentAt: item._max.spentAt,
+    })),
+    topOverdueApartments,
+  });
+});
+
+router.get("/reports/bank-reconciliation", async (req, res) => {
+  const querySchema = z.object({
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+    limit: z.coerce.number().int().min(1).max(2000).optional(),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const fromDate = parsed.data.from ? new Date(parsed.data.from) : null;
+  const toDateExclusive = parsed.data.to ? new Date(new Date(parsed.data.to).getTime() + 24 * 60 * 60 * 1000) : null;
+  const limit = parsed.data.limit ?? 500;
+
+  const paidAtFilter: Prisma.DateTimeFilter | undefined =
+    fromDate || toDateExclusive
+      ? {
+          ...(fromDate ? { gte: fromDate } : {}),
+          ...(toDateExclusive ? { lt: toDateExclusive } : {}),
+        }
+      : undefined;
+  const spentAtFilter: Prisma.DateTimeFilter | undefined =
+    fromDate || toDateExclusive
+      ? {
+          ...(fromDate ? { gte: fromDate } : {}),
+          ...(toDateExclusive ? { lt: toDateExclusive } : {}),
+        }
+      : undefined;
+
+  const [payments, expenses, expenseAgg, openingAgg] = await Promise.all([
+    prisma.payment.findMany({
+      where: {
+        method: PaymentMethod.BANK_TRANSFER,
+        ...(paidAtFilter ? { paidAt: paidAtFilter } : {}),
+      },
+      select: {
+        id: true,
+        paidAt: true,
+        totalAmount: true,
+        note: true,
+        createdAt: true,
+        importBatch: {
+          select: {
+            kind: true,
+            fileName: true,
+          },
+        },
+      },
+      orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+    }),
+    prisma.expense.findMany({
+      where: {
+        paymentMethod: PaymentMethod.BANK_TRANSFER,
+        ...(spentAtFilter ? { spentAt: spentAtFilter } : {}),
+      },
+      select: {
+        id: true,
+        spentAt: true,
+        amount: true,
+        description: true,
+        reference: true,
+        createdAt: true,
+        importBatch: {
+          select: {
+            kind: true,
+            fileName: true,
+          },
+        },
+      },
+      orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
+    }),
+    prisma.expense.aggregate({
+      where: {
+        paymentMethod: PaymentMethod.BANK_TRANSFER,
+        ...(spentAtFilter ? { spentAt: spentAtFilter } : {}),
+      },
+      _sum: { amount: true },
+    }),
+    prisma.payment.aggregate({
+      where: {
+        method: PaymentMethod.BANK_TRANSFER,
+        note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX },
+      },
+      _sum: { totalAmount: true },
+      _min: { paidAt: true },
+    }),
+  ]);
+
+  const paymentRows = payments.map((row) => {
+      const isOpeningBalance = Boolean(row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX));
+      const parts = (row.note ?? "")
+        .split(" | ")
+        .map((x) => x.trim())
+        .filter(Boolean);
+
+      let parsedReference: string | null = null;
+      let parsedDescription: string | null = null;
+      const freeTextParts: string[] = [];
+
+      for (const part of parts) {
+        const upperPart = part.toUpperCase();
+
+        if (upperPart.startsWith("BANK_REF:")) {
+          parsedReference = part.slice(part.indexOf(":") + 1).trim() || null;
+          continue;
+        }
+
+        if (upperPart.startsWith("REF:")) {
+          parsedReference = parsedReference ?? (part.slice(part.indexOf(":") + 1).trim() || null);
+          continue;
+        }
+
+        const refMatch = part.match(/(?:^|\s)(BANK_REF|REF)\s*:\s*(\S.+)$/i);
+        if (refMatch) {
+          parsedReference = parsedReference ?? (refMatch[2].trim() || null);
+          continue;
+        }
+
+        if (upperPart.startsWith("BANK_DESC:")) {
+          parsedDescription = part.slice(part.indexOf(":") + 1).trim() || null;
+          continue;
+        }
+
+        const descMatch = part.match(/(?:^|\s)BANK_DESC\s*:\s*(.+)$/i);
+        if (descMatch) {
+          parsedDescription = descMatch[1].trim() || null;
+          continue;
+        }
+
+        if (
+          upperPart.startsWith("DOOR:") ||
+          upperPart.startsWith("PAYMENT_UPLOAD:") ||
+          upperPart.startsWith("UNAPPLIED:") ||
+          upperPart.startsWith("CARRY_FORWARD:")
+        ) {
+          continue;
+        }
+        if (upperPart.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX)) {
+          continue;
+        }
+
+        freeTextParts.push(part);
+      }
+
+      const openingBalanceMeta = row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX)
+        ? parseOpeningBalanceNote(row.note)
+        : null;
+
+      const resolvedDescription =
+        parsedDescription ??
+        (freeTextParts.length > 0 ? freeTextParts.join(" | ") : null) ??
+        (openingBalanceMeta
+          ? `Sistem Acilis Bakiyesi${openingBalanceMeta.bankName ? ` (${openingBalanceMeta.bankName})` : ""}`
+          : null);
+
+      return {
+        id: row.id,
+        occurredAt: row.paidAt,
+        entryType: "IN" as const,
+        amount: Number(row.totalAmount),
+        description: resolvedDescription,
+        reference: parsedReference,
+        isOpeningBalance,
+        source:
+          row.importBatch?.kind === ImportBatchType.BANK_STATEMENT_UPLOAD
+            ? "BANK_STATEMENT_UPLOAD"
+            : row.importBatch?.kind === ImportBatchType.PAYMENT_UPLOAD
+              ? "PAYMENT_UPLOAD"
+              : "MANUAL",
+        fileName: row.importBatch?.fileName ?? null,
+        createdAt: row.createdAt,
+      };
+    });
+
+  const movementPaymentRows = paymentRows.filter((row) => !row.isOpeningBalance);
+
+  const rows = [
+    ...movementPaymentRows,
+    ...expenses.map((row) => ({
+      id: row.id,
+      occurredAt: row.spentAt,
+      entryType: "OUT" as const,
+      amount: Number(row.amount),
+      description: row.description,
+      reference: row.reference,
+      isOpeningBalance: false,
+      source: row.importBatch?.kind === ImportBatchType.BANK_STATEMENT_UPLOAD ? "BANK_STATEMENT_UPLOAD" : "MANUAL",
+      fileName: row.importBatch?.fileName ?? null,
+      createdAt: row.createdAt,
+    })),
+  ]
+    .sort((a, b) => {
+      const occurredDiff = b.occurredAt.getTime() - a.occurredAt.getTime();
+      if (occurredDiff !== 0) {
+        return occurredDiff;
+      }
+      const createdDiff = b.createdAt.getTime() - a.createdAt.getTime();
+      if (createdDiff !== 0) {
+        return createdDiff;
+      }
+      return b.id.localeCompare(a.id);
+    });
+
+  const totalIn = movementPaymentRows.reduce((sum, row) => sum + row.amount, 0);
+  const totalOut = Number(expenseAgg._sum.amount ?? 0);
+  const openingBalance = Number(openingAgg._sum.totalAmount ?? 0);
+  const openingDate = openingAgg._min.paidAt;
+
+  return res.json({
+    snapshotAt: new Date(),
+    criteria: {
+      from: parsed.data.from ?? null,
+      to: parsed.data.to ?? null,
+      limit,
+    },
+    totals: {
+      totalIn: Number(totalIn.toFixed(2)),
+      totalOut: Number(totalOut.toFixed(2)),
+      net: Number((totalIn - totalOut).toFixed(2)),
+      openingBalance: Number(openingBalance.toFixed(2)),
+      openingDate: openingDate ? openingDate.toISOString() : null,
+      paymentCount: movementPaymentRows.length,
+      expenseCount: expenses.length,
+      movementCount: movementPaymentRows.length + expenses.length,
+    },
+    rows: rows.map((row) => ({
+      id: row.id,
+      occurredAt: row.occurredAt.toISOString(),
+      entryType: row.entryType,
+      amount: Number(row.amount.toFixed(2)),
+      description: row.description,
+      reference: row.reference,
+      isOpeningBalance: row.isOpeningBalance,
+      source: row.source,
+      fileName: row.fileName,
+    })),
+  });
+});
+
+router.get("/reports/charge-consistency", async (req, res) => {
+  const querySchema = z.object({
+    periodYear: z.coerce.number().int().min(2000).max(2100),
+    periodMonths: z.string().optional(),
+    chargeTypeId: z.string().optional(),
+    apartmentType: z.nativeEnum(ApartmentType).optional(),
+    expectedBuyukAmount: z.coerce.number().nonnegative().optional(),
+    expectedKucukAmount: z.coerce.number().nonnegative().optional(),
+    requireMonthEndDueDate: z.enum(["YES", "NO"]).optional(),
+    includeMissing: z.enum(["YES", "NO"]).optional(),
+    limit: z.coerce.number().int().min(1).max(5000).optional(),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const {
+    periodYear,
+    periodMonths,
+    chargeTypeId,
+    apartmentType,
+    expectedBuyukAmount,
+    expectedKucukAmount,
+    requireMonthEndDueDate,
+    includeMissing,
+    limit,
+  } = parsed.data;
+
+  const selectedChargeType = chargeTypeId
+    ? await prisma.chargeTypeDefinition.findUnique({
+        where: { id: chargeTypeId },
+        select: { id: true, code: true, name: true },
+      })
+    : null;
+  if (chargeTypeId && !selectedChargeType) {
+    return res.status(404).json({ message: "Tahakkuk tipi bulunamadi" });
+  }
+
+  const months = (periodMonths ?? "")
+    .split(",")
+    .map((x) => Number(x.trim()))
+    .filter((x) => Number.isInteger(x) && x >= 1 && x <= 12);
+  const effectiveMonths = [...new Set(months)].sort((a, b) => a - b);
+  if (effectiveMonths.length === 0) {
+    return res.status(400).json({ message: "Provide periodMonths with values 1..12" });
+  }
+
+  const targetApartments = await prisma.apartment.findMany({
+    where: apartmentType ? { type: apartmentType } : undefined,
+    select: {
+      id: true,
+      doorNo: true,
+      type: true,
+      hasAidat: true,
+      hasDogalgaz: true,
+      ownerFullName: true,
+      apartmentDuty: { select: { name: true } },
+      users: {
+        where: { role: UserRole.RESIDENT },
+        select: { fullName: true },
+        orderBy: [{ fullName: "asc" }],
+      },
+      block: { select: { name: true } },
+    },
+    orderBy: [{ block: { name: "asc" } }, { doorNo: "asc" }],
+  });
+
+  if (targetApartments.length === 0) {
+    return res.json({
+      snapshotAt: new Date(),
+      criteria: {
+        periodYear,
+        periodMonths: effectiveMonths,
+        chargeTypeId: chargeTypeId ?? null,
+        apartmentType: apartmentType ?? null,
+      },
+      totals: {
+        totalApartmentCount: 0,
+        targetApartmentCount: 0,
+        excludedApartmentCount: 0,
+        scannedChargeCount: 0,
+        warningCount: 0,
+        byCode: {},
+      },
+      excludedApartments: [],
+      rows: [],
+    });
+  }
+
+  const restrictedChargeType = getRestrictedChargeTypeCode(selectedChargeType?.code);
+  const eligibleApartments = restrictedChargeType
+    ? targetApartments.filter((apartment) => !isApartmentExemptForChargeType(apartment, restrictedChargeType))
+    : targetApartments;
+  const exemptApartments = restrictedChargeType
+    ? targetApartments.filter((apartment) => isApartmentExemptForChargeType(apartment, restrictedChargeType))
+    : [];
+  const eligibleApartmentIds = new Set(eligibleApartments.map((x) => x.id));
+  const excludedApartments = exemptApartments.map((apartment) => ({
+    apartmentId: apartment.id,
+    blockName: apartment.block.name,
+    apartmentDoorNo: apartment.doorNo,
+    apartmentType: apartment.type,
+    apartmentDutyName: apartment.apartmentDuty?.name ?? null,
+    reason:
+      restrictedChargeType === "AIDAT"
+        ? "Aidat gorevi kapali (hasAidat=false)"
+        : "Dogalgaz gorevi kapali (hasDogalgaz=false)",
+  }));
+
+  const charges = await prisma.charge.findMany({
+    where: {
+      apartmentId: { in: targetApartments.map((x) => x.id) },
+      periodYear,
+      periodMonth: { in: effectiveMonths },
+      chargeTypeId: chargeTypeId || undefined,
+    },
+    include: {
+      chargeType: { select: { name: true } },
+      apartment: {
+        select: {
+          id: true,
+          doorNo: true,
+          type: true,
+          ownerFullName: true,
+          users: {
+            where: { role: UserRole.RESIDENT },
+            select: { fullName: true },
+            orderBy: [{ fullName: "asc" }],
+          },
+          block: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: [
+      { apartment: { block: { name: "asc" } } },
+      { apartment: { doorNo: "asc" } },
+      { periodMonth: "asc" },
+      { createdAt: "asc" },
+    ],
+  });
+
+  const grouped = new Map<string, typeof charges>();
+  for (const charge of charges) {
+    const key = `${charge.apartmentId}|${charge.periodMonth}`;
+    const rows = grouped.get(key) ?? [];
+    rows.push(charge);
+    grouped.set(key, rows);
+  }
+
+  function inferExpectedAmountByTypeAndMonth(type: ApartmentType, month: number): number | null {
+    const values = charges
+      .filter(
+        (charge) =>
+          charge.apartment.type === type &&
+          charge.periodMonth === month &&
+          eligibleApartmentIds.has(charge.apartmentId)
+      )
+      .map((charge) => Number(charge.amount))
+      .filter((amount) => amount > 0.0001);
+
+    if (values.length === 0) {
+      return null;
+    }
+
+    const freq = new Map<string, number>();
+    for (const value of values) {
+      const key = value.toFixed(2);
+      freq.set(key, (freq.get(key) ?? 0) + 1);
+    }
+
+    const ranked = [...freq.entries()].sort((a, b) => {
+      const countDiff = b[1] - a[1];
+      if (countDiff !== 0) {
+        return countDiff;
+      }
+      return Number(b[0]) - Number(a[0]);
+    });
+
+    return Number(ranked[0][0]);
+  }
+
+  const resolvedExpectedByMonth = new Map<number, { BUYUK: number | null; KUCUK: number | null }>();
+  for (const month of effectiveMonths) {
+    resolvedExpectedByMonth.set(month, {
+      BUYUK:
+        typeof expectedBuyukAmount === "number"
+          ? expectedBuyukAmount
+          : inferExpectedAmountByTypeAndMonth("BUYUK", month),
+      KUCUK:
+        typeof expectedKucukAmount === "number"
+          ? expectedKucukAmount
+          : inferExpectedAmountByTypeAndMonth("KUCUK", month),
+    });
+  }
+
+  type WarningRow = {
+    code:
+      | "MISSING_CHARGE"
+      | "DUPLICATE_CHARGE"
+      | "AMOUNT_MISMATCH"
+      | "DUE_DATE_NOT_MONTH_END"
+      | "NONPOSITIVE_AMOUNT"
+      | "EXEMPT_APARTMENT_HAS_CHARGE";
+    severity: "WARN";
+    message: string;
+    apartmentId: string;
+    blockName: string;
+    apartmentDoorNo: string;
+    apartmentType: ApartmentType;
+    apartmentOwnerName: string | null;
+    residentNames: string[];
+    periodYear: number;
+    periodMonth: number;
+    chargeId: string | null;
+    chargeTypeName: string | null;
+    actualAmount: number | null;
+    expectedAmount: number | null;
+    actualDueDate: Date | null;
+    expectedDueDate: Date | null;
+  };
+
+  const warningRows: WarningRow[] = [];
+  const isRecurringChargeType = selectedChargeType?.code === "AIDAT";
+  const selectedChargeTypeCode = toAsciiLower(selectedChargeType?.code ?? "");
+  const selectedChargeTypeName = toAsciiLower(selectedChargeType?.name ?? "");
+  const isDogalgazChargeType =
+    selectedChargeTypeCode.includes("dogalgaz") ||
+    selectedChargeTypeCode.includes("igdas") ||
+    selectedChargeTypeName.includes("dogalgaz") ||
+    selectedChargeTypeName.includes("igdas");
+  const includeMissingRows = includeMissing !== "NO" && !!restrictedChargeType;
+  const enforceMonthEndBase = requireMonthEndDueDate === "YES";
+  const enforceMonthEnd = enforceMonthEndBase && (selectedChargeType ? isRecurringChargeType : true);
+
+  if (includeMissingRows && !chargeTypeId) {
+    return res.status(400).json({
+      message: "Eksik tahakkuk kontrolu icin Tahakkuk Tipi secimi zorunlu",
+    });
+  }
+
+  const dogalgazInvoiceMonths = new Set<number>();
+  if (includeMissingRows && isDogalgazChargeType) {
+    const gasExpenseItems = await prisma.expenseItemDefinition.findMany({
+      where: {
+        OR: [
+          { code: { contains: "DOGALGAZ", mode: "insensitive" } },
+          { name: { contains: "DOGALGAZ", mode: "insensitive" } },
+          { code: { contains: "IGDAS", mode: "insensitive" } },
+          { name: { contains: "IGDAS", mode: "insensitive" } },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (gasExpenseItems.length > 0) {
+      const gasExpenses = await prisma.expense.findMany({
+        where: {
+          expenseItemId: { in: gasExpenseItems.map((x) => x.id) },
+          spentAt: {
+            gte: new Date(Date.UTC(periodYear, 0, 1)),
+            lt: new Date(Date.UTC(periodYear + 1, 0, 1)),
+          },
+        },
+        select: { spentAt: true },
+      });
+
+      for (const expense of gasExpenses) {
+        const month = expense.spentAt.getUTCMonth() + 1;
+        if (effectiveMonths.includes(month)) {
+          dogalgazInvoiceMonths.add(month);
+        }
+      }
+    }
+  }
+
+  if (restrictedChargeType) {
+    for (const apartment of exemptApartments) {
+      for (const month of effectiveMonths) {
+        const key = `${apartment.id}|${month}`;
+        const rows = grouped.get(key) ?? [];
+
+        for (const charge of rows) {
+          const actualAmount = Number(charge.amount);
+          if (actualAmount <= 0.0001) {
+            continue;
+          }
+
+          warningRows.push({
+            code: "EXEMPT_APARTMENT_HAS_CHARGE",
+            severity: "WARN",
+            message: `${restrictedChargeType} muaf dairede bu tip icin tahakkuk kaydi var.`,
+            apartmentId: apartment.id,
+            blockName: apartment.block.name,
+            apartmentDoorNo: apartment.doorNo,
+            apartmentType: apartment.type,
+            apartmentOwnerName: apartment.ownerFullName,
+            residentNames: apartment.users.map((u) => u.fullName),
+            periodYear,
+            periodMonth: month,
+            chargeId: charge.id,
+            chargeTypeName: charge.chargeType.name,
+            actualAmount,
+            expectedAmount: null,
+            actualDueDate: charge.dueDate,
+            expectedDueDate: null,
+          });
+        }
+      }
+    }
+  }
+
+  for (const apartment of eligibleApartments) {
+    for (const month of effectiveMonths) {
+      const key = `${apartment.id}|${month}`;
+      const rows = grouped.get(key) ?? [];
+      const monthExpected = resolvedExpectedByMonth.get(month) ?? { BUYUK: null, KUCUK: null };
+      const expectedAmountForApartment =
+        apartment.type === "BUYUK"
+          ? monthExpected.BUYUK
+          : monthExpected.KUCUK;
+      const expectedDueDateForMonth = enforceMonthEnd ? new Date(Date.UTC(periodYear, month, 0)) : null;
+      const shouldCheckMissingForMonth =
+        includeMissingRows && (!isDogalgazChargeType || dogalgazInvoiceMonths.has(month));
+
+      if (shouldCheckMissingForMonth && rows.length === 0) {
+        warningRows.push({
+          code: "MISSING_CHARGE",
+          severity: "WARN",
+          message: "Bu daire/ay icin tahakkuk kaydi bulunamadi.",
+          apartmentId: apartment.id,
+          blockName: apartment.block.name,
+          apartmentDoorNo: apartment.doorNo,
+          apartmentType: apartment.type,
+          apartmentOwnerName: apartment.ownerFullName,
+          residentNames: apartment.users.map((u) => u.fullName),
+          periodYear,
+          periodMonth: month,
+          chargeId: null,
+          chargeTypeName: null,
+          actualAmount: null,
+          expectedAmount: expectedAmountForApartment,
+          actualDueDate: null,
+          expectedDueDate: expectedDueDateForMonth,
+        });
+        continue;
+      }
+
+      if (rows.length > 1) {
+        warningRows.push({
+          code: "DUPLICATE_CHARGE",
+          severity: "WARN",
+          message: `Ayni daire/ay icin birden fazla tahakkuk var (${rows.length} adet).`,
+          apartmentId: apartment.id,
+          blockName: apartment.block.name,
+          apartmentDoorNo: apartment.doorNo,
+          apartmentType: apartment.type,
+          apartmentOwnerName: apartment.ownerFullName,
+          residentNames: apartment.users.map((u) => u.fullName),
+          periodYear,
+          periodMonth: month,
+          chargeId: rows[0]?.id ?? null,
+          chargeTypeName: rows[0]?.chargeType.name ?? null,
+          actualAmount: rows[0] ? Number(rows[0].amount) : null,
+          expectedAmount: expectedAmountForApartment,
+          actualDueDate: rows[0]?.dueDate ?? null,
+          expectedDueDate: expectedDueDateForMonth,
+        });
+      }
+
+      for (const charge of rows) {
+        const expectedAmount = expectedAmountForApartment;
+        const actualAmount = Number(charge.amount);
+
+        if (actualAmount <= 0.0001) {
+          warningRows.push({
+            code: "NONPOSITIVE_AMOUNT",
+            severity: "WARN",
+            message: "Tahakkuk tutari sifir veya negatif olmamali.",
+            apartmentId: apartment.id,
+            blockName: apartment.block.name,
+            apartmentDoorNo: apartment.doorNo,
+            apartmentType: apartment.type,
+            apartmentOwnerName: apartment.ownerFullName,
+            residentNames: charge.apartment.users.map((u) => u.fullName),
+            periodYear,
+            periodMonth: month,
+            chargeId: charge.id,
+            chargeTypeName: charge.chargeType.name,
+            actualAmount,
+            expectedAmount,
+            actualDueDate: charge.dueDate,
+            expectedDueDate: expectedDueDateForMonth,
+          });
+        }
+
+        if (expectedAmount !== null && Math.abs(actualAmount - expectedAmount) > 0.0001) {
+          warningRows.push({
+            code: "AMOUNT_MISMATCH",
+            severity: "WARN",
+            message: "Tahakkuk tutari beklenen degerle uyusmuyor.",
+            apartmentId: apartment.id,
+            blockName: apartment.block.name,
+            apartmentDoorNo: apartment.doorNo,
+            apartmentType: apartment.type,
+            apartmentOwnerName: apartment.ownerFullName,
+            residentNames: charge.apartment.users.map((u) => u.fullName),
+            periodYear,
+            periodMonth: month,
+            chargeId: charge.id,
+            chargeTypeName: charge.chargeType.name,
+            actualAmount,
+            expectedAmount,
+            actualDueDate: charge.dueDate,
+            expectedDueDate: expectedDueDateForMonth,
+          });
+        }
+
+        if (enforceMonthEnd) {
+          const expectedDueDate = expectedDueDateForMonth as Date;
+          const actualUtcY = charge.dueDate.getUTCFullYear();
+          const actualUtcM = charge.dueDate.getUTCMonth() + 1;
+          const actualUtcD = charge.dueDate.getUTCDate();
+          const expectedUtcY = expectedDueDate.getUTCFullYear();
+          const expectedUtcM = expectedDueDate.getUTCMonth() + 1;
+          const expectedUtcD = expectedDueDate.getUTCDate();
+
+          const isMatch = actualUtcY === expectedUtcY && actualUtcM === expectedUtcM && actualUtcD === expectedUtcD;
+          if (!isMatch) {
+            warningRows.push({
+              code: "DUE_DATE_NOT_MONTH_END",
+              severity: "WARN",
+              message: "Son odeme tarihi ilgili ayin son gunu degil.",
+              apartmentId: apartment.id,
+              blockName: apartment.block.name,
+              apartmentDoorNo: apartment.doorNo,
+              apartmentType: apartment.type,
+              apartmentOwnerName: apartment.ownerFullName,
+              residentNames: charge.apartment.users.map((u) => u.fullName),
+              periodYear,
+              periodMonth: month,
+              chargeId: charge.id,
+              chargeTypeName: charge.chargeType.name,
+              actualAmount,
+              expectedAmount,
+              actualDueDate: charge.dueDate,
+              expectedDueDate,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  const byCode = warningRows.reduce<Record<string, number>>((acc, row) => {
+    acc[row.code] = (acc[row.code] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const effectiveLimit = limit ?? 2000;
+
+  return res.json({
+    snapshotAt: new Date(),
+    criteria: {
+      periodYear,
+      periodMonths: effectiveMonths,
+      chargeTypeId: chargeTypeId ?? null,
+      apartmentType: apartmentType ?? null,
+      expectedBuyukAmount: typeof expectedBuyukAmount === "number" ? expectedBuyukAmount : null,
+      expectedKucukAmount: typeof expectedKucukAmount === "number" ? expectedKucukAmount : null,
+      requireMonthEndDueDate: enforceMonthEnd,
+      includeMissing: includeMissingRows,
+    },
+    totals: {
+      totalApartmentCount: targetApartments.length,
+      targetApartmentCount: eligibleApartments.length,
+      excludedApartmentCount: excludedApartments.length,
+      scannedChargeCount: charges.length,
+      warningCount: warningRows.length,
+      byCode,
+    },
+    excludedApartments,
+    rows: warningRows.slice(0, effectiveLimit),
+  });
+});
+
+router.get("/reports/apartment-balance-matrix", async (req, res) => {
+  const querySchema = z.object({
+    year: z.coerce.number().int().min(2000).max(2100),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const { year } = parsed.data;
+  const snapshotAt = new Date();
+
+  const apartments = await prisma.apartment.findMany({
+    include: {
+      block: { select: { name: true } },
+      users: {
+        where: { role: UserRole.RESIDENT },
+        select: { fullName: true },
+        orderBy: [{ fullName: "asc" }],
+      },
+    },
+    orderBy: [{ block: { name: "asc" } }, { doorNo: "asc" }],
+  });
+
+  const months = Array.from({ length: 12 }, (_, index) => {
+    const month = index + 1;
+    const monthEnd = new Date(Date.UTC(year, month, 0));
+    return {
+      month,
+      monthEnd,
+    };
+  });
+
+  if (apartments.length === 0) {
+    return res.json({
+      snapshotAt,
+      criteria: { year },
+      months: months.map((x) => ({
+        month: x.month,
+        monthEnd: x.monthEnd.toISOString(),
+      })),
+      totals: {
+        apartmentCount: 0,
+        monthlyTotals: months.map(() => 0),
+        yearEndTotal: 0,
+      },
+      rows: [],
+    });
+  }
+
+  const apartmentIds = apartments.map((x) => x.id);
+  const [charges, paymentItems, overdueCharges, overduePaymentItems] = await Promise.all([
+    prisma.charge.findMany({
+      where: {
+        apartmentId: { in: apartmentIds },
+        periodYear: year,
+      },
+      select: {
+        id: true,
+        apartmentId: true,
+        periodYear: true,
+        periodMonth: true,
+        amount: true,
+      },
+    }),
+    prisma.paymentItem.findMany({
+      where: {
+        charge: {
+          apartmentId: { in: apartmentIds },
+          periodYear: year,
+        },
+      },
+      select: {
+        amount: true,
+        charge: {
+          select: {
+            apartmentId: true,
+            periodYear: true,
+            periodMonth: true,
+          },
+        },
+      },
+    }),
+    prisma.charge.findMany({
+      where: {
+        apartmentId: { in: apartmentIds },
+        dueDate: { lte: snapshotAt },
+      },
+      select: {
+        id: true,
+        apartmentId: true,
+        amount: true,
+      },
+    }),
+    prisma.paymentItem.findMany({
+      where: {
+        charge: {
+          apartmentId: { in: apartmentIds },
+          dueDate: { lte: snapshotAt },
+        },
+      },
+      select: {
+        amount: true,
+        chargeId: true,
+      },
+    }),
+  ]);
+
+  const apartmentBalanceMap = new Map<
+    string,
+    {
+      monthDeltas: number[];
+      monthCharges: number[];
+      monthPayments: number[];
+    }
+  >();
+
+  for (const apartment of apartments) {
+    apartmentBalanceMap.set(apartment.id, {
+      monthDeltas: months.map(() => 0),
+      monthCharges: months.map(() => 0),
+      monthPayments: months.map(() => 0),
+    });
+  }
+
+  for (const charge of charges) {
+    const bucket = apartmentBalanceMap.get(charge.apartmentId);
+    if (!bucket) {
+      continue;
+    }
+
+    const amount = Number(charge.amount);
+    if (!Number.isFinite(amount)) {
+      continue;
+    }
+
+    const monthIndex = charge.periodMonth - 1;
+    if (monthIndex < 0 || monthIndex > 11) {
+      continue;
+    }
+
+    bucket.monthDeltas[monthIndex] += amount;
+    bucket.monthCharges[monthIndex] += amount;
+  }
+
+  for (const item of paymentItems) {
+    const apartmentId = item.charge.apartmentId;
+    const bucket = apartmentBalanceMap.get(apartmentId);
+    if (!bucket) {
+      continue;
+    }
+
+    const amount = Number(item.amount);
+    if (!Number.isFinite(amount)) {
+      continue;
+    }
+
+    const monthIndex = item.charge.periodMonth - 1;
+    if (monthIndex < 0 || monthIndex > 11) {
+      continue;
+    }
+
+    bucket.monthDeltas[monthIndex] -= amount;
+    bucket.monthPayments[monthIndex] += amount;
+  }
+
+  const paidByOverdueChargeId = new Map<string, number>();
+  for (const item of overduePaymentItems) {
+    const existingPaid = paidByOverdueChargeId.get(item.chargeId) ?? 0;
+    paidByOverdueChargeId.set(item.chargeId, Number((existingPaid + Number(item.amount)).toFixed(2)));
+  }
+
+  const overdueByApartmentId = new Map<string, number>();
+  for (const charge of overdueCharges) {
+    const paid = paidByOverdueChargeId.get(charge.id) ?? 0;
+    const remaining = Number((Number(charge.amount) - paid).toFixed(2));
+    if (remaining <= 0.0001) {
+      continue;
+    }
+
+    const existingRemaining = overdueByApartmentId.get(charge.apartmentId) ?? 0;
+    overdueByApartmentId.set(charge.apartmentId, Number((existingRemaining + remaining).toFixed(2)));
+  }
+
+  const paidByChargeId = new Map<string, number>();
+  for (const item of paymentItems) {
+    const chargeId = item.chargeId;
+    const existingPaid = paidByChargeId.get(chargeId) ?? 0;
+    paidByChargeId.set(chargeId, Number((existingPaid + Number(item.amount)).toFixed(2)));
+  }
+
+  const hasPartialByApartmentId = new Map<string, boolean>();
+  for (const charge of charges) {
+    const chargeAmount = Number(charge.amount);
+    if (!Number.isFinite(chargeAmount) || chargeAmount <= 0.0001) {
+      continue;
+    }
+
+    const paid = paidByChargeId.get(charge.id) ?? 0;
+    const remaining = Number((chargeAmount - paid).toFixed(2));
+    const isPartial = paid > 0.0001 && remaining > 0.0001;
+    if (isPartial) {
+      hasPartialByApartmentId.set(charge.apartmentId, true);
+    }
+  }
+
+  const monthlyTotals = months.map(() => 0);
+  const rows = apartments.map((apartment) => {
+    const bucket = apartmentBalanceMap.get(apartment.id) ?? {
+      monthDeltas: months.map(() => 0),
+      monthCharges: months.map(() => 0),
+      monthPayments: months.map(() => 0),
+    };
+
+    const monthBalances = bucket.monthDeltas.map((delta, index) => {
+      const rounded = Number(Math.max(0, delta).toFixed(2));
+      monthlyTotals[index] += rounded;
+      return rounded;
+    });
+
+    const residents = apartment.users.map((x) => x.fullName.trim()).filter(Boolean);
+    const occupant =
+      residents.length > 0 ? residents.join(", ") : apartment.ownerFullName?.trim() || "-";
+
+    const hasPartialMonth = hasPartialByApartmentId.get(apartment.id) === true;
+
+    return {
+      apartmentId: apartment.id,
+      blockName: apartment.block.name,
+      apartmentDoorNo: apartment.doorNo,
+      occupant,
+      monthBalances,
+      yearEndBalance: Number((overdueByApartmentId.get(apartment.id) ?? 0).toFixed(2)),
+      hasPartialMonth,
+    };
+  });
+
+  const normalizedMonthlyTotals = monthlyTotals.map((total) => Number(total.toFixed(2)));
+
+  return res.json({
+    snapshotAt,
+    criteria: { year },
+    months: months.map((x) => ({
+      month: x.month,
+      monthEnd: x.monthEnd.toISOString(),
+    })),
+    totals: {
+      apartmentCount: rows.length,
+      monthlyTotals: normalizedMonthlyTotals,
+      yearEndTotal: Number(
+        rows.reduce((sum, row) => sum + row.yearEndBalance, 0).toFixed(2)
+      ),
+    },
+    rows,
+  });
+});
+
+router.get("/statement/all", async (_req, res) => {
+  const charges = await prisma.charge.findMany({
+    include: {
+      apartment: true,
+      chargeType: true,
+      paymentItems: true,
+    },
+    orderBy: [{ periodYear: "asc" }, { periodMonth: "asc" }, { createdAt: "asc" }],
+  });
+
+  const statement = charges.map((charge) => {
+    const paidTotal = charge.paymentItems.reduce((sum, item) => sum + Number(item.amount), 0);
+
+    return {
+      chargeId: charge.id,
+      apartmentId: charge.apartmentId,
+      apartmentDoorNo: charge.apartment.doorNo,
+      apartmentOwnerName: charge.apartment.ownerFullName,
+      periodYear: charge.periodYear,
+      periodMonth: charge.periodMonth,
+      type: charge.chargeType.name,
+      description: charge.description,
+      dueDate: charge.dueDate,
+      amount: Number(charge.amount),
+      paidTotal,
+      remaining: Number(charge.amount) - paidTotal,
+      status: charge.status,
+    };
+  });
+
+  return res.json({ statement });
+});
+
+router.get("/apartments/:apartmentId/charges", async (req, res) => {
+  const { apartmentId } = req.params;
+
+  const charges = await prisma.charge.findMany({
+    where: { apartmentId },
+    include: { chargeType: true },
+    orderBy: [{ periodYear: "asc" }, { periodMonth: "asc" }, { createdAt: "asc" }],
+  });
+
+  return res.json(
+    charges.map((charge) => ({
+      id: charge.id,
+      apartmentId: charge.apartmentId,
+      chargeTypeId: charge.chargeTypeId,
+      chargeTypeName: charge.chargeType.name,
+      periodYear: charge.periodYear,
+      periodMonth: charge.periodMonth,
+      amount: Number(charge.amount),
+      dueDate: charge.dueDate,
+      description: charge.description,
+      status: charge.status,
+    }))
+  );
+});
+
+router.put("/charges/:chargeId", async (req, res) => {
+  const { chargeId } = req.params;
+  const schema = z.object({
+    chargeTypeId: z.string().min(1),
+    periodYear: z.number().int().min(2000).max(2100),
+    periodMonth: z.number().int().min(1).max(12),
+    amount: z.number().min(0),
+    dueDate: z.string().datetime(),
+    description: z.string().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const existing = await prisma.charge.findUnique({ where: { id: chargeId } });
+  if (!existing) {
+    return res.status(404).json({ message: "Charge not found" });
+  }
+
+  const updated = await prisma.charge.update({
+    where: { id: chargeId },
+    data: {
+      chargeTypeId: parsed.data.chargeTypeId,
+      periodYear: parsed.data.periodYear,
+      periodMonth: parsed.data.periodMonth,
+      amount: parsed.data.amount,
+      dueDate: new Date(parsed.data.dueDate),
+      description: parsed.data.description,
+    },
+    include: { chargeType: true },
+  });
+
+  return res.json({
+    id: updated.id,
+    apartmentId: updated.apartmentId,
+    chargeTypeId: updated.chargeTypeId,
+    chargeTypeName: updated.chargeType.name,
+    periodYear: updated.periodYear,
+    periodMonth: updated.periodMonth,
+    amount: Number(updated.amount),
+    dueDate: updated.dueDate,
+    description: updated.description,
+    status: updated.status,
+  });
+});
+
+router.delete("/charges/:chargeId", async (req, res) => {
+  const { chargeId } = req.params;
+
+  const existing = await prisma.charge.findUnique({ where: { id: chargeId } });
+  if (!existing) {
+    return res.status(404).json({ message: "Charge not found" });
+  }
+
+  const paymentItemCount = await prisma.paymentItem.count({ where: { chargeId } });
+  if (paymentItemCount > 0) {
+    return res.status(409).json({ message: "Charge has payments and cannot be deleted", paymentItemCount });
+  }
+
+  await prisma.charge.delete({ where: { id: chargeId } });
+  return res.status(204).send();
+});
+
+router.get("/apartments/:apartmentId/payment-items", async (req, res) => {
+  const { apartmentId } = req.params;
+
+  const items = await prisma.paymentItem.findMany({
+    where: {
+      charge: {
+        apartmentId,
+      },
+    },
+    include: {
+      payment: true,
+      charge: {
+        include: {
+          chargeType: true,
+        },
+      },
+    },
+    orderBy: [{ payment: { paidAt: "desc" } }, { id: "desc" }],
+  });
+
+  return res.json(
+    items.map((item) => ({
+      paymentItemId: item.id,
+      paymentId: item.paymentId,
+      chargeId: item.chargeId,
+      chargeTypeName: item.charge.chargeType.name,
+      periodYear: item.charge.periodYear,
+      periodMonth: item.charge.periodMonth,
+      amount: Number(item.amount),
+      paidAt: item.payment.paidAt,
+      method: item.payment.method,
+      note: stripManualReconcileLockTag(item.payment.note),
+      isReconcileLocked: hasManualReconcileLock(item.payment.note),
+    }))
+  );
+});
+
+router.put("/payment-items/:paymentItemId", async (req, res) => {
+  const { paymentItemId } = req.params;
+  const schema = z.object({
+    chargeId: z.string().min(1),
+    amount: z.number().positive(),
+    paidAt: z.string().datetime(),
+    method: z.nativeEnum(PaymentMethod),
+    note: z.string().optional(),
+    isReconcileLocked: z.boolean().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  await ensurePaymentMethodDefinitions();
+  const methodDefinition = await prisma.paymentMethodDefinition.findUnique({ where: { code: parsed.data.method } });
+  if (!methodDefinition || !methodDefinition.isActive) {
+    return res.status(400).json({ message: "Selected payment method is not active" });
+  }
+
+  const existing = await prisma.paymentItem.findUnique({
+    where: { id: paymentItemId },
+    include: {
+      payment: {
+        select: { note: true },
+      },
+    },
+  });
+  if (!existing) {
+    return res.status(404).json({ message: "Payment item not found" });
+  }
+
+  const isReconcileLocked = parsed.data.isReconcileLocked ?? hasManualReconcileLock(existing.payment.note);
+
+  const previousChargeId = existing.chargeId;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const updatedItem = await tx.paymentItem.update({
+      where: { id: paymentItemId },
+      data: {
+        chargeId: parsed.data.chargeId,
+        amount: parsed.data.amount,
+      },
+    });
+
+    await tx.payment.update({
+      where: { id: updatedItem.paymentId },
+      data: {
+        paidAt: new Date(parsed.data.paidAt),
+        method: parsed.data.method,
+        note: withManualReconcileLock(parsed.data.note, isReconcileLocked),
+      },
+    });
+
+    const sum = await tx.paymentItem.aggregate({
+      where: { paymentId: updatedItem.paymentId },
+      _sum: { amount: true },
+    });
+
+    await tx.payment.update({
+      where: { id: updatedItem.paymentId },
+      data: {
+        totalAmount: Number(sum._sum.amount ?? 0),
+      },
+    });
+
+    return updatedItem;
+  });
+
+  await refreshChargeStatusesForIds([...new Set([previousChargeId, updated.chargeId])]);
+
+  return res.json({ paymentItemId: updated.id, paymentId: updated.paymentId });
+});
+
+router.post("/payment-items/:paymentItemId/split", async (req, res) => {
+  const { paymentItemId } = req.params;
+  const schema = z.object({
+    amount: z.number().positive(),
+    targetChargeId: z.string().min(1),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+  }
+
+  const existing = await prisma.paymentItem.findUnique({
+    where: { id: paymentItemId },
+    include: {
+      charge: {
+        select: { id: true, apartmentId: true },
+      },
+    },
+  });
+  if (!existing) {
+    return res.status(404).json({ message: "Payment item not found" });
+  }
+
+  const targetCharge = await prisma.charge.findUnique({
+    where: { id: parsed.data.targetChargeId },
+    select: { id: true, apartmentId: true },
+  });
+  if (!targetCharge) {
+    return res.status(404).json({ message: "Target charge not found" });
+  }
+
+  if (targetCharge.apartmentId !== existing.charge.apartmentId) {
+    return res.status(400).json({ message: "Target charge must belong to same apartment" });
+  }
+
+  const splitAmount = Number(parsed.data.amount.toFixed(2));
+  const existingAmount = Number(existing.amount);
+  if (splitAmount <= 0 || splitAmount >= existingAmount - 0.0001) {
+    return res.status(400).json({
+      message: "Split amount must be greater than 0 and less than current payment item amount",
+      maxSplittableAmount: Number((existingAmount - 0.01).toFixed(2)),
+    });
+  }
+
+  const updatedOriginalAmount = Number((existingAmount - splitAmount).toFixed(2));
+  if (updatedOriginalAmount <= 0) {
+    return res.status(400).json({ message: "Invalid split amount" });
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    await tx.paymentItem.update({
+      where: { id: existing.id },
+      data: { amount: updatedOriginalAmount },
+    });
+
+    const createdItem = await tx.paymentItem.create({
+      data: {
+        paymentId: existing.paymentId,
+        chargeId: targetCharge.id,
+        amount: splitAmount,
+      },
+      select: { id: true },
+    });
+
+    const sum = await tx.paymentItem.aggregate({
+      where: { paymentId: existing.paymentId },
+      _sum: { amount: true },
+    });
+
+    await tx.payment.update({
+      where: { id: existing.paymentId },
+      data: {
+        totalAmount: Number(sum._sum.amount ?? 0),
+      },
+    });
+
+    return createdItem;
+  });
+
+  await refreshChargeStatusesForIds([existing.chargeId, targetCharge.id]);
+
+  return res.status(201).json({
+    originalPaymentItemId: existing.id,
+    originalAmount: updatedOriginalAmount,
+    splitPaymentItemId: created.id,
+    splitAmount,
+    targetChargeId: targetCharge.id,
+  });
+});
+
+router.delete("/payment-items/:paymentItemId", async (req, res) => {
+  const { paymentItemId } = req.params;
+
+  const existing = await prisma.paymentItem.findUnique({ where: { id: paymentItemId } });
+  if (!existing) {
+    return res.status(404).json({ message: "Payment item not found" });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.paymentItem.delete({ where: { id: paymentItemId } });
+
+    const remainingCount = await tx.paymentItem.count({ where: { paymentId: existing.paymentId } });
+    if (remainingCount === 0) {
+      await tx.payment.delete({ where: { id: existing.paymentId } });
+      return;
+    }
+
+    const sum = await tx.paymentItem.aggregate({
+      where: { paymentId: existing.paymentId },
+      _sum: { amount: true },
+    });
+
+    await tx.payment.update({
+      where: { id: existing.paymentId },
+      data: {
+        totalAmount: Number(sum._sum.amount ?? 0),
+      },
+    });
+  });
+
+  await refreshChargeStatusesForIds([existing.chargeId]);
+
+  return res.status(204).send();
+});
+
+export default router;
