@@ -57,6 +57,30 @@ export function StatementPage({
   accountingStatementCount,
   formatAccountingStatementDescription,
 }: StatementPageProps) {
+  function formatPaymentDayDiff(dueDate: string, paidAt?: string | null): string {
+    if (!paidAt) {
+      return "-";
+    }
+
+    const due = new Date(dueDate);
+    const paid = new Date(paidAt);
+    if (Number.isNaN(due.getTime()) || Number.isNaN(paid.getTime())) {
+      return "-";
+    }
+
+    const dueStart = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
+    const paidStart = new Date(paid.getFullYear(), paid.getMonth(), paid.getDate()).getTime();
+    const diffDays = Math.round((paidStart - dueStart) / (1000 * 60 * 60 * 24));
+
+    if (diffDays > 0) {
+      return `${diffDays} gun gec`;
+    }
+    if (diffDays < 0) {
+      return `${Math.abs(diffDays)} gun erken`;
+    }
+    return "Tam gununde";
+  }
+
   return (
     <>
       <div className="card admin-tools">
@@ -158,6 +182,7 @@ export function StatementPage({
                   <th>Aciklama</th>
                   <th>Son Odeme Tarihi</th>
                   <th>Odeme Tarihi</th>
+                  <th>Odeme Farki</th>
                   <th className="col-num">Tutar</th>
                   <th className="col-num">Odenen</th>
                   <th className="col-num">Kalan</th>
@@ -179,6 +204,7 @@ export function StatementPage({
                     <td>{row.type}</td>
                     <td>{formatDateTr(row.dueDate)}</td>
                     <td>{row.status === "CLOSED" ? (row.paidAt ? formatDateTr(row.paidAt) : "-") : "-"}</td>
+                    <td>{row.status === "CLOSED" ? formatPaymentDayDiff(row.dueDate, row.paidAt) : "-"}</td>
                     <td className="col-num">{formatTry(row.amount)}</td>
                     <td className="col-num">{formatTry(row.paidTotal)}</td>
                     <td className="col-num">{formatTry(row.remaining)}</td>
@@ -187,7 +213,7 @@ export function StatementPage({
                 ))}
                 {statementCount === 0 && (
                   <tr>
-                    <td colSpan={9} className="empty">
+                    <td colSpan={10} className="empty">
                       Henuz ekstre verisi yok
                     </td>
                   </tr>
