@@ -3050,6 +3050,21 @@ tbody tr:hover {
     font-size: 1.08rem;
   }
 
+  .resident-header-card,
+  .resident-header-actions {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .resident-header-actions {
+    width: auto;
+  }
+
+  .resident-header-actions .btn {
+    width: auto;
+  }
+
   .resident-password-card .form-grid {
     gap: 8px;
   }
@@ -3096,6 +3111,25 @@ tbody tr:hover {
   .resident-section-expense table,
   .resident-section-statement table {
     min-width: 520px;
+  }
+
+  .resident-section-statement .compact-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .resident-section-statement .admin-row {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-left: 0;
+  }
+
+  .resident-section-statement .admin-row .btn {
+    width: auto;
   }
 
   .resident-section-announcements .guide-list,
@@ -3226,13 +3260,14 @@ tbody tr:hover {
   }
 
   .resident-header-actions {
-    width: 100%;
-    flex-direction: column;
-    align-items: stretch;
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
   }
 
   .resident-header-card .btn {
-    width: 100%;
+    width: auto;
   }
 
   .resident-section-expense .section-head,
@@ -3267,6 +3302,21 @@ tbody tr:hover {
   .resident-section-expense table,
   .resident-section-statement table {
     min-width: 460px;
+  }
+}
+
+@media (max-width: 430px) {
+  .stats-grid.resident-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .resident-section-statement .admin-row {
+    width: 100%;
+  }
+
+  .resident-section-statement .admin-row .btn {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 }
 
