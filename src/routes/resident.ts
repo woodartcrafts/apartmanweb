@@ -22,9 +22,22 @@ router.get("/me/statement", async (req, res) => {
     return res.status(400).json({ message: "Apartment not linked" });
   }
 
-  const { statement, accountingStatement } = await getApartmentStatements(targetApartmentId);
+  const [statementData, apartment] = await Promise.all([
+    getApartmentStatements(targetApartmentId),
+    prisma.apartment.findUnique({
+      where: { id: targetApartmentId },
+      select: { doorNo: true },
+    }),
+  ]);
 
-  return res.json({ apartmentId: targetApartmentId, statement, accountingStatement });
+  const { statement, accountingStatement } = statementData;
+
+  return res.json({
+    apartmentId: targetApartmentId,
+    apartmentDoorNo: apartment?.doorNo ?? null,
+    statement,
+    accountingStatement,
+  });
 });
 
 router.get("/me/expenses-report", async (req, res) => {

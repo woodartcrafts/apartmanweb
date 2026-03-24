@@ -11633,7 +11633,13 @@ function AdminPage() {
   );
 }
 
-function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
+function ResidentPage({
+  user,
+  onResidentDoorNo,
+}: {
+  user: LoginResponse["user"] | null;
+  onResidentDoorNo: (doorNo: string) => void;
+}) {
   const [statement, setStatement] = useState<StatementItem[]>([]);
   const [accountingStatement, setAccountingStatement] = useState<AccountingStatementItem[]>([]);
   const [announcements, setAnnouncements] = useState<ResidentAnnouncementItem[]>([]);
@@ -11789,6 +11795,12 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
       }
 
       const data = (await res.json()) as StatementResponse;
+      if (user?.role === "RESIDENT" && typeof data.apartmentDoorNo === "string") {
+        const nextDoorNo = data.apartmentDoorNo.trim();
+        if (nextDoorNo) {
+          onResidentDoorNo(nextDoorNo);
+        }
+      }
       setStatement(data.statement);
       setAccountingStatement(data.accountingStatement ?? []);
       setMessage(`Ekstre hazir: ${data.statement.length} satir`);
@@ -12377,6 +12389,10 @@ function App() {
   const [authMessage, setAuthMessage] = useState("Lutfen giris yapin");
   const defaultAuthenticatedPath = user?.role === "ADMIN" ? "/admin" : "/resident";
   const isAdmin = user?.role === "ADMIN";
+  const residentDoorNo =
+    user?.role === "RESIDENT"
+      ? ((user.apartmentDoorNo ?? "").trim() || "-")
+      : "";
 
   async function handleLogin(identifier: string, password: string): Promise<void> {
     setAuthLoading(true);
@@ -12473,7 +12489,9 @@ function App() {
               </NavLink>
             </div>
             <div className="nav-user">
-              <span className="small">{user.fullName}</span>
+              <span className={user.role === "RESIDENT" ? "resident-user-line" : "small"}>
+                {user.role === "RESIDENT" ? `Sn. ${user.fullName} + Daire No: ${residentDoorNo}` : user.fullName}
+              </span>
               <button className="btn btn-danger" onClick={logout}>
                 Cikis
               </button>
@@ -12501,7 +12519,23 @@ function App() {
             <Route
               path="/resident"
               element={
-                user ? <ResidentPage user={user} /> : <Navigate to="/login" replace />
+                user ? (
+                  <ResidentPage
+                    user={user}
+                    onResidentDoorNo={(doorNo) => {
+                      setUser((prev) => {
+                        if (!prev || prev.role !== "RESIDENT" || prev.apartmentDoorNo === doorNo) {
+                          return prev;
+                        }
+                        const nextUser = { ...prev, apartmentDoorNo: doorNo };
+                        localStorage.setItem(userStorageKey, JSON.stringify(nextUser));
+                        return nextUser;
+                      });
+                    }}
+                  />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
               }
             />
             <Route path="*" element={<Navigate to={user ? defaultAuthenticatedPath : "/login"} replace />} />

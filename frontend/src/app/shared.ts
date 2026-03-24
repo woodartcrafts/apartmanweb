@@ -9,6 +9,7 @@ export type LoginResponse = {
     fullName: string;
     role: Role;
     apartmentId: string | null;
+    apartmentDoorNo: string | null;
   };
 };
 
@@ -49,6 +50,7 @@ export type StatementViewMode = "CLASSIC" | "ACCOUNTING";
 
 export type StatementResponse = {
   apartmentId: string;
+  apartmentDoorNo?: string | null;
   statement: StatementItem[];
   accountingStatement: AccountingStatementItem[];
 };

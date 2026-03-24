@@ -96,9 +96,23 @@ router.post("/login", loginRateLimiter, async (req, res) => {
             mode: "insensitive",
           },
         },
+        include: {
+          apartment: {
+            select: {
+              doorNo: true,
+            },
+          },
+        },
       })
     : await prisma.user.findFirst({
         where: { phone: normalizePhone(normalizedIdentifier) ?? "" },
+        include: {
+          apartment: {
+            select: {
+              doorNo: true,
+            },
+          },
+        },
       });
 
   if (!user) {
@@ -134,6 +148,7 @@ router.post("/login", loginRateLimiter, async (req, res) => {
       fullName: user.fullName,
       role: user.role,
       apartmentId: user.apartmentId,
+      apartmentDoorNo: user.apartment?.doorNo ?? null,
     },
   });
 });
