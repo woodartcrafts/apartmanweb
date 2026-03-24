@@ -387,8 +387,19 @@ button:active:not(:disabled) {
 }
 
 .resident-header-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   background: linear-gradient(135deg, #0a6ed1, #1b8d92) !important;
   border-color: #0c6792 !important;
+}
+
+.resident-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .resident-header-card h2,
@@ -405,6 +416,22 @@ button:active:not(:disabled) {
   border-radius: 12px;
   border-color: #b7cae0;
   background: linear-gradient(160deg, #ffffff, #eef6ff);
+}
+
+.resident-stats-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.resident-stats-grid .stat h4 {
+  font-size: 0.84rem;
+}
+
+.resident-stats-grid .stat p {
+  font-size: 1.05rem;
+}
+
+.resident-stats-grid .stat .small {
+  font-size: 0.72rem;
 }
 
 .resident-section-statement {
@@ -2980,7 +3007,7 @@ tbody tr:hover {
   }
 
   .resident-stats-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .resident-stats-grid .stat h4 {
@@ -3144,6 +3171,12 @@ tbody tr:hover {
 
   .resident-header-card {
     padding: 10px;
+  }
+
+  .resident-header-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .resident-header-card .btn {

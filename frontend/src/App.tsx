@@ -11652,6 +11652,7 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
     confirmPassword: "",
   });
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordPanelOpen, setPasswordPanelOpen] = useState(false);
 
   const totals = useMemo(() => {
     const amount = statement.reduce((sum, row) => sum + row.amount, 0);
@@ -11868,6 +11869,7 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
         newPassword: "",
         confirmPassword: "",
       });
+      setPasswordPanelOpen(false);
       setMessage("Sifreniz guncellendi");
     } catch (err) {
       console.error(err);
@@ -11895,64 +11897,75 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
     <section className="dashboard resident-dashboard">
       <div className="card user-card resident-header-card">
         <h2>Resident Ekstre</h2>
-        <button className="btn btn-primary" onClick={() => void fetchMyStatement()} disabled={loading}>
-          Yenile
-        </button>
+        <div className="resident-header-actions">
+          <button
+            className="btn btn-ghost"
+            type="button"
+            onClick={() => setPasswordPanelOpen((prev) => !prev)}
+          >
+            {passwordPanelOpen ? "Sifreyi Kapat" : "Sifre Degistir"}
+          </button>
+          <button className="btn btn-primary" onClick={() => void fetchMyStatement()} disabled={loading}>
+            Yenile
+          </button>
+        </div>
       </div>
 
-      <div className="card table-card resident-password-card">
-        <h3>Sifre Degistir</h3>
-        <form className="form-grid compact-row-top-gap" onSubmit={(e) => void handlePasswordChange(e)}>
-          <label>
-            Mevcut Sifre
-            <input
-              type="password"
-              value={passwordForm.currentPassword}
-              onChange={(e) =>
-                setPasswordForm((prev) => ({
-                  ...prev,
-                  currentPassword: e.target.value,
-                }))
-              }
-              placeholder="********"
-              required
-            />
-          </label>
-          <label>
-            Yeni Sifre
-            <input
-              type="password"
-              value={passwordForm.newPassword}
-              onChange={(e) =>
-                setPasswordForm((prev) => ({
-                  ...prev,
-                  newPassword: e.target.value,
-                }))
-              }
-              placeholder="En az 8 karakter, harf ve rakam"
-              required
-            />
-          </label>
-          <label>
-            Yeni Sifre (Tekrar)
-            <input
-              type="password"
-              value={passwordForm.confirmPassword}
-              onChange={(e) =>
-                setPasswordForm((prev) => ({
-                  ...prev,
-                  confirmPassword: e.target.value,
-                }))
-              }
-              placeholder="Yeni sifreyi tekrar girin"
-              required
-            />
-          </label>
-          <button type="submit" className="btn btn-primary" disabled={passwordSaving}>
-            {passwordSaving ? "Kaydediliyor..." : "Sifreyi Guncelle"}
-          </button>
-        </form>
-      </div>
+      {passwordPanelOpen && (
+        <div className="card table-card resident-password-card">
+          <h3>Sifre Degistir</h3>
+          <form className="form-grid compact-row-top-gap" onSubmit={(e) => void handlePasswordChange(e)}>
+            <label>
+              Mevcut Sifre
+              <input
+                type="password"
+                value={passwordForm.currentPassword}
+                onChange={(e) =>
+                  setPasswordForm((prev) => ({
+                    ...prev,
+                    currentPassword: e.target.value,
+                  }))
+                }
+                placeholder="********"
+                required
+              />
+            </label>
+            <label>
+              Yeni Sifre
+              <input
+                type="password"
+                value={passwordForm.newPassword}
+                onChange={(e) =>
+                  setPasswordForm((prev) => ({
+                    ...prev,
+                    newPassword: e.target.value,
+                  }))
+                }
+                placeholder="En az 8 karakter, harf ve rakam"
+                required
+              />
+            </label>
+            <label>
+              Yeni Sifre (Tekrar)
+              <input
+                type="password"
+                value={passwordForm.confirmPassword}
+                onChange={(e) =>
+                  setPasswordForm((prev) => ({
+                    ...prev,
+                    confirmPassword: e.target.value,
+                  }))
+                }
+                placeholder="Yeni sifreyi tekrar girin"
+                required
+              />
+            </label>
+            <button type="submit" className="btn btn-primary" disabled={passwordSaving}>
+              {passwordSaving ? "Kaydediliyor..." : "Sifreyi Guncelle"}
+            </button>
+          </form>
+        </div>
+      )}
 
       <div className="stats-grid resident-stats-grid">
         {statementViewMode === "CLASSIC" ? (
