@@ -11973,7 +11973,6 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
             <article className="card stat">
               <h4>Toplam Borclandirilan</h4>
               <p>{formatTry(totals.amount)}</p>
-              <span className="small">Tum donem tahakkuk toplami</span>
             </article>
             <article className="card stat">
               <h4>Toplam Odenen</h4>
@@ -11986,7 +11985,6 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
             <article className="card stat">
               <h4>Vadesi Gecmis Borc</h4>
               <p>{formatTry(overdueStatementTotals.remaining)}</p>
-              <span className="small">Kalem: {overdueStatementTotals.count}</span>
             </article>
           </>
         ) : (
