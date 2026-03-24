@@ -1203,6 +1203,11 @@ button:active:not(:disabled) {
 }
 
 .statement-classic-row-open td {
+  color: #2f455c;
+  background: #ffffff;
+}
+
+.statement-classic-row-overdue td {
   color: #8a2020;
   background: #fff1f1;
 }

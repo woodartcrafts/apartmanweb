@@ -12170,8 +12170,26 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
                 </tr>
               </thead>
               <tbody>
-                {sortedStatement.map((row) => (
-                  <tr key={row.chargeId}>
+                {sortedStatement.map((row) => {
+                  const isClosed = row.remaining <= 0.0001 || row.status === "CLOSED";
+                  let rowClassName = "statement-classic-row-open";
+
+                  if (isClosed) {
+                    rowClassName = "statement-classic-row-closed";
+                  } else {
+                    const due = new Date(row.dueDate);
+                    if (!Number.isNaN(due.getTime())) {
+                      const todayStart = new Date();
+                      todayStart.setHours(0, 0, 0, 0);
+                      const dueStart = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
+                      if (dueStart < todayStart.getTime()) {
+                        rowClassName = "statement-classic-row-overdue";
+                      }
+                    }
+                  }
+
+                  return (
+                    <tr key={row.chargeId} className={rowClassName}>
                     <td>{row.periodYear}</td>
                     <td>{String(row.periodMonth).padStart(2, "0")}</td>
                     <td>{row.type}</td>
@@ -12182,8 +12200,9 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
                     <td className="col-num">{formatTry(row.paidTotal)}</td>
                     <td className="col-num">{formatTry(row.remaining)}</td>
                     <td>{row.status}</td>
-                  </tr>
-                ))}
+                    </tr>
+                  );
+                })}
                 {statement.length === 0 && (
                   <tr>
                     <td colSpan={10} className="empty">
