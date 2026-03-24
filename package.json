@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "Apartment management MVP (tahakkuk, odeme, kapama, ekstre, role-based auth)",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
