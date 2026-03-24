@@ -1102,9 +1102,9 @@ function getExcelCellValue(value: ExcelJS.CellValue | undefined): unknown {
   return String(value);
 }
 
-async function parseExcelRowsAsObjects(fileBuffer: Uint8Array): Promise<Record<string, unknown>[]> {
+async function parseExcelRowsAsObjects(fileBuffer: Buffer): Promise<Record<string, unknown>[]> {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(fileBuffer);
+  await workbook.xlsx.load(fileBuffer as any);
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {
     return [];
@@ -1140,9 +1140,9 @@ async function parseExcelRowsAsObjects(fileBuffer: Uint8Array): Promise<Record<s
   return rows;
 }
 
-async function parseExcelRowsAsArray(fileBuffer: Uint8Array): Promise<unknown[][]> {
+async function parseExcelRowsAsArray(fileBuffer: Buffer): Promise<unknown[][]> {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(fileBuffer);
+  await workbook.xlsx.load(fileBuffer as any);
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {
     return [];
@@ -1391,7 +1391,7 @@ async function parseUploadRows(file: Express.Multer.File): Promise<UploadPayment
   const lowerName = file.originalname.toLowerCase();
 
   if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
-    const rows = await parseExcelRowsAsObjects(new Uint8Array(file.buffer));
+    const rows = await parseExcelRowsAsObjects(file.buffer);
     return rows.map((row) => normalizeRowObject(row)).filter(isUploadPaymentRow);
   }
 
@@ -1573,7 +1573,7 @@ async function parseBankStatementRows(file: Express.Multer.File): Promise<BankSt
     return [];
   }
 
-  const rows = await parseExcelRowsAsArray(new Uint8Array(file.buffer));
+  const rows = await parseExcelRowsAsArray(file.buffer);
 
   const dateHeaderKeys = new Set([
     "tarihsaat",
@@ -6915,6 +6915,7 @@ router.get("/reports/apartment-balance-matrix", async (req, res) => {
       },
       select: {
         amount: true,
+        chargeId: true,
         charge: {
           select: {
             apartmentId: true,

@@ -262,9 +262,9 @@ function getExcelCellValue(value: ExcelJS.CellValue | undefined): unknown {
   return String(value);
 }
 
-async function parseExcelRowsAsObjects(fileBuffer: Uint8Array): Promise<Record<string, unknown>[]> {
+async function parseExcelRowsAsObjects(fileBuffer: Buffer): Promise<Record<string, unknown>[]> {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(fileBuffer);
+  await workbook.xlsx.load(fileBuffer as any);
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {
     return [];
@@ -306,7 +306,7 @@ async function parseApartmentUploadRows(file: Express.Multer.File): Promise<Apar
     return [];
   }
 
-  const rows = await parseExcelRowsAsObjects(new Uint8Array(file.buffer));
+  const rows = await parseExcelRowsAsObjects(file.buffer);
 
   return rows
     .map((row) => normalizeApartmentUploadRow(row))
