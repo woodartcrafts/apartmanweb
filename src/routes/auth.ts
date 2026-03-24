@@ -9,6 +9,16 @@ const router = Router();
 const AUTH_COOKIE_NAME = "auth_token";
 const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+function getAuthCookieOptions() {
+  const isProduction = process.env.NODE_ENV === "production";
+  const sameSite: "lax" | "none" = isProduction ? "none" : "lax";
+  return {
+    httpOnly: true,
+    sameSite,
+    secure: isProduction,
+  };
+}
+
 function normalizePhone(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -93,9 +103,7 @@ router.post("/login", async (req, res) => {
   );
 
   res.cookie(AUTH_COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    ...getAuthCookieOptions(),
     maxAge: AUTH_COOKIE_MAX_AGE_MS,
   });
 
@@ -114,9 +122,7 @@ router.post("/login", async (req, res) => {
 
 router.post("/logout", (_req, res) => {
   res.clearCookie(AUTH_COOKIE_NAME, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    ...getAuthCookieOptions(),
   });
 
   return res.json({ ok: true });
