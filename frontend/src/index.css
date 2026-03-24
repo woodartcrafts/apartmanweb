@@ -3284,13 +3284,16 @@ tbody tr:hover {
   .resident-section-statement .admin-row {
     flex-direction: row;
     align-items: center;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     margin-left: 0;
+    width: 100%;
+    gap: 6px;
   }
 
   .resident-section-expense .section-head .btn,
   .resident-section-statement .admin-row .btn {
     width: auto;
+    white-space: normal;
   }
 
   .resident-section-expense .report-compact-table th,
