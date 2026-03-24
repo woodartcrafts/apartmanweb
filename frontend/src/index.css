@@ -392,6 +392,8 @@ button:active:not(:disabled) {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  padding: 8px 12px !important;
+  min-height: 0;
   background: linear-gradient(135deg, #0a6ed1, #1b8d92) !important;
   border-color: #0c6792 !important;
 }
@@ -407,6 +409,17 @@ button:active:not(:disabled) {
   color: #ffffff;
 }
 
+.resident-header-card h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
+.resident-header-actions .btn {
+  padding: 6px 10px;
+  min-height: 34px;
+}
+
 .resident-password-card {
   background: linear-gradient(180deg, #ffffff, #f5fbf7) !important;
   border-color: #9fcdb4 !important;
@@ -418,20 +431,26 @@ button:active:not(:disabled) {
   background: linear-gradient(160deg, #ffffff, #eef6ff);
 }
 
-.resident-stats-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+
+.stats-grid.resident-stats-grid {
+  grid-template-columns: repeat(4, minmax(170px, 1fr));
+  gap: 8px;
 }
 
 .resident-stats-grid .stat h4 {
-  font-size: 0.84rem;
+  font-size: 0.8rem;
 }
 
 .resident-stats-grid .stat p {
-  font-size: 1.05rem;
+  font-size: 0.98rem;
 }
 
 .resident-stats-grid .stat .small {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
+}
+
+.resident-stats-grid .stat {
+  padding: 8px 10px;
 }
 
 .resident-section-statement {
@@ -453,6 +472,13 @@ button:active:not(:disabled) {
 .resident-section-expense tbody .btn {
   min-width: 180px;
   text-align: left;
+}
+
+.resident-section-statement .admin-row .btn {
+  min-height: 32px;
+  padding: 5px 10px;
+  font-size: 0.82rem;
+  line-height: 1.1;
 }
 
 .resident-section-expense {
@@ -3006,7 +3032,7 @@ tbody tr:hover {
     width: 100%;
   }
 
-  .resident-stats-grid {
+  .stats-grid.resident-stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
