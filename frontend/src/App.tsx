@@ -12026,12 +12026,12 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
               <p>{formatTry(totals.paid)}</p>
             </article>
             <article className="card stat">
-              <h4>Kalan Bakiye</h4>
-              <p>{formatTry(totals.remaining)}</p>
-            </article>
-            <article className="card stat">
               <h4>Vadesi Gecmis Borc</h4>
               <p>{formatTry(overdueStatementTotals.remaining)}</p>
+            </article>
+            <article className="card stat">
+              <h4>Kalan Bakiye</h4>
+              <p>{formatTry(totals.remaining)}</p>
             </article>
           </>
         ) : (
@@ -12177,15 +12177,15 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
         </div>
         <div className="table-wrap">
           {statementViewMode === "CLASSIC" ? (
-            <table>
+            <table className="resident-classic-statement-table">
               <thead>
                 <tr>
                   <th>Yil</th>
                   <th>Ay</th>
                   <th>Aciklama</th>
                   <th>Son Odeme Tarihi</th>
-                  <th>Odeme Tarihi</th>
-                  <th>Odeme Farki</th>
+                  <th>Odenme Tarihi</th>
+                  <th>Adat</th>
                   <th className="col-num">Tutar</th>
                   <th className="col-num">Odenen</th>
                   <th className="col-num">Kalan</th>
@@ -12446,7 +12446,10 @@ function App() {
       <div className="ambient ambient-two" />
 
       <header className="hero">
-        <h1>ApartmanWeb MVP | Tahakkuk ve Ekstre Paneli</h1>
+        <h1>
+          ApartmanWeb MVP
+          <span className="hero-title-suffix"> | Tahakkuk ve Ekstre Paneli</span>
+        </h1>
         {isAdmin && (
           <div className="hero-actions">
             <button className="btn btn-ghost" type="button" onClick={openCurrentScreenInNewTab}>

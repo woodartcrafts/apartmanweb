@@ -204,8 +204,8 @@ export function StatementPage({
                   <th>Ay</th>
                   <th>Aciklama</th>
                   <th>Son Odeme Tarihi</th>
-                  <th>Odeme Tarihi</th>
-                  <th>Odeme Farki</th>
+                  <th>Odenme Tarihi</th>
+                  <th>Adat</th>
                   <th className="col-num">Tutar</th>
                   <th className="col-num">Odenen</th>
                   <th className="col-num">Kalan</th>
