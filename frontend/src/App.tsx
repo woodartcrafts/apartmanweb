@@ -11659,6 +11659,32 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
     return { amount, paid, remaining: amount - paid };
   }, [statement]);
 
+  const overdueStatementTotals = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    let overdueRemaining = 0;
+    let overdueCount = 0;
+
+    for (const row of statement) {
+      if (row.remaining <= 0) {
+        continue;
+      }
+
+      const dueAt = new Date(row.dueDate).getTime();
+      if (!Number.isFinite(dueAt) || dueAt >= todayStart) {
+        continue;
+      }
+
+      overdueRemaining += row.remaining;
+      overdueCount += 1;
+    }
+
+    return {
+      remaining: Number(overdueRemaining.toFixed(2)),
+      count: overdueCount,
+    };
+  }, [statement]);
+
   const sortedStatement = useMemo(
     () => [...statement].sort((a, b) => a.periodYear - b.periodYear || a.periodMonth - b.periodMonth),
     [statement]
@@ -11932,16 +11958,22 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
         {statementViewMode === "CLASSIC" ? (
           <>
             <article className="card stat">
-              <h4>Toplam Borc</h4>
+              <h4>Toplam Borclandirilan</h4>
               <p>{formatTry(totals.amount)}</p>
+              <span className="small">Tum donem tahakkuk toplami</span>
             </article>
             <article className="card stat">
               <h4>Toplam Odenen</h4>
               <p>{formatTry(totals.paid)}</p>
             </article>
             <article className="card stat">
-              <h4>Kalan</h4>
+              <h4>Kalan Bakiye</h4>
               <p>{formatTry(totals.remaining)}</p>
+            </article>
+            <article className="card stat">
+              <h4>Vadesi Gecmis Borc</h4>
+              <p>{formatTry(overdueStatementTotals.remaining)}</p>
+              <span className="small">Kalem: {overdueStatementTotals.count}</span>
             </article>
           </>
         ) : (
