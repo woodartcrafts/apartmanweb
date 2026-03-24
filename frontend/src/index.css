@@ -1634,11 +1634,14 @@ td {
 
 .apartment-list-page-table .actions-cell {
   gap: 4px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .apartment-list-page-table .actions-cell .btn {
   padding: 4px 6px;
   font-size: 0.7rem;
+  min-width: 0;
 }
 
 .apartment-resident-inline-list {
@@ -1648,15 +1651,9 @@ td {
 
 .apartment-resident-inline {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(130px, 1fr) auto;
+  grid-template-columns: minmax(150px, 1fr) auto;
   align-items: center;
   gap: 6px;
-}
-
-.apartment-resident-inline-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .apartment-resident-inline input {

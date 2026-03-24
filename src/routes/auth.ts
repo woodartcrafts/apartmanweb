@@ -1,5 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { config } from "../config";
@@ -8,6 +9,14 @@ import { prisma } from "../db";
 const router = Router();
 const AUTH_COOKIE_NAME = "auth_token";
 const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const loginRateLimiter = rateLimit({
+  windowMs: config.authRateLimit.windowMs,
+  max: config.authRateLimit.maxAttempts,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { message: "Cok fazla giris denemesi. Lutfen daha sonra tekrar deneyin." },
+});
 
 function getAuthCookieOptions() {
   const isProduction = process.env.NODE_ENV === "production";
@@ -53,7 +62,7 @@ function normalizePhone(value: string): string | null {
   return null;
 }
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginRateLimiter, async (req, res) => {
   const schema = z
     .object({
       identifier: z.string().trim().min(3).max(64).optional(),
@@ -77,11 +86,20 @@ router.post("/login", async (req, res) => {
 
   const password = parsed.data.password;
   const rawIdentifier = (parsed.data.identifier ?? parsed.data.email ?? "").trim();
-  const identifier = rawIdentifier.toLowerCase();
+  const normalizedIdentifier = rawIdentifier.toLowerCase();
 
-  const user = identifier.includes("@")
-    ? await prisma.user.findUnique({ where: { email: identifier } })
-    : await prisma.user.findUnique({ where: { phone: normalizePhone(identifier) ?? "" } });
+  const user = normalizedIdentifier.includes("@")
+    ? await prisma.user.findFirst({
+        where: {
+          email: {
+            equals: rawIdentifier,
+            mode: "insensitive",
+          },
+        },
+      })
+    : await prisma.user.findFirst({
+        where: { phone: normalizePhone(normalizedIdentifier) ?? "" },
+      });
 
   if (!user) {
     return res.status(401).json({ message: "Invalid credentials" });

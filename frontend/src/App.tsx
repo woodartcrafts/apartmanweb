@@ -8596,10 +8596,10 @@ function AdminPage() {
         <Route
           path="/reports/monthly-balance-matrix"
           element={
-            <section className="dashboard report-page">
+            <section className="dashboard report-page monthly-balance-report-page">
               <div className="card table-card report-page-card">
                 <div className="section-head report-toolbar">
-                  <h3>Daire Aylik Bakiye Matrisi</h3>
+                  <h3>Daire Listesi Raporu</h3>
                   <div className="admin-row">
                     <button
                       className="btn btn-primary btn-run"
@@ -8628,12 +8628,18 @@ function AdminPage() {
                 </div>
 
                 <p className="small">
-                  Her ay icin sadece o aya ait odenmeyen tutar gorunur. Son kolon rapor tarihindeki vadesi gecmis
-                  odenmeyen bakiyedir.
+                  Daire bazli aylik kalan borclari ve rapor tarihindeki geciken toplamlari tek tabloda izleyin.
                 </p>
-                {apartmentBalanceMatrixSnapshotAt && (
-                  <p className="small">Rapor tarihi: {formatDateTimeTr(apartmentBalanceMatrixSnapshotAt)}</p>
-                )}
+
+                <div className="monthly-balance-meta compact-row-top-gap">
+                  <span className="month-chip">Yil: {apartmentBalanceMatrixYear || "-"}</span>
+                  <span className="month-chip">
+                    Rapor Tarihi: {apartmentBalanceMatrixSnapshotAt ? formatDateTimeTr(apartmentBalanceMatrixSnapshotAt) : "-"}
+                  </span>
+                  <span className="month-chip">
+                    Satir: {apartmentBalanceMatrixTotals ? apartmentBalanceMatrixTotals.apartmentCount : sortedApartmentBalanceMatrixRows.length}
+                  </span>
+                </div>
 
                 {apartmentBalanceMatrixTotals && (
                   <div className="stats-grid compact-row-top-gap">
@@ -8708,7 +8714,7 @@ function AdminPage() {
                             onKeyDown={(event) => onMonthlyBalanceMatrixRowKeyDown(event, row.apartmentId)}
                           >
                             <td>{`${row.blockName}-${row.apartmentDoorNo}`}</td>
-                            <td>{row.occupant || "-"}</td>
+                            <td className="monthly-balance-occupant" title={row.occupant || "-"}>{row.occupant || "-"}</td>
                             {row.monthBalances.map((balance, index) => (
                               <td key={`${row.apartmentId}-${index}`} className={`col-num${balance < 0 ? " col-num-negative" : ""}`}>
                                 {formatTry(balance)}
@@ -8722,7 +8728,7 @@ function AdminPage() {
                         })
                       )}
                       {apartmentBalanceMatrixTotals && apartmentBalanceMatrixMonths.length > 0 && (
-                        <tr>
+                        <tr className="monthly-balance-total-row">
                           <td colSpan={2}>
                             <b>Toplam</b>
                           </td>
@@ -12270,8 +12276,20 @@ function App() {
         body: JSON.stringify({ identifier, password }),
       });
 
+      const errorPayload = (await res.clone().json().catch(() => null)) as { message?: string } | null;
+
       if (!res.ok) {
-        throw new Error("Login failed");
+        if (res.status === 429) {
+          setAuthMessage(errorPayload?.message ?? "Cok fazla deneme yaptiniz. Lutfen biraz bekleyip tekrar deneyin.");
+          return;
+        }
+
+        if (res.status === 401) {
+          setAuthMessage(errorPayload?.message ?? "Giris basarisiz. Telefon/e-posta veya sifreyi kontrol et.");
+          return;
+        }
+
+        throw new Error(errorPayload?.message ?? `Login failed (${res.status})`);
       }
 
       const data = (await res.json()) as LoginResponse;

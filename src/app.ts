@@ -4,7 +4,6 @@ import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
 import helmet from "helmet";
 import morgan from "morgan";
-import rateLimit from "express-rate-limit";
 import { config } from "./config";
 import authRoutes from "./routes/auth";
 import adminRoutes from "./routes/admin";
@@ -36,19 +35,11 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(morgan("dev"));
 
-const authLimiter = rateLimit({
-  windowMs: config.authRateLimit.windowMs,
-  max: config.authRateLimit.maxAttempts,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: "Cok fazla giris denemesi. Lutfen daha sonra tekrar deneyin." },
-});
-
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/resident", residentRoutes);
 

@@ -616,12 +616,6 @@ export function ApartmentListPage({
                         <div className="apartment-resident-inline-list">
                           {apartment.residentUsers.map((resident) => (
                             <div key={resident.id} className="apartment-resident-inline">
-                              <span
-                                className="small apartment-resident-inline-name"
-                                title={`${resident.fullName} (${resident.email})`}
-                              >
-                                <b>{resident.fullName}</b>
-                              </span>
                               <input
                                 type="text"
                                 value={passwordDraftByUserId[resident.id] ?? ""}
@@ -631,7 +625,8 @@ export function ApartmentListPage({
                                     [resident.id]: e.target.value,
                                   }))
                                 }
-                                placeholder="Resident sifresi"
+                                placeholder={`Resident sifresi (${resident.fullName})`}
+                                title={`${resident.fullName} (${resident.email})`}
                               />
                               <button
                                 type="button"
