@@ -157,6 +157,7 @@ export function StatementPage({
                   <th>Ay</th>
                   <th>Aciklama</th>
                   <th>Son Odeme Tarihi</th>
+                  <th>Odeme Tarihi</th>
                   <th className="col-num">Tutar</th>
                   <th className="col-num">Odenen</th>
                   <th className="col-num">Kalan</th>
@@ -177,6 +178,7 @@ export function StatementPage({
                     <td>{String(row.periodMonth).padStart(2, "0")}</td>
                     <td>{row.type}</td>
                     <td>{formatDateTr(row.dueDate)}</td>
+                    <td>{row.status === "CLOSED" ? (row.paidAt ? formatDateTr(row.paidAt) : "-") : "-"}</td>
                     <td className="col-num">{formatTry(row.amount)}</td>
                     <td className="col-num">{formatTry(row.paidTotal)}</td>
                     <td className="col-num">{formatTry(row.remaining)}</td>
@@ -185,7 +187,7 @@ export function StatementPage({
                 ))}
                 {statementCount === 0 && (
                   <tr>
-                    <td colSpan={8} className="empty">
+                    <td colSpan={9} className="empty">
                       Henuz ekstre verisi yok
                     </td>
                   </tr>

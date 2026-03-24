@@ -14,6 +14,7 @@ export type ClassicStatementItem = {
   remaining: number;
   status: string;
   dueDate: Date;
+  paidAt: Date | null;
 };
 
 export type AccountingStatementItem = {
@@ -85,6 +86,13 @@ export async function getApartmentStatements(apartmentId: string): Promise<{
   const statement: ClassicStatementItem[] = charges.map((charge) => {
     const amountCents = toCents(charge.amount);
     const paidTotalCents = charge.paymentItems.reduce((sum, item) => addMoneyCents(sum, item.amount), 0);
+    const latestPaidAt = charge.paymentItems.reduce<Date | null>((latest, item) => {
+      const current = item.payment.paidAt;
+      if (!latest || current.getTime() > latest.getTime()) {
+        return current;
+      }
+      return latest;
+    }, null);
 
     return {
       chargeId: charge.id,
@@ -98,6 +106,7 @@ export async function getApartmentStatements(apartmentId: string): Promise<{
       remaining: fromCents(amountCents - paidTotalCents),
       status: charge.status,
       dueDate: charge.dueDate,
+      paidAt: latestPaidAt,
     };
   });
 

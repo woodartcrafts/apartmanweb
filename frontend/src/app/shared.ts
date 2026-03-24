@@ -23,6 +23,7 @@ export type StatementItem = {
   remaining: number;
   status: string;
   dueDate: string;
+  paidAt?: string | null;
 };
 
 export type ApartmentType = "KUCUK" | "BUYUK";

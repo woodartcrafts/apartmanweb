@@ -12010,7 +12010,12 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
 
         <section className="expense-report-summary compact-row-top-gap">
           <div className="expense-report-summary-head">
-            <h4>Gider Kalemi Bazli Toplamlar</h4>
+            <h4>
+              Gider Kalemi Bazli Toplamlar
+              {!selectedExpenseItemId && (
+                <span className="small"> (Detayi gormek icin yukaridan bir gider kalemine tiklayin.)</span>
+              )}
+            </h4>
             <span className="small">
               Kalem: {expenseReport?.topItems.length ?? 0} | Toplam: {formatTry(expenseReport?.totalAmount ?? 0)} | Kayit: {expenseReport?.totalCount ?? 0}
             </span>
@@ -12057,8 +12062,6 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
             <p className="small">Gider ozeti bulunmuyor.</p>
           )}
         </section>
-
-        {!selectedExpenseItemId && <p className="small compact-row-top-gap">Detayi gormek icin yukaridan bir gider kalemine tiklayin.</p>}
 
         {selectedExpenseItemId && (
           <>
@@ -12134,6 +12137,7 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
                   <th>Ay</th>
                   <th>Aciklama</th>
                   <th>Son Odeme Tarihi</th>
+                  <th>Odeme Tarihi</th>
                   <th className="col-num">Tutar</th>
                   <th className="col-num">Odenen</th>
                   <th className="col-num">Kalan</th>
@@ -12147,6 +12151,7 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
                     <td>{String(row.periodMonth).padStart(2, "0")}</td>
                     <td>{row.type}</td>
                     <td>{formatDateTr(row.dueDate)}</td>
+                    <td>{row.status === "CLOSED" ? (row.paidAt ? formatDateTr(row.paidAt) : "-") : "-"}</td>
                     <td className="col-num">{formatTry(row.amount)}</td>
                     <td className="col-num">{formatTry(row.paidTotal)}</td>
                     <td className="col-num">{formatTry(row.remaining)}</td>
@@ -12155,7 +12160,7 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
                 ))}
                 {statement.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="empty">
+                    <td colSpan={9} className="empty">
                       Henuz ekstre verisi yok
                     </td>
                   </tr>

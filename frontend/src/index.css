@@ -474,11 +474,32 @@ button:active:not(:disabled) {
   text-align: left;
 }
 
+.resident-section-statement .compact-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 18px;
+}
+
+.resident-section-statement .compact-row h3 {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.resident-section-statement .admin-row {
+  margin-left: 0;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
 .resident-section-statement .admin-row .btn {
   min-height: 32px;
   padding: 5px 10px;
   font-size: 0.82rem;
   line-height: 1.1;
+  width: auto;
+  white-space: nowrap;
 }
 
 .resident-section-expense {
@@ -3214,9 +3235,22 @@ tbody tr:hover {
     gap: 6px;
   }
 
+  .resident-section-statement .compact-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .resident-section-statement .admin-row {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    margin-left: 0;
+  }
+
   .resident-section-expense .section-head .btn,
   .resident-section-statement .admin-row .btn {
-    width: 100%;
+    width: auto;
   }
 
   .resident-section-expense .report-compact-table th,
