@@ -11709,28 +11709,51 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
     [accountingStatement]
   );
 
-  function formatPaymentDayDiff(dueDate: string, paidAt?: string | null): string {
-    if (!paidAt) {
-      return "-";
-    }
-
+  function formatPaymentDayDiff(
+    dueDate: string,
+    paidAt: string | null | undefined,
+    status: string,
+    remaining: number
+  ): string {
     const due = new Date(dueDate);
-    const paid = new Date(paidAt);
-    if (Number.isNaN(due.getTime()) || Number.isNaN(paid.getTime())) {
+    if (Number.isNaN(due.getTime())) {
       return "-";
     }
 
     const dueStart = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
-    const paidStart = new Date(paid.getFullYear(), paid.getMonth(), paid.getDate()).getTime();
-    const diffDays = Math.round((paidStart - dueStart) / (1000 * 60 * 60 * 24));
 
-    if (diffDays > 0) {
-      return `${diffDays} gun gec`;
+    if (paidAt) {
+      const paid = new Date(paidAt);
+      if (Number.isNaN(paid.getTime())) {
+        return "-";
+      }
+
+      const paidStart = new Date(paid.getFullYear(), paid.getMonth(), paid.getDate()).getTime();
+      const diffDays = Math.round((paidStart - dueStart) / (1000 * 60 * 60 * 24));
+
+      if (diffDays > 0) {
+        return `${diffDays} gun gec`;
+      }
+      if (diffDays < 0) {
+        return `${Math.abs(diffDays)} gun erken`;
+      }
+      return "Tam gununde";
     }
-    if (diffDays < 0) {
-      return `${Math.abs(diffDays)} gun erken`;
+
+    const isClosed = status === "CLOSED" || remaining <= 0.0001;
+    if (isClosed) {
+      return "-";
     }
-    return "Tam gununde";
+
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const overdueDays = Math.floor((todayStart - dueStart) / (1000 * 60 * 60 * 24));
+
+    if (overdueDays > 0) {
+      return `${overdueDays} gun gecikmis - Odeme bekleniyor`;
+    }
+
+    return "-";
   }
 
   const selectedExpenseItem = useMemo(
@@ -12195,7 +12218,7 @@ function ResidentPage({ user }: { user: LoginResponse["user"] | null }) {
                     <td>{row.type}</td>
                     <td>{formatDateTr(row.dueDate)}</td>
                     <td>{row.status === "CLOSED" ? (row.paidAt ? formatDateTr(row.paidAt) : "-") : "-"}</td>
-                    <td>{row.status === "CLOSED" ? formatPaymentDayDiff(row.dueDate, row.paidAt) : "-"}</td>
+                    <td>{formatPaymentDayDiff(row.dueDate, row.paidAt, row.status, row.remaining)}</td>
                     <td className="col-num">{formatTry(row.amount)}</td>
                     <td className="col-num">{formatTry(row.paidTotal)}</td>
                     <td className="col-num">{formatTry(row.remaining)}</td>
