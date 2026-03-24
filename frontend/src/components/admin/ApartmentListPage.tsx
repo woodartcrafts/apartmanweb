@@ -613,12 +613,15 @@ export function ApartmentListPage({
                       {apartment.residentUsers.length === 0 ? (
                         <span className="small">Resident kullanici yok</span>
                       ) : (
-                        <div className="guide-list">
+                        <div className="apartment-resident-inline-list">
                           {apartment.residentUsers.map((resident) => (
-                            <div key={resident.id} className="card">
-                              <p className="small">
-                                <b>{resident.fullName}</b> ({resident.email})
-                              </p>
+                            <div key={resident.id} className="apartment-resident-inline">
+                              <span
+                                className="small apartment-resident-inline-name"
+                                title={`${resident.fullName} (${resident.email})`}
+                              >
+                                <b>{resident.fullName}</b>
+                              </span>
                               <input
                                 type="text"
                                 value={passwordDraftByUserId[resident.id] ?? ""}
@@ -630,20 +633,19 @@ export function ApartmentListPage({
                                 }
                                 placeholder="Resident sifresi"
                               />
-                              <div className="admin-row compact-row-top-gap">
-                                <button
-                                  type="button"
-                                  className="btn btn-primary"
-                                  disabled={passwordSavingUserId === resident.id}
-                                  onClick={() => void setResidentPassword(apartment.id, resident.id)}
-                                >
-                                  {passwordSavingUserId === resident.id ? "Kaydediliyor..." : "Sifreyi Kaydet"}
-                                </button>
-                              </div>
-                              <p className="small">
-                                Son degisim: {resident.lastPasswordChangedAt ? formatDateTimeTr(resident.lastPasswordChangedAt) : "-"}
-                                {resident.lastPasswordChangedByName ? ` | ${resident.lastPasswordChangedByName}` : ""}
-                              </p>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                disabled={passwordSavingUserId === resident.id}
+                                onClick={() => void setResidentPassword(apartment.id, resident.id)}
+                                title={
+                                  `Son degisim: ${
+                                    resident.lastPasswordChangedAt ? formatDateTimeTr(resident.lastPasswordChangedAt) : "-"
+                                  }${resident.lastPasswordChangedByName ? ` | ${resident.lastPasswordChangedByName}` : ""}`
+                                }
+                              >
+                                {passwordSavingUserId === resident.id ? "Kaydediliyor..." : "Kaydet"}
+                              </button>
                             </div>
                           ))}
                         </div>

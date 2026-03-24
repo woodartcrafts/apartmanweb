@@ -127,7 +127,9 @@ body {
 
 .nav-links {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
+  overflow-x: auto;
   gap: 6px;
 }
 
@@ -333,8 +335,10 @@ button:active:not(:disabled) {
 }
 
 .nav-links .btn {
-  width: 100%;
-  text-align: left;
+  width: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  text-align: center;
 }
 
 .nav-links .btn:not(.active):hover:not(:disabled) {
@@ -1637,6 +1641,36 @@ td {
   font-size: 0.7rem;
 }
 
+.apartment-resident-inline-list {
+  display: grid;
+  gap: 6px;
+}
+
+.apartment-resident-inline {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(130px, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.apartment-resident-inline-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apartment-resident-inline input {
+  min-height: 28px;
+  padding: 4px 6px;
+  font-size: 0.78rem;
+}
+
+.apartment-resident-inline .btn {
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
 .apartment-list-th-head {
   display: inline-flex;
   align-items: center;
@@ -1664,29 +1698,43 @@ td {
 }
 
 .monthly-balance-matrix-table {
-  min-width: 0;
+  min-width: 980px;
   width: 100%;
   table-layout: fixed;
 }
 
 .monthly-balance-matrix-table th,
 .monthly-balance-matrix-table td {
-  padding: 5px 4px;
-  font-size: 0.72rem;
-  line-height: 1.15;
+  padding: 8px 7px;
+  font-size: 0.78rem;
+  line-height: 1.2;
   white-space: nowrap;
+}
+
+.monthly-balance-matrix-table thead th {
+  font-weight: 700;
+  color: #23435f;
 }
 
 .monthly-balance-matrix-table th:first-child,
 .monthly-balance-matrix-table td:first-child {
-  width: 74px;
+  width: 92px;
 }
 
 .monthly-balance-matrix-table th:nth-child(2),
 .monthly-balance-matrix-table td:nth-child(2) {
-  width: 118px;
+  width: 210px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.monthly-balance-occupant {
+  font-weight: 600;
+  color: #263c50;
+}
+
+.monthly-balance-matrix-table tbody tr:nth-child(even):not(.monthly-balance-total-row) td {
+  background: #f9fbfd;
 }
 
 .report-compact-table.monthly-balance-matrix-table tbody tr.monthly-balance-row-overdue:not(.monthly-balance-row-fractional) td {
@@ -1707,12 +1755,23 @@ td {
 }
 
 .monthly-balance-matrix-table tbody tr.monthly-balance-row-clickable:hover td {
-  filter: brightness(0.985);
+  filter: brightness(0.975);
 }
 
 .monthly-balance-matrix-table tbody tr.monthly-balance-row-clickable:focus-visible td {
   outline: 2px solid #2d6ea3;
   outline-offset: -2px;
+}
+
+.monthly-balance-total-row td {
+  background: #eef4fb !important;
+  border-top: 2px solid #9fb7cf;
+}
+
+.monthly-balance-report-page .monthly-balance-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .overdue-payments-wrap {
@@ -2685,11 +2744,13 @@ tbody tr:hover {
   }
 
   .nav-links {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
   }
 
   .nav-links .btn {
-    text-align: center;
+    flex: 0 0 auto;
   }
 }
 
