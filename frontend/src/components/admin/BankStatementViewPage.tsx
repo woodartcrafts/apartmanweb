@@ -66,7 +66,7 @@ export function BankStatementViewPage({
   }, [safeRows, openingBalance]);
 
   return (
-    <section className="dashboard">
+    <section className="dashboard report-page bank-statement-view-page">
       <div className="card table-card">
         <div className="section-head">
           <h3>Banka Hareketleri</h3>
@@ -82,17 +82,17 @@ export function BankStatementViewPage({
 
         <p className="small">Sistemdeki banka hareketleri listelenir. Siralama en yeni tarihten eskiye dogrudur.</p>
 
-        <div className="upload-batch-filter-row compact-row-top-gap">
-          <label>
-            Baslangic Tarihi
+        <div className="upload-batch-filter-row bank-statement-filter-row compact-row-top-gap">
+          <label className="bank-statement-filter-inline">
+            <span>Baslangic Tarihi</span>
             <input
               type="date"
               value={filter.from}
               onChange={(e) => setFilter((prev) => ({ ...prev, from: e.target.value }))}
             />
           </label>
-          <label>
-            Bitis Tarihi
+          <label className="bank-statement-filter-inline">
+            <span>Bitis Tarihi</span>
             <input
               type="date"
               value={filter.to}
@@ -102,7 +102,7 @@ export function BankStatementViewPage({
         </div>
 
         <div className="table-wrap compact-row-top-gap">
-          <table className="apartment-list-table report-compact-table">
+          <table className="apartment-list-table report-compact-table bank-statement-table">
             <thead>
               <tr>
                 <th>Tarih</th>
@@ -127,15 +127,28 @@ export function BankStatementViewPage({
                     <td>{formatDateTr(row.occurredAt)}</td>
                     <td>{row.entryType === "IN" ? "Giris" : "Cikis"}</td>
                     <td className={`col-num ${row.entryType === "OUT" ? "col-num-negative" : ""}`}>
-                      {row.entryType === "IN" ? "+" : "-"}
+                      {row.entryType === "OUT" ? "-" : ""}
                       {formatTry(row.amount)}
                     </td>
                     <td className={`col-num ${(balanceByRowId.get(row.id) ?? 0) < 0 ? "col-num-negative" : ""}`}>
                       {formatTry(balanceByRowId.get(row.id) ?? 0)}
                     </td>
-                    <td>{row.description ?? "-"}</td>
-                    <td>{row.reference ?? "-"}</td>
-                    <td>
+                    <td title={row.description ?? "-"}>
+                      {row.description ?? "-"}
+                    </td>
+                    <td className="bank-statement-cell-reference" title={row.reference ?? "-"}>
+                      {row.reference ?? "-"}
+                    </td>
+                    <td
+                      className="bank-statement-cell-source"
+                      title={
+                        row.source === "BANK_STATEMENT_UPLOAD"
+                          ? `Banka Upload${row.fileName ? ` (${row.fileName})` : ""}`
+                          : row.source === "PAYMENT_UPLOAD"
+                            ? "Toplu Odeme Upload"
+                            : "Manuel"
+                      }
+                    >
                       {row.source === "BANK_STATEMENT_UPLOAD"
                         ? `Banka Upload${row.fileName ? ` (${row.fileName})` : ""}`
                         : row.source === "PAYMENT_UPLOAD"

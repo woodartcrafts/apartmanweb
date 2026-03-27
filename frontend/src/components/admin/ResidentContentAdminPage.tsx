@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
   apiBase,
@@ -55,6 +55,22 @@ export function ResidentContentAdminPage() {
   const [editingPollId, setEditingPollId] = useState<string | null>(null);
   const [announcementForm, setAnnouncementForm] = useState<ResidentAnnouncementFormState>(initialAnnouncementFormState);
   const [pollForm, setPollForm] = useState<ResidentPollFormState>(initialPollFormState);
+
+  const residentContentStats = useMemo(() => {
+    const activeAnnouncementCount = announcementRows.filter((x) => x.isActive).length;
+    const activePollCount = pollRows.filter((x) => x.isActive).length;
+    const totalVoteCount = pollRows.reduce((sum, x) => sum + x.totalVotes, 0);
+    const totalPollOptionCount = pollRows.reduce((sum, x) => sum + x.options.length, 0);
+
+    return {
+      totalAnnouncementCount: announcementRows.length,
+      activeAnnouncementCount,
+      totalPollCount: pollRows.length,
+      activePollCount,
+      totalVoteCount,
+      totalPollOptionCount,
+    };
+  }, [announcementRows, pollRows]);
 
   const adminRequest = useCallback(async <T,>(
     endpoint: string,
@@ -189,6 +205,34 @@ export function ResidentContentAdminPage() {
     setAnnouncementForm(initialAnnouncementFormState);
   }
 
+  async function deleteResidentAnnouncement(row: AdminResidentAnnouncementRow): Promise<void> {
+    const accepted = window.confirm("Bu duyuru silinsin mi?");
+    if (!accepted) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await adminRequest(`/api/admin/resident-content/announcements/${row.id}`, {
+        method: "DELETE",
+      });
+
+      if (editingAnnouncementId === row.id) {
+        setEditingAnnouncementId(null);
+        setAnnouncementForm(initialAnnouncementFormState);
+      }
+
+      await fetchData();
+      setMessage("Duyuru silindi");
+      showSaveNotice("Duyuru silindi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Duyuru silinemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function onSubmitResidentPoll(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
     setLoading(true);
@@ -266,8 +310,36 @@ export function ResidentContentAdminPage() {
     setPollForm(initialPollFormState);
   }
 
+  async function deleteResidentPoll(row: AdminResidentPollRow): Promise<void> {
+    const accepted = window.confirm("Bu anket silinsin mi?");
+    if (!accepted) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await adminRequest(`/api/admin/resident-content/polls/${row.id}`, {
+        method: "DELETE",
+      });
+
+      if (editingPollId === row.id) {
+        setEditingPollId(null);
+        setPollForm(initialPollFormState);
+      }
+
+      await fetchData();
+      setMessage("Anket silindi");
+      showSaveNotice("Anket silindi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Anket silinemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <section className="dashboard report-page">
+    <section className="dashboard report-page resident-content-admin-page">
       {saveNotice && (
         <div className="blocking-modal" role="status" aria-live="polite" aria-busy="false">
           <div className="blocking-modal-card save-notice-modal-card">
@@ -280,24 +352,67 @@ export function ResidentContentAdminPage() {
         </div>
       )}
 
-      <div className="card table-card report-page-card">
+      <div className="card table-card report-page-card resident-content-hero-card">
         <div className="section-head report-toolbar">
-          <h3>Duyurular ve Anketler</h3>
+          <h3 className="resident-content-title-with-icon">
+            <span className="resident-content-title-icon" aria-hidden="true">IC</span>
+            Duyurular ve Anketler
+          </h3>
           <button className="btn btn-ghost" type="button" onClick={() => void fetchData()} disabled={loading}>
             Yenile
           </button>
         </div>
-        <p className="small">Admin bu ekrandan duyuru ve anket olusturur; resident panelde yayinda olanlar gorunur.</p>
-        {message && <p className="small">{message}</p>}
+        <div className="resident-content-hero-layout compact-row-top-gap">
+          <div className="resident-content-hero-copy">
+            <p className="small">
+              Admin bu ekrandan duyuru ve anket olusturur; resident panelde yayinda olanlar gorunur.
+            </p>
+            {message && <p className="small resident-content-inline-message">{message}</p>}
+          </div>
+          <div className="resident-content-hero-visual" aria-hidden="true">
+            <div className="resident-content-visual-card resident-content-visual-ann">
+              <span className="resident-content-visual-chip">DUYURU</span>
+            </div>
+            <div className="resident-content-visual-card resident-content-visual-poll">
+              <span className="resident-content-visual-chip">ANKET</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="stats-grid resident-content-stats-grid compact-row-top-gap">
+          <article className="card stat stat-tone-info">
+            <h4>Toplam Duyuru</h4>
+            <p>{residentContentStats.totalAnnouncementCount}</p>
+            <span className="small">Aktif: {residentContentStats.activeAnnouncementCount}</span>
+          </article>
+          <article className="card stat stat-tone-good">
+            <h4>Toplam Anket</h4>
+            <p>{residentContentStats.totalPollCount}</p>
+            <span className="small">Aktif: {residentContentStats.activePollCount}</span>
+          </article>
+          <article className="card stat stat-tone-warn">
+            <h4>Toplam Oy</h4>
+            <p>{residentContentStats.totalVoteCount}</p>
+            <span className="small">Tum anketlerden</span>
+          </article>
+          <article className="card stat stat-tone-danger">
+            <h4>Secenek Adedi</h4>
+            <p>{residentContentStats.totalPollOptionCount}</p>
+            <span className="small">Tum anket secenekleri</span>
+          </article>
+        </div>
       </div>
 
-      <div className="admin-forms-grid">
+      <div className="admin-forms-grid resident-content-forms-grid">
         <form
           key={`ann-form-${editingAnnouncementId ?? "new"}-${announcementForm.title}-${announcementForm.publishAt}-${announcementForm.expiresAt}-${announcementForm.isActive ? "1" : "0"}`}
           className="card admin-form"
           onSubmit={onSubmitResidentAnnouncement}
         >
-          <h3>{editingAnnouncementId ? "Duyuru Duzenle" : "Duyuru Ekle"}</h3>
+          <h3 className="resident-content-form-title">
+            <span className="resident-content-form-icon" aria-hidden="true">DU</span>
+            {editingAnnouncementId ? "Duyuru Duzenle" : "Duyuru Ekle"}
+          </h3>
           <label>
             Baslik
             <input name="title" defaultValue={announcementForm.title} required />
@@ -337,7 +452,10 @@ export function ResidentContentAdminPage() {
           className="card admin-form"
           onSubmit={onSubmitResidentPoll}
         >
-          <h3>{editingPollId ? "Anket Duzenle" : "Anket Ekle"}</h3>
+          <h3 className="resident-content-form-title">
+            <span className="resident-content-form-icon" aria-hidden="true">AN</span>
+            {editingPollId ? "Anket Duzenle" : "Anket Ekle"}
+          </h3>
           <label>
             Baslik
             <input name="title" defaultValue={pollForm.title} required />
@@ -383,10 +501,16 @@ export function ResidentContentAdminPage() {
         </form>
       </div>
 
-      <div className="card table-card report-page-card">
-        <h3>Duyuru Listesi</h3>
+      <div className="card table-card report-page-card resident-content-list-card">
+        <div className="section-head">
+          <h3 className="resident-content-title-with-icon">
+            <span className="resident-content-title-icon" aria-hidden="true">DL</span>
+            Duyuru Listesi
+          </h3>
+          <span className="small resident-content-count-pill">{announcementRows.length} kayit</span>
+        </div>
         <div className="table-wrap compact-row-top-gap">
-          <table className="apartment-list-table report-compact-table">
+          <table className="apartment-list-table report-compact-table resident-content-table">
             <thead>
               <tr>
                 <th>Baslik</th>
@@ -409,6 +533,9 @@ export function ResidentContentAdminPage() {
                     <button className="btn btn-ghost" type="button" onClick={() => startEditResidentAnnouncement(row)}>
                       Duzenle
                     </button>
+                    <button className="btn btn-danger" type="button" onClick={() => void deleteResidentAnnouncement(row)}>
+                      Sil
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -424,10 +551,16 @@ export function ResidentContentAdminPage() {
         </div>
       </div>
 
-      <div className="card table-card report-page-card">
-        <h3>Anket Listesi</h3>
+      <div className="card table-card report-page-card resident-content-list-card">
+        <div className="section-head">
+          <h3 className="resident-content-title-with-icon">
+            <span className="resident-content-title-icon" aria-hidden="true">AL</span>
+            Anket Listesi
+          </h3>
+          <span className="small resident-content-count-pill">{pollRows.length} kayit</span>
+        </div>
         <div className="table-wrap compact-row-top-gap">
-          <table className="apartment-list-table report-compact-table">
+          <table className="apartment-list-table report-compact-table resident-content-table">
             <thead>
               <tr>
                 <th>Baslik</th>
@@ -449,6 +582,9 @@ export function ResidentContentAdminPage() {
                   <td className="actions-cell">
                     <button className="btn btn-ghost" type="button" onClick={() => startEditResidentPoll(row)}>
                       Duzenle
+                    </button>
+                    <button className="btn btn-danger" type="button" onClick={() => void deleteResidentPoll(row)}>
+                      Sil
                     </button>
                   </td>
                 </tr>

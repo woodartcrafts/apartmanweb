@@ -601,6 +601,7 @@ export type OverduePaymentsReportResponse = {
 
 export type FractionalClosureReportRow = {
   chargeId: string;
+  apartmentId: string;
   blockName: string;
   apartmentDoorNo: string;
   apartmentOwnerName: string | null;

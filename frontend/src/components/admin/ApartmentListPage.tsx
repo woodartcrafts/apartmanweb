@@ -76,14 +76,16 @@ export function ApartmentListPage({
     const ownerCount = rows.filter((x) => x.occupancyType === "OWNER").length;
     const tenantCount = rows.filter((x) => x.occupancyType === "TENANT").length;
     const noAidatCount = rows.filter((x) => !x.hasAidat).length;
-    const residentAccountCount = rows.reduce((acc, item) => acc + item.residentUsers.length, 0);
+    const apartmentClassCount = new Set(rows.map((x) => x.apartmentClassId).filter(Boolean)).size;
+    const apartmentTypeCount = new Set(rows.map((x) => x.type)).size;
 
     return {
       total,
       ownerCount,
       tenantCount,
       noAidatCount,
-      residentAccountCount,
+      apartmentClassCount,
+      apartmentTypeCount,
     };
   }, [rows]);
 
@@ -440,8 +442,12 @@ export function ApartmentListPage({
             <p>{dashboardStats.noAidatCount}</p>
           </article>
           <article className="card stat stat-tone-info">
-            <h4>Resident Kullanici</h4>
-            <p>{dashboardStats.residentAccountCount}</p>
+            <h4>Daire Sinifi Sayisi</h4>
+            <p>{dashboardStats.apartmentClassCount}</p>
+          </article>
+          <article className="card stat stat-tone-good">
+            <h4>Daire Tipi Sayisi</h4>
+            <p>{dashboardStats.apartmentTypeCount}</p>
           </article>
         </div>
       </div>

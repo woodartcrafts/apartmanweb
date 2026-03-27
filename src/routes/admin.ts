@@ -152,6 +152,18 @@ router.put("/resident-content/announcements/:id", async (req, res) => {
   return res.json(updated);
 });
 
+router.delete("/resident-content/announcements/:id", async (req, res) => {
+  const { id } = req.params;
+
+  const existing = await prisma.residentAnnouncement.findUnique({ where: { id } });
+  if (!existing) {
+    return res.status(404).json({ message: "Duyuru bulunamadi" });
+  }
+
+  await prisma.residentAnnouncement.delete({ where: { id } });
+  return res.status(204).end();
+});
+
 router.get("/resident-content/polls", async (_req, res) => {
   const polls = await prisma.residentPoll.findMany({
     include: {
@@ -287,6 +299,18 @@ router.put("/resident-content/polls/:id", async (req, res) => {
   });
 
   return res.json(updated);
+});
+
+router.delete("/resident-content/polls/:id", async (req, res) => {
+  const { id } = req.params;
+
+  const existing = await prisma.residentPoll.findUnique({ where: { id } });
+  if (!existing) {
+    return res.status(404).json({ message: "Anket bulunamadi" });
+  }
+
+  await prisma.residentPoll.delete({ where: { id } });
+  return res.status(204).end();
 });
 
 const paymentMethodLabels: Record<PaymentMethod, string> = {
@@ -6437,6 +6461,7 @@ router.get("/reports/overdue-payments", async (req, res) => {
 
       return {
         chargeId: charge.id,
+        apartmentId: charge.apartment.id,
         blockName: charge.apartment.block.name,
         apartmentDoorNo: charge.apartment.doorNo,
         apartmentOwnerName: charge.apartment.ownerFullName,
@@ -6598,7 +6623,7 @@ router.get("/reports/fractional-closures", async (req, res) => {
 
 router.get("/reports/summary", async (_req, res) => {
   const now = new Date();
-  const endOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const endOfNextMonthFifthDay = new Date(now.getFullYear(), now.getMonth() + 1, 5, 23, 59, 59, 999);
   const next30Days = new Date(now);
   next30Days.setDate(next30Days.getDate() + 30);
 
@@ -6714,7 +6739,7 @@ router.get("/reports/summary", async (_req, res) => {
   let overdueChargeCount = 0;
   const overdueApartmentSet = new Set<string>();
   const overdueByApartmentId = new Map<string, { remainingTotal: number; chargeCount: number }>();
-  let monthEndUpcomingTotal = 0;
+  let nextMonthFifthUpcomingTotal = 0;
   let upcoming30DaysTotal = 0;
   let oldestOverdueDate: Date | null = null;
 
@@ -6741,8 +6766,8 @@ router.get("/reports/summary", async (_req, res) => {
       continue;
     }
 
-    if (charge.dueDate <= endOfCurrentMonth) {
-      monthEndUpcomingTotal += remaining;
+    if (charge.dueDate <= endOfNextMonthFifthDay) {
+      nextMonthFifthUpcomingTotal += remaining;
     }
 
     if (charge.dueDate <= next30Days) {
@@ -6834,7 +6859,7 @@ router.get("/reports/summary", async (_req, res) => {
       overdueChargeCount,
       overdueApartmentCount: overdueApartmentSet.size,
       overdueRemainingTotal: Number(overdueRemainingTotal.toFixed(2)),
-      monthEndUpcomingTotal: Number(monthEndUpcomingTotal.toFixed(2)),
+      monthEndUpcomingTotal: Number(nextMonthFifthUpcomingTotal.toFixed(2)),
       upcoming30DaysTotal: Number(upcoming30DaysTotal.toFixed(2)),
       oldestOverdueDate,
     },

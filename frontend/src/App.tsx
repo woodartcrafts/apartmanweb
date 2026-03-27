@@ -408,6 +408,7 @@ function AdminPage() {
   const [chargeTypeOptions, setChargeTypeOptions] = useState<ChargeTypeDefinition[]>([]);
   const [expenseItemOptions, setExpenseItemOptions] = useState<ExpenseItemDefinition[]>([]);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState<PaymentMethodDefinition[]>([]);
+  const [welcomeBuildingName, setWelcomeBuildingName] = useState("");
   const [editingApartmentId, setEditingApartmentId] = useState<string | null>(null);
   const [editingApartmentIds, setEditingApartmentIds] = useState<string[]>([]);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
@@ -3374,10 +3375,6 @@ function AdminPage() {
 
       const firstActive = data.find((x) => x.isActive) ?? data[0];
       if (firstActive) {
-        setChargeConsistencyForm((prev) => ({
-          ...prev,
-          chargeTypeId: prev.chargeTypeId || firstActive.id,
-        }));
         setExpenseDistForm((prev) => ({
           ...prev,
           chargeTypeId: prev.chargeTypeId || firstActive.id,
@@ -3401,6 +3398,16 @@ function AdminPage() {
     } catch (err) {
       console.error(err);
       setMessage("Odeme araclari alinamadi");
+    }
+  }
+
+  async function fetchWelcomeBuildingProfile(): Promise<void> {
+    try {
+      const data = await authorizedRequest<{ buildingName: string | null }>("/api/admin/building-profile");
+      setWelcomeBuildingName((data.buildingName ?? "").trim());
+    } catch (err) {
+      console.error(err);
+      setWelcomeBuildingName("");
     }
   }
 
@@ -3905,6 +3912,25 @@ function AdminPage() {
 
   function onMonthlyBalanceMatrixRowClick(apartmentId: string): void {
     void openStatementForApartment(apartmentId);
+  }
+
+  function openStatementForFractionalClosureRow(row: FractionalClosureReportRow): void {
+    const normalizedBlock = row.blockName.trim().toLocaleLowerCase("tr");
+    const normalizedDoorNo = row.apartmentDoorNo.trim().toLocaleLowerCase("tr");
+
+    const fallbackApartmentId = apartmentOptions.find((apt) => {
+      const aptBlock = apt.blockName.trim().toLocaleLowerCase("tr");
+      const aptDoor = apt.doorNo.trim().toLocaleLowerCase("tr");
+      return aptBlock === normalizedBlock && aptDoor === normalizedDoorNo;
+    })?.id;
+
+    const targetApartmentId = row.apartmentId || fallbackApartmentId || "";
+    if (!targetApartmentId) {
+      setMessage("Secilen satir icin daire bulunamadi");
+      return;
+    }
+
+    void openStatementForApartment(targetApartmentId);
   }
 
   function onMonthlyBalanceMatrixRowKeyDown(
@@ -4555,7 +4581,11 @@ function AdminPage() {
         params.set("expectedKucukAmount", chargeConsistencyForm.expectedKucukAmount.trim());
       }
       params.set("requireMonthEndDueDate", chargeConsistencyForm.requireMonthEndDueDate ? "YES" : "NO");
-      params.set("includeMissing", chargeConsistencyForm.includeMissing ? "YES" : "NO");
+      const includeMissingEnabled = Boolean(chargeConsistencyForm.chargeTypeId);
+      params.set(
+        "includeMissing",
+        includeMissingEnabled && chargeConsistencyForm.includeMissing ? "YES" : "NO"
+      );
 
       const endpoint = `/api/admin/reports/charge-consistency?${params.toString()}`;
       const data = await authorizedRequest<ChargeConsistencyReportResponse>(endpoint);
@@ -7227,6 +7257,7 @@ function AdminPage() {
     void fetchChargeTypeOptions();
     void fetchExpenseItemOptions();
     void fetchPaymentMethodOptions();
+    void fetchWelcomeBuildingProfile();
     void checkApiConnection();
   }, []);
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -7857,10 +7888,37 @@ function AdminPage() {
         <Route
           path="/"
           element={
-            <div className="card">
-              <h3>Admin Panel</h3>
-              <p className="small">Bir islem secmek icin yukaridaki butonlardan birine tiklayin.</p>
-            </div>
+            <section className="dashboard">
+              <div className="card admin-welcome-card">
+                <div className="admin-welcome-layout">
+                  <div>
+                    <p className="admin-welcome-kicker">
+                      {welcomeBuildingName
+                        ? `${welcomeBuildingName} Yonetim Ekranina Hosgeldiniz`
+                        : "Apartman Yonetim Ekranina Hosgeldiniz"}
+                    </p>
+                    <h3>Admin Panel</h3>
+                    <p className="small">Bir islem secmek icin yukaridaki butonlardan birine tiklayin.</p>
+                  </div>
+                  <div className="admin-welcome-visual" aria-hidden="true">
+                    <div className="admin-welcome-building admin-welcome-building-main">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                    <div className="admin-welcome-building admin-welcome-building-side">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
           }
         />
         <Route
@@ -7961,9 +8019,25 @@ function AdminPage() {
                         <span className="small">Ana para toplam | Aktif kayit: {activeBankTermDepositCount}</span>
                       </article>
                       <article className="card stat stat-tone-warn">
-                        <h4>Ay Sonuna Kadar Tahsilat</h4>
+                        <h4>Ayin 5'ine Kadar Tahsilat</h4>
                         <p>{formatTry(reportsSummary.receivables.monthEndUpcomingTotal)}</p>
-                        <span className="small">Bugunden ay sonuna kadar beklenen tahsilat</span>
+                        <span className="small">Bugunden bir sonraki ayin 5. gunune kadar beklenen tahsilat</span>
+                      </article>
+                      <article
+                        className="card stat stat-tone-danger stat-clickable"
+                        onClick={() => navigate("/admin/expenses/report")}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            navigate("/admin/expenses/report");
+                          }
+                        }}
+                      >
+                        <h4>Toplam Giderler</h4>
+                        <p>{formatTry(reportsSummary.collectionsAndExpenses.totalExpenses)}</p>
+                        <span className="small">Rapor tarihine kadar kaydedilen toplam gider</span>
                       </article>
                     </div>
 
@@ -8019,7 +8093,6 @@ function AdminPage() {
                     <article className="card table-card compact-row-top-gap">
                       <div className="section-head">
                         <h3>Gecikenlerde Ilk 5 Daire</h3>
-                        <span className="small">Toplam geciken: {formatTry(reportsSummary.receivables.overdueRemainingTotal)}</span>
                       </div>
                       <div className="table-wrap compact-row-top-gap">
                         <table className="apartment-list-table report-compact-table">
@@ -8060,6 +8133,17 @@ function AdminPage() {
                               </tr>
                             )}
                           </tbody>
+                          <tfoot>
+                            <tr className="report-summary-total-row">
+                              <td>
+                                <b>Toplam Geciken</b>
+                              </td>
+                              <td className="col-num">-</td>
+                              <td className="col-num">
+                                <b>{formatTry(reportsSummary.receivables.overdueRemainingTotal)}</b>
+                              </td>
+                            </tr>
+                          </tfoot>
                         </table>
                       </div>
                     </article>
@@ -9032,7 +9116,13 @@ function AdminPage() {
                         Tahakkuk Tipi
                         <select
                           value={chargeConsistencyForm.chargeTypeId}
-                          onChange={(e) => setChargeConsistencyForm((prev) => ({ ...prev, chargeTypeId: e.target.value }))}
+                          onChange={(e) =>
+                            setChargeConsistencyForm((prev) => ({
+                              ...prev,
+                              chargeTypeId: e.target.value,
+                              includeMissing: e.target.value ? prev.includeMissing : false,
+                            }))
+                          }
                         >
                           <option value="">Tum tipler</option>
                           {chargeTypeOptions.map((x) => (
@@ -9099,7 +9189,8 @@ function AdminPage() {
                       <label className="checkbox-row">
                         <input
                           type="checkbox"
-                          checked={chargeConsistencyForm.includeMissing}
+                          checked={Boolean(chargeConsistencyForm.chargeTypeId) && chargeConsistencyForm.includeMissing}
+                          disabled={!chargeConsistencyForm.chargeTypeId}
                           onChange={(e) => setChargeConsistencyForm((prev) => ({ ...prev, includeMissing: e.target.checked }))}
                         />
                         Eksik tahakkuklari da uyar
@@ -9354,10 +9445,13 @@ function AdminPage() {
           path="/reports/monthly-balance-matrix"
           element={
             <section className="dashboard report-page monthly-balance-report-page">
-              <div className="card table-card report-page-card">
+              <div className="card table-card report-page-card monthly-balance-report-card">
                 <div className="section-head report-toolbar">
-                  <h3>Daire Listesi Raporu</h3>
-                  <div className="admin-row">
+                  <h3 className="monthly-balance-title">
+                    <span className="monthly-balance-title-icon" aria-hidden="true">DL</span>
+                    Daire Listesi Raporu
+                  </h3>
+                  <div className="admin-row monthly-balance-toolbar-actions">
                     <button
                       className="btn btn-primary btn-run"
                       type="button"
@@ -9375,7 +9469,7 @@ function AdminPage() {
                   </div>
                 </div>
 
-                <div className="compact-row-top-gap report-filter-grid report-filter-grid-single">
+                <div className="compact-row-top-gap report-filter-grid report-filter-grid-single monthly-balance-filter-row">
                   <label>
                     Yil
                     <input
@@ -9387,31 +9481,46 @@ function AdminPage() {
                   </label>
                 </div>
 
-                <p className="small">
+                <p className="small monthly-balance-subtitle">
                   Daire bazli aylik kalan borclari ve rapor tarihindeki geciken toplamlari tek tabloda izleyin.
                 </p>
 
                 <div className="monthly-balance-meta compact-row-top-gap">
-                  <span className="month-chip">Yil: {apartmentBalanceMatrixYear || "-"}</span>
-                  <span className="month-chip">
+                  <span className="month-chip monthly-balance-meta-chip">
+                    <span className="monthly-balance-meta-chip-key">YL</span>
+                    Yil: {apartmentBalanceMatrixYear || "-"}
+                  </span>
+                  <span className="month-chip monthly-balance-meta-chip">
+                    <span className="monthly-balance-meta-chip-key">RT</span>
                     Rapor Tarihi: {apartmentBalanceMatrixSnapshotAt ? formatDateTimeTr(apartmentBalanceMatrixSnapshotAt) : "-"}
                   </span>
-                  <span className="month-chip">
+                  <span className="month-chip monthly-balance-meta-chip">
+                    <span className="monthly-balance-meta-chip-key">ST</span>
                     Satir: {apartmentBalanceMatrixTotals ? apartmentBalanceMatrixTotals.apartmentCount : sortedApartmentBalanceMatrixRows.length}
                   </span>
                 </div>
 
                 {apartmentBalanceMatrixTotals && (
-                  <div className="stats-grid compact-row-top-gap">
-                    <article className="card stat stat-tone-info">
+                  <div className="stats-grid compact-row-top-gap monthly-balance-stats-grid">
+                    <article className="card stat stat-tone-info monthly-balance-stat-card">
                       <h4>Daire Sayisi</h4>
                       <p>{apartmentBalanceMatrixTotals.apartmentCount}</p>
                       <span className="small">Raporlanan satir</span>
                     </article>
                     <article
-                      className={`card stat ${
+                      className={`card stat monthly-balance-stat-card monthly-balance-overdue-cta ${
                         apartmentBalanceMatrixTotals.yearEndTotal > 200 ? "stat-tone-danger" : "stat-tone-warn"
                       }`}
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Gecikmis odemeler raporunu ac"
+                      onClick={() => navigate("/admin/reports/overdue-payments")}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          navigate("/admin/reports/overdue-payments");
+                        }
+                      }}
                     >
                       <h4>Rapor Tarihi Gecikmis Toplam</h4>
                       <p>{formatTry(apartmentBalanceMatrixTotals.yearEndTotal)}</p>
@@ -9424,7 +9533,7 @@ function AdminPage() {
                   </div>
                 )}
 
-                <div className="table-wrap compact-row-top-gap">
+                <div className="table-wrap compact-row-top-gap monthly-balance-table-wrap">
                   <table className="apartment-list-table report-compact-table monthly-balance-matrix-table">
                     <thead>
                       <tr>
@@ -11898,7 +12007,17 @@ function AdminPage() {
                             return (
                               <tr
                                 key={row.chargeId}
-                                className={sourceStatus === "Eksik Odeme" ? "fractional-closure-row-missing" : undefined}
+                                className={`${sourceStatus === "Eksik Odeme" ? "fractional-closure-row-missing " : ""}report-row-clickable`}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`${row.blockName}-${row.apartmentDoorNo} dairesinin ekstresini ac`}
+                                onClick={() => openStatementForFractionalClosureRow(row)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    openStatementForFractionalClosureRow(row);
+                                  }
+                                }}
                               >
                                 <td>{row.blockName}</td>
                                 <td>{row.apartmentDoorNo}</td>
