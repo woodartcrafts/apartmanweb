@@ -7507,47 +7507,6 @@ function AdminPage() {
     location.pathname,
   ]);
 
-  function getFractionalClosureSpecialNote(row: FractionalClosureReportRow): string {
-    const tolerance = 0.01;
-    const amount = Number(row.amount);
-    const paid = Number(row.paidTotal);
-    const remaining = Number(row.remaining);
-    const ratio = amount > tolerance ? paid / amount : 0;
-    const noteText = (row.description ?? "").toLocaleLowerCase("tr");
-    const hasCarryHint =
-      noteText.includes("devir") ||
-      noteText.includes("carry") ||
-      noteText.includes("alacak") ||
-      noteText.includes("mahsup") ||
-      noteText.includes("dus") ||
-      noteText.includes("düş");
-
-    if (paid > amount + tolerance || remaining < -tolerance) {
-      if (hasCarryHint) {
-        return "Fazla odemesi vardi; bir sonraki ay borcundan mahsup/devir islemi uygulanmis.";
-      }
-      return "Fazla odeme gorunuyor; bir sonraki aya alacak devri olarak yansimis olabilir.";
-    }
-
-    if (paid <= tolerance) {
-      return "Odeme gorunmuyor; borc acikta kalmis ve eksik odeme durumu olusmus.";
-    }
-
-    if (remaining > tolerance && ratio < 0.35) {
-      return "Eksik odeme yapilmis; tahakkukun buyuk kismi hala acik gorunuyor.";
-    }
-
-    if (remaining > tolerance && ratio < 0.9) {
-      return "Kismi odeme alinmis; kalan tutar sonraki doneme devredecek gibi gorunuyor.";
-    }
-
-    if (row.lastPaymentAt) {
-      return `Odeme alinmis ancak tam kapanmamis; son odeme ${formatDateTr(row.lastPaymentAt)} tarihinde.`;
-    }
-
-    return "Eksik odeme yapilmis gibi; kapanis icin ek tahsilat gerekecek.";
-  }
-
   function getFractionalClosureSourceStatus(row: FractionalClosureReportRow): string {
     const now = new Date();
     const currentYear = now.getFullYear();
