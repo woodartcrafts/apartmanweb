@@ -116,7 +116,12 @@ export function ExpenseReportPage({
         <div className="section-head">
           <h3>Gider Raporu</h3>
           <div className="admin-row">
-            <button className="btn btn-primary btn-run" type="button" onClick={() => void runExpenseReportQuery()}>
+            <button
+              data-testid="expense-report-run-trigger"
+              className="btn btn-primary btn-run"
+              type="button"
+              onClick={() => void runExpenseReportQuery()}
+            >
               Calistir
             </button>
             <button className="btn btn-ghost" type="button" onClick={() => void clearExpenseReportFilters()}>
@@ -128,6 +133,7 @@ export function ExpenseReportPage({
           <label>
             Baslangic Tarihi
             <input
+              data-testid="expense-report-from"
               type="date"
               value={expenseReportFilter.from}
               onChange={(e) => setExpenseReportFilter((prev) => ({ ...prev, from: e.target.value }))}
@@ -136,6 +142,7 @@ export function ExpenseReportPage({
           <label>
             Bitis Tarihi
             <input
+              data-testid="expense-report-to"
               type="date"
               value={expenseReportFilter.to}
               onChange={(e) => setExpenseReportFilter((prev) => ({ ...prev, to: e.target.value }))}
@@ -356,7 +363,7 @@ export function ExpenseReportPage({
           </form>
         )}
         <div className="table-wrap">
-          <table className="apartment-list-table report-compact-table expense-report-table">
+          <table data-testid="expense-report-table" className="apartment-list-table report-compact-table expense-report-table">
             <thead>
               <tr>
                 <th>

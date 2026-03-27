@@ -17,8 +17,8 @@ import {
   type AccountingStatementItem,
   type AdminActionLogRow,
   type ApartmentClassDefinition,
-  type ApartmentTypeDefinition,
   type ApartmentDutyDefinition,
+  type ApartmentTypeDefinition,
   type ApartmentOption,
   type ApartmentType,
   type BankBranchDefinition,
@@ -53,6 +53,8 @@ import {
   type LoginResponse,
   type MixedPaymentReportRow,
   type MixedPaymentReportResponse,
+  type ManualReviewMatchRow,
+  type ManualReviewMatchesReportResponse,
   type OccupancyType,
   type OverduePaymentsReportRow,
   type OverduePaymentsReportResponse,
@@ -188,6 +190,11 @@ const StatementReconcilePage = lazy(() =>
     default: module.StatementReconcilePage,
   }))
 );
+const ManualReviewMatchesPage = lazy(() =>
+  import("./components/admin/ManualReviewMatchesPage").then((module) => ({
+    default: module.ManualReviewMatchesPage,
+  }))
+);
 const StatementPage = lazy(() =>
   import("./components/admin/StatementPage").then((module) => ({
     default: module.StatementPage,
@@ -211,6 +218,11 @@ const ApartmentChangeHistoryPage = lazy(() =>
 const BankManagementPage = lazy(() =>
   import("./components/admin/BankManagementPage").then((module) => ({
     default: module.BankManagementPage,
+  }))
+);
+const BankStatementViewPage = lazy(() =>
+  import("./components/admin/BankStatementViewPage").then((module) => ({
+    default: module.BankStatementViewPage,
   }))
 );
 const MonthlyLedgerPrintPage = lazy(() =>
@@ -259,6 +271,7 @@ function LoginPage({
         <label>
           Telefon veya E-posta
           <input
+            data-testid="login-identifier"
             type="text"
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
@@ -269,6 +282,7 @@ function LoginPage({
         <label>
           Sifre
           <input
+            data-testid="login-password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -276,7 +290,7 @@ function LoginPage({
             required
           />
         </label>
-        <button disabled={loading} type="submit" className="btn btn-primary">
+        <button data-testid="login-submit" disabled={loading} type="submit" className="btn btn-primary">
           {loading ? "Bekleyin..." : "Giris Yap"}
         </button>
       </form>
@@ -341,6 +355,24 @@ function AdminPage() {
     "description",
     "reference",
   ];
+
+  function getCurrentMonthDateRange(): { from: string; to: string } {
+    const toLocalDateInput = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+      from: toLocalDateInput(startOfMonth),
+      to: toLocalDateInput(endOfMonth),
+    };
+  }
+
   const [statement, setStatement] = useState<StatementItem[]>([]);
   const [accountingStatement, setAccountingStatement] = useState<AccountingStatementItem[]>([]);
   const [statementViewMode, setStatementViewMode] = useState<StatementViewMode>("CLASSIC");
@@ -484,10 +516,6 @@ function AdminPage() {
     reference: [],
   });
 
-  const [closeForm, setCloseForm] = useState({
-    chargeId: "",
-  });
-
   const [expenseDistForm, setExpenseDistForm] = useState({
     chargeTypeId: "",
     invoiceNo: "",
@@ -537,6 +565,8 @@ function AdminPage() {
     periodYear: "",
     periodMonths: [] as number[],
     chargeTypeId: "",
+    accrualDateFrom: "",
+    accrualDateTo: "",
     apartmentType: "ALL" as "ALL" | ApartmentType,
     apartmentIds: [] as string[],
     applyAmount: true,
@@ -621,6 +651,9 @@ function AdminPage() {
     reference: "",
   });
   const [uploadBatchRows, setUploadBatchRows] = useState<UploadBatchRow[]>([]);
+  const [bankStatementViewRows, setBankStatementViewRows] = useState<BankReconciliationRow[]>([]);
+  const [bankStatementViewOpeningBalance, setBankStatementViewOpeningBalance] = useState(0);
+  const [bankStatementViewFilter, setBankStatementViewFilter] = useState(() => getCurrentMonthDateRange());
   const [uploadBatchUploaders, setUploadBatchUploaders] = useState<UploadBatchUploader[]>([]);
   const [reportsSummary, setReportsSummary] = useState<ReportsSummaryResponse | null>(null);
   const [reportsSummaryLoading, setReportsSummaryLoading] = useState(false);
@@ -670,6 +703,14 @@ function AdminPage() {
   const [overduePaymentsRows, setOverduePaymentsRows] = useState<OverduePaymentsReportRow[]>([]);
   const [overduePaymentsTotals, setOverduePaymentsTotals] = useState<OverduePaymentsReportResponse["totals"] | null>(null);
   const [overduePaymentsLoading, setOverduePaymentsLoading] = useState(false);
+  const [manualReviewMatchesRows, setManualReviewMatchesRows] = useState<ManualReviewMatchRow[]>([]);
+  const [manualReviewMatchesTotalCount, setManualReviewMatchesTotalCount] = useState(0);
+  const [manualReviewMatchesLoading, setManualReviewMatchesLoading] = useState(false);
+  const [manualReviewMatchesFilter, setManualReviewMatchesFilter] = useState({
+    from: "",
+    to: "",
+    doorNo: "",
+  });
   const [fractionalClosureRows, setFractionalClosureRows] = useState<FractionalClosureReportRow[]>([]);
   const [fractionalClosureLoading, setFractionalClosureLoading] = useState(false);
   const [overduePaymentsColumnVisibility, setOverduePaymentsColumnVisibility] = useState<
@@ -747,6 +788,10 @@ function AdminPage() {
     requireMonthEndDueDate: true,
     includeMissing: true,
   });
+  const [chargeConsistencySelectedCodes, setChargeConsistencySelectedCodes] = useState<
+    ChargeConsistencyWarningRow["code"][]
+  >([]);
+  const [chargeConsistencyViewMode, setChargeConsistencyViewMode] = useState<"MERGED" | "RAW">("MERGED");
   const [overduePaymentsFilter, setOverduePaymentsFilter] = useState({
     from: "",
     to: "",
@@ -814,6 +859,14 @@ function AdminPage() {
   const [lastImportInfos, setLastImportInfos] = useState<ImportInfoNote[]>([]);
   const [lastImportInfoTitle, setLastImportInfoTitle] = useState<string>("");
   const [lastImportSummary, setLastImportSummary] = useState<ImportSummary | null>(null);
+  const manualReviewImportInfos = useMemo(
+    () =>
+      lastImportInfos.filter((item) => {
+        const text = item.raw.toLocaleLowerCase("tr");
+        return text.includes("manuel incelemeye birakildi") || text.includes("manual_review");
+      }),
+    [lastImportInfos]
+  );
   const [actionLogs, setActionLogs] = useState<AdminActionLogRow[]>([]);
   const adminSubnavRef = useRef<HTMLDivElement | null>(null);
   const skipNextExpenseReportAutoRefreshRef = useRef(false);
@@ -2095,6 +2148,54 @@ function AdminPage() {
     return [...grouped.values()];
   }, [chargeConsistencyRows]);
 
+  const rawChargeConsistencyRows = useMemo(
+    () =>
+      chargeConsistencyRows.map((row) => ({
+        ...row,
+        codes: [row.code],
+        messages: [row.message],
+      })),
+    [chargeConsistencyRows]
+  );
+
+  const chargeConsistencyDisplayRows = useMemo(
+    () => (chargeConsistencyViewMode === "RAW" ? rawChargeConsistencyRows : mergedChargeConsistencyRows),
+    [chargeConsistencyViewMode, rawChargeConsistencyRows, mergedChargeConsistencyRows]
+  );
+
+  const chargeConsistencyCodeOptions = useMemo(() => {
+    if (chargeConsistencyDisplayRows.length === 0) {
+      return [] as Array<{ code: ChargeConsistencyWarningRow["code"]; count: number; label: string }>;
+    }
+
+    const codeCounts = new Map<ChargeConsistencyWarningRow["code"], number>();
+    for (const row of chargeConsistencyDisplayRows) {
+      for (const code of row.codes) {
+        codeCounts.set(code, (codeCounts.get(code) ?? 0) + 1);
+      }
+    }
+
+    const codes = [...codeCounts.entries()]
+      .map(([code, count]) => ({ code, count, label: formatChargeConsistencyCode(code) }))
+      .sort((a, b) => {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return a.label.localeCompare(b.label, "tr", { sensitivity: "base" });
+      });
+
+    return codes;
+  }, [chargeConsistencyDisplayRows]);
+
+  const visibleChargeConsistencyRows = useMemo(() => {
+    if (chargeConsistencySelectedCodes.length === 0) {
+      return chargeConsistencyDisplayRows;
+    }
+
+    const selected = new Set(chargeConsistencySelectedCodes);
+    return chargeConsistencyDisplayRows.filter((row) => row.codes.some((code) => selected.has(code)));
+  }, [chargeConsistencyDisplayRows, chargeConsistencySelectedCodes]);
+
   const sortedApartmentBalanceMatrixRows = useMemo(
     () =>
       [...apartmentBalanceMatrixRows].sort((a, b) => {
@@ -2492,9 +2593,34 @@ function AdminPage() {
         return "Vade Ay Sonu Degil";
       case "NONPOSITIVE_AMOUNT":
         return "Sifir/Negatif Tutar";
+      case "EXEMPT_APARTMENT_HAS_CHARGE":
+        return "Muaf Dairede Tahakkuk";
       default:
         return code;
     }
+  }
+
+  function getChargeConsistencyCodeSeverity(code: ChargeConsistencyWarningRow["code"]): "danger" | "warn" | "info" | "muted" {
+    switch (code) {
+      case "MISSING_CHARGE":
+      case "DUPLICATE_CHARGE":
+      case "NONPOSITIVE_AMOUNT":
+        return "danger";
+      case "AMOUNT_MISMATCH":
+        return "warn";
+      case "DUE_DATE_NOT_MONTH_END":
+        return "info";
+      case "EXEMPT_APARTMENT_HAS_CHARGE":
+        return "muted";
+      default:
+        return "warn";
+    }
+  }
+
+  function openCorrectionsForChargeConsistencyRow(row: { apartmentId: string; apartmentDoorNo: string; blockName: string }) {
+    setCorrectionApartmentId(row.apartmentId);
+    navigate("/admin/corrections");
+    setMessage(`Duzeltmeler sayfasina yonlendirildi: ${row.blockName}/${row.apartmentDoorNo}`);
   }
 
   const bulkFilterOptions = useMemo(() => {
@@ -3993,6 +4119,33 @@ function AdminPage() {
     }
   }
 
+  async function fetchBankStatementViewRows(
+    filter = bankStatementViewFilter,
+    options?: { silent?: boolean }
+  ): Promise<void> {
+    const silent = options?.silent ?? false;
+    try {
+      const params = new URLSearchParams();
+      if (filter.from) {
+        params.set("from", dateInputToIso(filter.from));
+      }
+      if (filter.to) {
+        params.set("to", dateInputToIso(filter.to));
+      }
+      params.set("limit", "1000");
+
+      const endpoint = `/api/admin/reports/bank-reconciliation?${params.toString()}`;
+      const data = await authorizedRequest<BankReconciliationReportResponse>(endpoint);
+      setBankStatementViewRows(data.rows);
+      setBankStatementViewOpeningBalance(data.totals.startingBalance ?? data.totals.openingBalance);
+    } catch (err) {
+      console.error(err);
+      if (!silent) {
+        setMessage("Banka hareketleri alinamadi");
+      }
+    }
+  }
+
   async function fetchUploadBatchDetails(batchId: string): Promise<UploadBatchDetailsResponse> {
     return authorizedRequest<UploadBatchDetailsResponse>(`/api/admin/upload-batches/${batchId}/details`);
   }
@@ -4265,6 +4418,60 @@ function AdminPage() {
     }
   }
 
+  async function fetchManualReviewMatchesReport(options?: { silent?: boolean }): Promise<void> {
+    const silent = options?.silent ?? false;
+    setManualReviewMatchesLoading(true);
+    if (!silent) {
+      setMessage("Manuel inceleme raporu hazirlaniyor...");
+    }
+
+    try {
+      const params = new URLSearchParams();
+      if (manualReviewMatchesFilter.from) {
+        params.set("from", dateInputToIso(manualReviewMatchesFilter.from));
+      }
+      if (manualReviewMatchesFilter.to) {
+        params.set("to", dateInputToIso(manualReviewMatchesFilter.to));
+      }
+      if (manualReviewMatchesFilter.doorNo.trim()) {
+        params.set("doorNo", manualReviewMatchesFilter.doorNo.trim());
+      }
+      params.set("limit", "1000");
+
+      const endpoint = `/api/admin/reports/manual-review-matches?${params.toString()}`;
+      const data = await authorizedRequest<ManualReviewMatchesReportResponse>(endpoint);
+      setManualReviewMatchesRows(data.rows);
+      setManualReviewMatchesTotalCount(data.totalCount);
+      if (!silent) {
+        setMessage(`Manuel inceleme raporu hazir: ${data.totalCount} kayit`);
+      }
+    } catch (err) {
+      console.error(err);
+      const text = err instanceof Error ? err.message : "Manuel inceleme raporu alinamadi";
+      if (!silent) {
+        setMessage(text);
+      }
+    } finally {
+      setManualReviewMatchesLoading(false);
+    }
+  }
+
+  async function runManualReviewMatchesQuery(): Promise<void> {
+    setLoading(true);
+    try {
+      await fetchManualReviewMatchesReport();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function clearManualReviewMatchesFilters(): void {
+    setManualReviewMatchesFilter({ from: "", to: "", doorNo: "" });
+    setManualReviewMatchesRows([]);
+    setManualReviewMatchesTotalCount(0);
+    setMessage("Manuel inceleme filtresi temizlendi. Listelemek icin Calistir butonuna basin");
+  }
+
   async function runOverduePaymentsQuery(): Promise<void> {
     setLoading(true);
     try {
@@ -4356,6 +4563,9 @@ function AdminPage() {
       setChargeConsistencyRows(data.rows);
       setChargeConsistencyTotals(data.totals);
       setChargeConsistencyExcludedApartments(data.excludedApartments);
+      setChargeConsistencySelectedCodes((prev) =>
+        prev.filter((code) => Number(data.totals.byCode[code] ?? 0) > 0)
+      );
       if (!silent) {
         setMessage(`Tahakkuk kontrol raporu hazir: ${data.totals.warningCount} uyari`);
       }
@@ -4580,6 +4790,76 @@ function AdminPage() {
     setMessage("Aylik bakiye matrisi filtreleri temizlendi. Listelemek icin Calistir butonuna basin");
   }
 
+  function printApartmentBalanceMatrixReport(): void {
+    const styleId = "monthly-balance-print-style";
+    const existingStyle = document.getElementById(styleId);
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      @media print {
+        @page {
+          size: A4 landscape;
+          margin: 8mm 7mm;
+        }
+
+        body.monthly-balance-print-mode * {
+          visibility: hidden !important;
+        }
+
+        body.monthly-balance-print-mode .monthly-balance-report-page,
+        body.monthly-balance-print-mode .monthly-balance-report-page * {
+          visibility: visible !important;
+        }
+
+        body.monthly-balance-print-mode .monthly-balance-report-page {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        body.monthly-balance-print-mode .monthly-balance-report-page .report-filter-grid,
+        body.monthly-balance-print-mode .monthly-balance-report-page .admin-row,
+        body.monthly-balance-print-mode .monthly-balance-report-page .small,
+        body.monthly-balance-print-mode .monthly-balance-report-page .monthly-balance-meta {
+          display: none !important;
+        }
+
+        body.monthly-balance-print-mode .monthly-balance-report-page .table-card,
+        body.monthly-balance-print-mode .monthly-balance-report-page .table-wrap {
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+          margin: 0 !important;
+        }
+      }
+    `;
+
+    document.head.appendChild(style);
+    document.body.classList.add("monthly-balance-print-mode");
+
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) {
+        return;
+      }
+      cleanedUp = true;
+      document.body.classList.remove("monthly-balance-print-mode");
+      style.remove();
+      window.removeEventListener("afterprint", cleanup);
+    };
+
+    window.addEventListener("afterprint", cleanup);
+    window.print();
+    window.setTimeout(cleanup, 1500);
+  }
+
   async function autoRefreshAfterDelete(): Promise<void> {
     const tasks: Array<Promise<unknown>> = [
       fetchBulkStatement({ silent: true }),
@@ -4620,6 +4900,8 @@ function AdminPage() {
       requireMonthEndDueDate: true,
       includeMissing: true,
     });
+    setChargeConsistencySelectedCodes([]);
+    setChargeConsistencyViewMode("MERGED");
     setChargeConsistencyRows([]);
     setChargeConsistencyTotals(null);
     setChargeConsistencyExcludedApartments([]);
@@ -4634,6 +4916,34 @@ function AdminPage() {
     } catch (err) {
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Yukleme kayitlari filtrelenemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runBankStatementViewQuery(): Promise<void> {
+    setLoading(true);
+    try {
+      await fetchBankStatementViewRows(bankStatementViewFilter);
+      setMessage("Banka hareketleri listelendi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Banka hareketleri listelenemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resetBankStatementViewToCurrentMonth(): Promise<void> {
+    const nextFilter = getCurrentMonthDateRange();
+    setBankStatementViewFilter(nextFilter);
+    setLoading(true);
+    try {
+      await fetchBankStatementViewRows(nextFilter);
+      setMessage("Banka hareketleri filtresi bu aya alindi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Banka hareketleri listelenemedi");
     } finally {
       setLoading(false);
     }
@@ -5499,7 +5809,6 @@ function AdminPage() {
 
       if (firstChargeId) {
         setLastCreatedChargeId(firstChargeId);
-        setCloseForm({ chargeId: firstChargeId });
       }
 
       setMessage(
@@ -5562,7 +5871,6 @@ function AdminPage() {
         },
       });
 
-      setCloseForm({ chargeId: sanitizedItems[0].chargeId });
       setMessage("Odeme girildi");
       await fetchPaymentList();
       if (activeApartmentId) {
@@ -6335,24 +6643,6 @@ function AdminPage() {
     setMessage("Dagitim sonucu temizlendi");
   }
 
-  async function onCloseCharge(e: FormEvent<HTMLFormElement>): Promise<void> {
-    e.preventDefault();
-    setLoading(true);
-    setMessage("Borc kapatiliyor...");
-    try {
-      await authorizedRequest(`/api/admin/charges/${closeForm.chargeId}/close`, {});
-      setMessage("Borc kapatildi");
-      if (activeApartmentId) {
-        await fetchStatement(activeApartmentId);
-      }
-    } catch (err) {
-      console.error(err);
-      setMessage(err instanceof Error ? err.message : "Borc kapatilamadi");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function fetchDistributedInvoiceRows(silent = false): Promise<void> {
     if (!silent) {
       setLoading(true);
@@ -6364,6 +6654,8 @@ function AdminPage() {
         periodYear?: number;
         periodMonths?: number[];
         chargeTypeId?: string;
+        accrualDateFrom?: string;
+        accrualDateTo?: string;
       } = {};
 
       const periodYear = Number(bulkCorrectionForm.periodYear);
@@ -6377,6 +6669,23 @@ function AdminPage() {
 
       if (bulkCorrectionForm.chargeTypeId) {
         payload.chargeTypeId = bulkCorrectionForm.chargeTypeId;
+      }
+
+      if (bulkCorrectionForm.accrualDateFrom) {
+        payload.accrualDateFrom = bulkCorrectionForm.accrualDateFrom;
+      }
+
+      if (bulkCorrectionForm.accrualDateTo) {
+        payload.accrualDateTo = bulkCorrectionForm.accrualDateTo;
+      }
+
+      if (
+        payload.accrualDateFrom &&
+        payload.accrualDateTo &&
+        payload.accrualDateFrom > payload.accrualDateTo
+      ) {
+        setMessage("Tahakkuk tarihi araligi gecersiz: baslangic, bitisten buyuk olamaz");
+        return;
       }
 
       const result = await authorizedRequest<{ rows: DistributedInvoiceRow[]; totalCount: number }>(
@@ -6960,11 +7269,23 @@ function AdminPage() {
       return;
     }
 
+    if (path === "/admin/reports/manual-review-matches") {
+      // Manual-run page: user triggers with button.
+      return;
+    }
+
     if (path === "/admin/banks/term-deposits") {
       if (bankOptions.length === 0) {
         void fetchBankOptions();
       }
       void fetchBankTermDeposits({ silent: true });
+      return;
+    }
+
+    if (path === "/admin/banks/statement-view") {
+      const initialFilter = getCurrentMonthDateRange();
+      setBankStatementViewFilter(initialFilter);
+      void fetchBankStatementViewRows(initialFilter, { silent: true });
       return;
     }
 
@@ -7155,6 +7476,68 @@ function AdminPage() {
     location.pathname,
   ]);
 
+  function getFractionalClosureSpecialNote(row: FractionalClosureReportRow): string {
+    const tolerance = 0.01;
+    const amount = Number(row.amount);
+    const paid = Number(row.paidTotal);
+    const remaining = Number(row.remaining);
+    const ratio = amount > tolerance ? paid / amount : 0;
+    const noteText = (row.description ?? "").toLocaleLowerCase("tr");
+    const hasCarryHint =
+      noteText.includes("devir") ||
+      noteText.includes("carry") ||
+      noteText.includes("alacak") ||
+      noteText.includes("mahsup") ||
+      noteText.includes("dus") ||
+      noteText.includes("düş");
+
+    if (paid > amount + tolerance || remaining < -tolerance) {
+      if (hasCarryHint) {
+        return "Fazla odemesi vardi; bir sonraki ay borcundan mahsup/devir islemi uygulanmis.";
+      }
+      return "Fazla odeme gorunuyor; bir sonraki aya alacak devri olarak yansimis olabilir.";
+    }
+
+    if (paid <= tolerance) {
+      return "Odeme gorunmuyor; borc acikta kalmis ve eksik odeme durumu olusmus.";
+    }
+
+    if (remaining > tolerance && ratio < 0.35) {
+      return "Eksik odeme yapilmis; tahakkukun buyuk kismi hala acik gorunuyor.";
+    }
+
+    if (remaining > tolerance && ratio < 0.9) {
+      return "Kismi odeme alinmis; kalan tutar sonraki doneme devredecek gibi gorunuyor.";
+    }
+
+    if (row.lastPaymentAt) {
+      return `Odeme alinmis ancak tam kapanmamis; son odeme ${formatDateTr(row.lastPaymentAt)} tarihinde.`;
+    }
+
+    return "Eksik odeme yapilmis gibi; kapanis icin ek tahsilat gerekecek.";
+  }
+
+  function getFractionalClosureSourceStatus(row: FractionalClosureReportRow): string {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const currentPeriodKey = currentYear * 100 + currentMonth;
+    const rowPeriodKey = row.periodYear * 100 + row.periodMonth;
+
+    if (rowPeriodKey <= currentPeriodKey) {
+      if (row.lastPaymentAt) {
+        const lastPaymentDate = new Date(row.lastPaymentAt);
+        const lastPaymentKey = lastPaymentDate.getUTCFullYear() * 100 + (lastPaymentDate.getUTCMonth() + 1);
+        if (lastPaymentKey < rowPeriodKey) {
+          return "Fazla Odeme";
+        }
+      }
+      return "Eksik Odeme";
+    }
+
+    return "Fazla Odeme";
+  }
+
   const toastIsError =
     toastMessage.toLocaleLowerCase("tr").includes("kaydedilemedi") ||
     toastMessage.toLocaleLowerCase("tr").includes("basarisiz");
@@ -7171,6 +7554,7 @@ function AdminPage() {
     bankReconciliationLoading ||
     overduePaymentsLoading ||
     chargeConsistencyLoading ||
+    manualReviewMatchesLoading ||
     apartmentBalanceMatrixLoading ||
     referenceSearchLoading;
 
@@ -7281,9 +7665,6 @@ function AdminPage() {
             <NavLink className="btn btn-ghost" to="/admin/charges/gas-calculator">
               Gider Dagitimi
             </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/charges/close">
-              Borc Kapat
-            </NavLink>
           </div>
         </details>
 
@@ -7374,6 +7755,9 @@ function AdminPage() {
             <NavLink className="btn btn-ghost" to="/admin/reports/reference-search">
               Referans Ile Hareket Ara
             </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/reports/bank-movements">
+              Banka Hareketleri
+            </NavLink>
           </div>
         </details>
 
@@ -7395,6 +7779,9 @@ function AdminPage() {
             <NavLink className="btn btn-ghost" to="/admin/bank-statement">
               Banka Ekstresi Yukle (Excel)
             </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/banks/statement-view">
+              Banka Hareketleri
+            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/upload-batches">
               Yukleme Kayitlari
             </NavLink>
@@ -7415,6 +7802,9 @@ function AdminPage() {
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/bank-statement">
               Banka Ekstresi Karsilastirma
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/reports/manual-review-matches">
+              Manuel Inceleme Gerektiren Eslesmeler
             </NavLink>
           </div>
         </details>
@@ -8556,17 +8946,22 @@ function AdminPage() {
           path="/reports/charge-consistency"
           element={
             <section className="dashboard report-page">
-              <div className="card table-card report-page-card">
-                <div className="section-head report-toolbar">
-                  <h3>Tahakkuk Kontrol Raporu</h3>
+
+              {/* ─── Filter Card ─────────────────────────────────── */}
+              <div className="card report-page-card cc-report-card">
+                <div className="cc-report-header">
+                  <div className="cc-report-header-text">
+                    <h3 className="cc-report-title">Tahakkuk Kontrol Raporu</h3>
+                    <p className="cc-report-subtitle">Secilen donem icin tahakkuk tutarsizliklarini ve eksikliklerini tarar.</p>
+                  </div>
                   <div className="admin-row">
                     <button
-                      className="btn btn-primary btn-run"
+                      className="btn btn-run"
                       type="button"
                       onClick={() => void runChargeConsistencyQuery()}
                       disabled={chargeConsistencyLoading || loading}
                     >
-                      {chargeConsistencyLoading ? "Hesaplaniyor..." : "Calistir"}
+                      {chargeConsistencyLoading ? "Hesaplaniyor..." : "▶ Calistir"}
                     </button>
                     <button className="btn btn-ghost" type="button" onClick={clearChargeConsistencyFilters}>
                       Temizle
@@ -8574,201 +8969,292 @@ function AdminPage() {
                   </div>
                 </div>
 
-                <div className="compact-row-top-gap">
-                  <label>
-                    Yil
-                    <input
-                      type="number"
-                      value={chargeConsistencyForm.periodYear}
-                      onChange={(e) => setChargeConsistencyForm((prev) => ({ ...prev, periodYear: e.target.value }))}
-                      required
-                    />
-                  </label>
-                </div>
-
-                <label>
-                  Ay Secimi (Birden cok secilebilir)
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={chargeConsistencyForm.periodMonths.length === monthOptions.length}
-                      onChange={(e) => {
-                        setChargeConsistencyForm((prev) => ({
-                          ...prev,
-                          periodMonths: e.target.checked ? [...monthOptions] : [new Date().getMonth() + 1],
-                        }));
-                      }}
-                    />
-                    Tum aylari sec
-                  </label>
-                  <div className="month-grid">
-                    {monthOptions.map((month) => {
-                      const checked = chargeConsistencyForm.periodMonths.includes(month);
-                      return (
-                        <label key={month} className="month-chip">
+                <div className="cc-filter-body">
+                  {/* Donem */}
+                  <div className="cc-filter-group">
+                    <span className="cc-filter-group-label">Donem</span>
+                    <div className="cc-filter-period-row">
+                      <label className="cc-inline-label">
+                        <span>Yil</span>
+                        <input
+                          type="number"
+                          className="cc-year-input"
+                          value={chargeConsistencyForm.periodYear}
+                          onChange={(e) => setChargeConsistencyForm((prev) => ({ ...prev, periodYear: e.target.value }))}
+                          required
+                        />
+                      </label>
+                      <div className="cc-month-block">
+                        <label className="checkbox-row cc-all-months-label">
                           <input
                             type="checkbox"
-                            checked={checked}
+                            checked={chargeConsistencyForm.periodMonths.length === monthOptions.length}
                             onChange={(e) => {
-                              setChargeConsistencyForm((prev) => {
-                                const next = e.target.checked
-                                  ? [...prev.periodMonths, month]
-                                  : prev.periodMonths.filter((m) => m !== month);
-                                return { ...prev, periodMonths: [...new Set(next)].sort((a, b) => a - b) };
-                              });
+                              setChargeConsistencyForm((prev) => ({
+                                ...prev,
+                                periodMonths: e.target.checked ? [...monthOptions] : [new Date().getMonth() + 1],
+                              }));
                             }}
                           />
-                          {month}
+                          Tum aylari sec
                         </label>
+                        <div className="month-grid">
+                          {monthOptions.map((month) => {
+                            const checked = chargeConsistencyForm.periodMonths.includes(month);
+                            return (
+                              <label key={month} className="month-chip">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setChargeConsistencyForm((prev) => {
+                                      const next = e.target.checked
+                                        ? [...prev.periodMonths, month]
+                                        : prev.periodMonths.filter((m) => m !== month);
+                                      return { ...prev, periodMonths: [...new Set(next)].sort((a, b) => a - b) };
+                                    });
+                                  }}
+                                />
+                                {month}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Filtreler */}
+                  <div className="cc-filter-group">
+                    <span className="cc-filter-group-label">Filtreler</span>
+                    <div className="report-filter-grid cc-filter-grid">
+                      <label>
+                        Tahakkuk Tipi
+                        <select
+                          value={chargeConsistencyForm.chargeTypeId}
+                          onChange={(e) => setChargeConsistencyForm((prev) => ({ ...prev, chargeTypeId: e.target.value }))}
+                        >
+                          <option value="">Tum tipler</option>
+                          {chargeTypeOptions.map((x) => (
+                            <option key={x.id} value={x.id}>
+                              {x.name} ({x.code})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Daire Tipi
+                        <select
+                          value={chargeConsistencyForm.apartmentType}
+                          onChange={(e) =>
+                            setChargeConsistencyForm((prev) => ({ ...prev, apartmentType: e.target.value as "ALL" | ApartmentType }))
+                          }
+                        >
+                          <option value="ALL">Tum Daireler</option>
+                          <option value="BUYUK">Sadece BUYUK</option>
+                          <option value="KUCUK">Sadece KUCUK</option>
+                        </select>
+                      </label>
+                      <label>
+                        Beklenen BUYUK Tutar
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Orn: 2000"
+                          value={chargeConsistencyForm.expectedBuyukAmount}
+                          onChange={(e) =>
+                            setChargeConsistencyForm((prev) => ({ ...prev, expectedBuyukAmount: e.target.value }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        Beklenen KUCUK Tutar
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Orn: 1500"
+                          value={chargeConsistencyForm.expectedKucukAmount}
+                          onChange={(e) =>
+                            setChargeConsistencyForm((prev) => ({ ...prev, expectedKucukAmount: e.target.value }))
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Secenekler */}
+                  <div className="cc-filter-group">
+                    <span className="cc-filter-group-label">Secenekler</span>
+                    <div className="cc-options-row">
+                      <label className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={chargeConsistencyForm.requireMonthEndDueDate}
+                          onChange={(e) =>
+                            setChargeConsistencyForm((prev) => ({ ...prev, requireMonthEndDueDate: e.target.checked }))
+                          }
+                        />
+                        Son odeme tarihi ay sonu kontrolu yap
+                      </label>
+                      <label className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={chargeConsistencyForm.includeMissing}
+                          onChange={(e) => setChargeConsistencyForm((prev) => ({ ...prev, includeMissing: e.target.checked }))}
+                        />
+                        Eksik tahakkuklari da uyar
+                      </label>
+                      <label className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={chargeConsistencyViewMode === "RAW"}
+                          onChange={(e) => setChargeConsistencyViewMode(e.target.checked ? "RAW" : "MERGED")}
+                        />
+                        Ham kayitlari goster (varsayilan: birlestirilmis)
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Bilgi notu */}
+                  <div className="cc-info-callout">
+                    <span className="cc-info-icon">ⓘ</span>
+                    <span>
+                      Eksik tahakkuk uyarisi dogru calissin diye <strong>Tahakkuk Tipi</strong> secili olmalidir
+                      (ornegin AIDAT).
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ─── Stats ───────────────────────────────────────── */}
+              {chargeConsistencyTotals && (
+                <div className="stats-grid cc-stats-row">
+                  <article className="card stat stat-tone-danger">
+                    <h4>Toplam Uyari</h4>
+                    <p>{visibleChargeConsistencyRows.length}</p>
+                    <span className="small">
+                      {chargeConsistencyViewMode === "RAW" ? "Ham uyari satiri" : "Tekillestirilmis uyari"}
+                    </span>
+                  </article>
+                  <article className="card stat stat-tone-info">
+                    <h4>Hedef Daire</h4>
+                    <p>{chargeConsistencyTotals.targetApartmentCount}</p>
+                    <span className="small">
+                      Kontrol kapsami ({chargeConsistencyTotals.totalApartmentCount} toplamdan)
+                    </span>
+                  </article>
+                  <article className="card stat stat-tone-warn">
+                    <h4>Taranan Tahakkuk</h4>
+                    <p>{chargeConsistencyTotals.scannedChargeCount}</p>
+                    <span className="small">Donem icindeki kayitlar</span>
+                  </article>
+                </div>
+              )}
+
+              {/* ─── Kod Dagilimi / Hizli Filtre ─────────────────── */}
+              {chargeConsistencyCodeOptions.length > 0 && (
+                <div className="card report-page-card cc-code-filter-card">
+                  <div className="cc-code-filter-header">
+                    <span className="cc-code-filter-title">Uyari Tip Dagilimi</span>
+                    <div className="cc-code-filter-actions">
+                      <button
+                        className="btn btn-ghost cc-code-filter-btn"
+                        type="button"
+                        onClick={() =>
+                          setChargeConsistencySelectedCodes(chargeConsistencyCodeOptions.map((item) => item.code))
+                        }
+                      >
+                        Tumunu Sec
+                      </button>
+                      <button
+                        className="btn btn-ghost cc-code-filter-btn"
+                        type="button"
+                        onClick={() => setChargeConsistencySelectedCodes([])}
+                      >
+                        Filtreyi Temizle
+                      </button>
+                    </div>
+                  </div>
+                  <div className="cc-code-badges">
+                    {chargeConsistencyCodeOptions.map((item) => {
+                      const isActive = chargeConsistencySelectedCodes.includes(item.code);
+                      const severity = getChargeConsistencyCodeSeverity(item.code);
+                      return (
+                        <button
+                          key={item.code}
+                          type="button"
+                          className={`cc-code-badge cc-code-badge--${severity}${isActive ? " cc-code-badge--active" : ""}`}
+                          onClick={() => {
+                            setChargeConsistencySelectedCodes((prev) => {
+                              if (prev.includes(item.code)) {
+                                return prev.filter((c) => c !== item.code);
+                              }
+                              return [...new Set([...prev, item.code])];
+                            });
+                          }}
+                        >
+                          <span className="cc-code-badge-label">{item.label}</span>
+                          <span className="cc-code-badge-count">{item.count}</span>
+                        </button>
                       );
                     })}
                   </div>
-                </label>
-
-                <div className="upload-batch-filter-row compact-row-top-gap report-filter-grid">
-                  <label>
-                    Tahakkuk Tipi
-                    <select
-                      value={chargeConsistencyForm.chargeTypeId}
-                      onChange={(e) => setChargeConsistencyForm((prev) => ({ ...prev, chargeTypeId: e.target.value }))}
-                    >
-                      <option value="">Tum tipler</option>
-                      {chargeTypeOptions.map((x) => (
-                        <option key={x.id} value={x.id}>
-                          {x.name} ({x.code})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label>
-                    Daire Tipi
-                    <select
-                      value={chargeConsistencyForm.apartmentType}
-                      onChange={(e) =>
-                        setChargeConsistencyForm((prev) => ({ ...prev, apartmentType: e.target.value as "ALL" | ApartmentType }))
-                      }
-                    >
-                      <option value="ALL">Tum Daireler</option>
-                      <option value="BUYUK">Sadece BUYUK</option>
-                      <option value="KUCUK">Sadece KUCUK</option>
-                    </select>
-                  </label>
-
-                  <label>
-                    Beklenen BUYUK Tutar
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Orn: 2000"
-                      value={chargeConsistencyForm.expectedBuyukAmount}
-                      onChange={(e) =>
-                        setChargeConsistencyForm((prev) => ({ ...prev, expectedBuyukAmount: e.target.value }))
-                      }
-                    />
-                  </label>
-
-                  <label>
-                    Beklenen KUCUK Tutar
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Orn: 1500"
-                      value={chargeConsistencyForm.expectedKucukAmount}
-                      onChange={(e) =>
-                        setChargeConsistencyForm((prev) => ({ ...prev, expectedKucukAmount: e.target.value }))
-                      }
-                    />
-                  </label>
                 </div>
+              )}
 
-                <p className="small">
-                  Not: Eksik tahakkuk uyarisi dogru calissin diye Tahakkuk Tipi secili olmalidir (ornegin AIDAT).
-                </p>
-
-                <div className="compact-row-top-gap">
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={chargeConsistencyForm.requireMonthEndDueDate}
-                      onChange={(e) =>
-                        setChargeConsistencyForm((prev) => ({ ...prev, requireMonthEndDueDate: e.target.checked }))
-                      }
-                    />
-                    Son odeme tarihi ay sonu kontrolu yap
-                  </label>
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={chargeConsistencyForm.includeMissing}
-                      onChange={(e) => setChargeConsistencyForm((prev) => ({ ...prev, includeMissing: e.target.checked }))}
-                    />
-                    Eksik tahakkuklari da uyar
-                  </label>
-                </div>
-
-                {chargeConsistencyTotals && (
-                  <div className="stats-grid compact-row-top-gap">
-                    <article className="card stat stat-tone-danger">
-                      <h4>Toplam Uyari</h4>
-                      <p>{mergedChargeConsistencyRows.length}</p>
-                      <span className="small">Tekillestirilmis uyari satiri</span>
-                    </article>
-                    <article className="card stat stat-tone-info">
-                      <h4>Hedef Daire</h4>
-                      <p>{chargeConsistencyTotals.targetApartmentCount}</p>
-                      <span className="small">
-                        Kontrol kapsami ({chargeConsistencyTotals.totalApartmentCount} toplamdan)
-                      </span>
-                    </article>
-                    <article className="card stat stat-tone-warn">
-                      <h4>Taranan Tahakkuk</h4>
-                      <p>{chargeConsistencyTotals.scannedChargeCount}</p>
-                      <span className="small">Donem icindeki kayitlar</span>
-                    </article>
-                  </div>
-                )}
-
-                {chargeConsistencyTotals && chargeConsistencyExcludedApartments.length > 0 && (
-                  <div className="card compact-row-top-gap">
-                    <h4 className="charge-consistency-exempt-title">Muaf Daireler (Kontrol Disi)</h4>
-                    <p className="small">
-                      Toplam {chargeConsistencyTotals.totalApartmentCount} dairenin {chargeConsistencyTotals.excludedApartmentCount}
-                      {' '}adedi secili tahakkuk tipi icin muaf oldugu icin hedef daire sayisina dahil edilmedi.
-                    </p>
-                    <div className="table-wrap compact-row-top-gap">
-                      <table className="apartment-list-table report-compact-table">
-                        <thead>
-                          <tr>
-                            <th>Blok</th>
-                            <th>Daire</th>
-                            <th>Tip</th>
-                            <th>Gorev</th>
-                            <th>Muafiyet Nedeni</th>
+              {/* ─── Muaf Daireler ───────────────────────────────── */}
+              {chargeConsistencyTotals && chargeConsistencyExcludedApartments.length > 0 && (
+                <details className="card report-page-card cc-excluded-card">
+                  <summary className="cc-excluded-summary">
+                    <span className="cc-excluded-title">Muaf Daireler (Kontrol Disi)</span>
+                    <span className="cc-excluded-count">{chargeConsistencyExcludedApartments.length} daire</span>
+                  </summary>
+                  <p className="small cc-excluded-note">
+                    Toplam {chargeConsistencyTotals.totalApartmentCount} dairenin{" "}
+                    {chargeConsistencyTotals.excludedApartmentCount} adedi secili tahakkuk tipi icin muaf oldugu icin
+                    hedef daire sayisina dahil edilmedi.
+                  </p>
+                  <div className="table-wrap cc-excluded-table-wrap">
+                    <table className="apartment-list-table report-compact-table">
+                      <thead>
+                        <tr>
+                          <th>Blok</th>
+                          <th>Daire</th>
+                          <th>Tip</th>
+                          <th>Gorev</th>
+                          <th>Muafiyet Nedeni</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {chargeConsistencyExcludedApartments.map((row) => (
+                          <tr key={row.apartmentId}>
+                            <td>{row.blockName}</td>
+                            <td>{row.apartmentDoorNo}</td>
+                            <td>{row.apartmentType}</td>
+                            <td>{row.apartmentDutyName || "-"}</td>
+                            <td>{row.reason}</td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {chargeConsistencyExcludedApartments.map((row) => (
-                            <tr key={row.apartmentId}>
-                              <td>{row.blockName}</td>
-                              <td>{row.apartmentDoorNo}</td>
-                              <td>{row.apartmentType}</td>
-                              <td>{row.apartmentDutyName || "-"}</td>
-                              <td>{row.reason}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                )}
+                </details>
+              )}
 
-                <div className="table-wrap compact-row-top-gap charge-consistency-wrap">
+              {/* ─── Sonuc Tablosu ───────────────────────────────── */}
+              <div className="card report-page-card cc-results-card">
+                <div className="cc-results-header">
+                  <span className="cc-results-title">Uyari Listesi</span>
+                  {chargeConsistencyTotals && (
+                    <span className="cc-results-badge">{visibleChargeConsistencyRows.length} kayit</span>
+                  )}
+                </div>
+                <div className="table-wrap charge-consistency-wrap">
                   <table className="apartment-list-table report-compact-table charge-consistency-table">
                     <thead>
                       <tr>
-                        <th>Kod</th>
-                        <th>Uyari</th>
+                        <th>Uyari Tipi</th>
+                        <th>Mesaj</th>
                         <th>Blok</th>
                         <th>Daire</th>
                         <th>Tip</th>
@@ -8779,40 +9265,89 @@ function AdminPage() {
                         <th className="col-num">Ger. Tutar</th>
                         <th>Bek. Vade</th>
                         <th>Ger. Vade</th>
+                        <th>Islem</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {mergedChargeConsistencyRows.length === 0 ? (
+                      {visibleChargeConsistencyRows.length === 0 ? (
                         <tr>
-                          <td colSpan={12} className="empty">
+                          <td colSpan={13} className="empty">
                             Uyari bulunmuyor. Listelemek icin Calistir butonunu kullanin.
                           </td>
                         </tr>
                       ) : (
-                        mergedChargeConsistencyRows.map((row, idx) => (
-                          <tr key={`${row.code}-${row.chargeId ?? row.apartmentId}-${row.periodMonth}-${idx}`}>
-                            <td>
-                              <div>{row.codes.map((code) => formatChargeConsistencyCode(code)).join(" | ")}</div>
-                            </td>
-                            <td>{row.messages.join(" | ")}</td>
-                            <td>{row.blockName}</td>
-                            <td>{row.apartmentDoorNo}</td>
-                            <td>{row.apartmentType}</td>
-                            <td>{row.residentNames.length > 0 ? row.residentNames.join(", ") : "-"}</td>
-                            <td>{`${row.periodMonth}/${row.periodYear}`}</td>
-                            <td>{row.chargeTypeName ?? "-"}</td>
-                            <td className="col-num">{row.expectedAmount === null ? "-" : formatTry(row.expectedAmount)}</td>
-                            <td className="col-num">{row.actualAmount === null ? "-" : formatTry(row.actualAmount)}</td>
-                            <td>{row.expectedDueDate ? formatDateTr(row.expectedDueDate) : "-"}</td>
-                            <td>{row.actualDueDate ? formatDateTr(row.actualDueDate) : "-"}</td>
-                          </tr>
-                        ))
+                        visibleChargeConsistencyRows.map((row, idx) => {
+                          const rowSeverity: "danger" | "warn" | "info" = row.codes.some((c) =>
+                            ["MISSING_CHARGE", "DUPLICATE_CHARGE", "NONPOSITIVE_AMOUNT"].includes(c)
+                          )
+                            ? "danger"
+                            : row.codes.some((c) => c === "AMOUNT_MISMATCH")
+                              ? "warn"
+                              : "info";
+                          return (
+                            <tr
+                              key={`${row.code}-${row.chargeId ?? row.apartmentId}-${row.periodMonth}-${idx}`}
+                              data-cc-severity={rowSeverity}
+                            >
+                              <td>
+                                <div className="cc-pills-wrap">
+                                  {row.codes.map((code) => (
+                                    <span
+                                      key={code}
+                                      className={`cc-warn-pill cc-warn-pill--${getChargeConsistencyCodeSeverity(code)}`}
+                                    >
+                                      {formatChargeConsistencyCode(code)}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td>{row.messages.join(" | ")}</td>
+                              <td>{row.blockName}</td>
+                              <td>{row.apartmentDoorNo}</td>
+                              <td>{row.apartmentType}</td>
+                              <td>{row.residentNames.length > 0 ? row.residentNames.join(", ") : "-"}</td>
+                              <td>{`${row.periodMonth}/${row.periodYear}`}</td>
+                              <td>{row.chargeTypeName ?? "-"}</td>
+                              <td className="col-num">{row.expectedAmount === null ? "-" : formatTry(row.expectedAmount)}</td>
+                              <td className="col-num">{row.actualAmount === null ? "-" : formatTry(row.actualAmount)}</td>
+                              <td>{row.expectedDueDate ? formatDateTr(row.expectedDueDate) : "-"}</td>
+                              <td>{row.actualDueDate ? formatDateTr(row.actualDueDate) : "-"}</td>
+                              <td>
+                                <button
+                                  className="btn btn-ghost cc-action-btn"
+                                  type="button"
+                                  onClick={() => openCorrectionsForChargeConsistencyRow(row)}
+                                >
+                                  Duzelt
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
                 </div>
               </div>
+
             </section>
+          }
+        />
+        <Route
+          path="/reports/manual-review-matches"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <ManualReviewMatchesPage
+                loading={loading}
+                reportLoading={manualReviewMatchesLoading}
+                rows={manualReviewMatchesRows}
+                totalCount={manualReviewMatchesTotalCount}
+                filter={manualReviewMatchesFilter}
+                setFilter={setManualReviewMatchesFilter}
+                runQuery={runManualReviewMatchesQuery}
+                clearFilters={clearManualReviewMatchesFilters}
+              />
+            </Suspense>
           }
         />
         <Route
@@ -8833,6 +9368,9 @@ function AdminPage() {
                     </button>
                     <button className="btn btn-ghost" type="button" onClick={clearApartmentBalanceMatrixFilters}>
                       Temizle
+                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={printApartmentBalanceMatrixReport}>
+                      Yazdir
                     </button>
                   </div>
                 </div>
@@ -9990,6 +10528,26 @@ function AdminPage() {
                   </label>
                 </div>
 
+                <div className="compact-row">
+                  <label>
+                    Tahakkuk Tarihi Baslangic
+                    <input
+                      type="date"
+                      value={bulkCorrectionForm.accrualDateFrom}
+                      onChange={(e) => setBulkCorrectionForm((prev) => ({ ...prev, accrualDateFrom: e.target.value }))}
+                    />
+                  </label>
+
+                  <label>
+                    Tahakkuk Tarihi Bitis
+                    <input
+                      type="date"
+                      value={bulkCorrectionForm.accrualDateTo}
+                      onChange={(e) => setBulkCorrectionForm((prev) => ({ ...prev, accrualDateTo: e.target.value }))}
+                    />
+                  </label>
+                </div>
+
                 <label>
                   Ay Secimi (bos birakirsan tum aylar)
                   <div className="month-grid">
@@ -10029,6 +10587,8 @@ function AdminPage() {
                         periodYear: "",
                         periodMonths: [],
                         chargeTypeId: "",
+                        accrualDateFrom: "",
+                        accrualDateTo: "",
                       }));
                       setDistributedInvoiceRows([]);
                       setMessage("Filtreler temizlendi");
@@ -11151,26 +11711,42 @@ function AdminPage() {
                   </div>
                 </section>
               )}
+
+              {manualReviewImportInfos.length > 0 && (
+                <section className="card import-manual-review-card">
+                  <h3>Manuel Inceleme Gereken Odemeler</h3>
+                  <div className="import-summary-badges">
+                    <span className="summary-badge summary-badge-manual-review">
+                      Manuel Inceleme: {manualReviewImportInfos.length}
+                    </span>
+                  </div>
+                  <p className="small">
+                    Bu satirlar bilerek otomatik dagitilmaz. Yanlis tahakkuk kapanmasini onlemek icin Tahsilat Raporu
+                    veya Eslestirme ekranindan manuel kontrol edin.
+                  </p>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Satir</th>
+                          <th>Ham Not</th>
+                          <th>Aciklama</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {manualReviewImportInfos.map((item, idx) => (
+                          <tr key={`${item.raw}-manual-${idx}`}>
+                            <td>{item.rowNo ?? "-"}</td>
+                            <td>{item.raw}</td>
+                            <td>{item.explanation}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
             </section>
-          }
-        />
-        <Route
-          path="/charges/close"
-          element={
-            <form className="card admin-form" onSubmit={onCloseCharge}>
-              <h3>Borc Kapat</h3>
-              <label>
-                Charge ID
-                <input
-                  value={closeForm.chargeId}
-                  onChange={(e) => setCloseForm({ chargeId: e.target.value })}
-                  required
-                />
-              </label>
-              <button className="btn btn-primary" type="submit" disabled={loading}>
-                Borcu Kapat
-              </button>
-            </form>
           }
         />
         <Route
@@ -11286,17 +11862,18 @@ function AdminPage() {
                         <th>Malik</th>
                         <th>Tahakkuk Turu</th>
                         <th>Donem</th>
-                        <th>Vade</th>
                         <th className="col-num">Tahakkuk</th>
                         <th className="col-num">Odeme</th>
                         <th className="col-num">Kalan</th>
-                        <th>Aciklama</th>
+                        <th>Son Odeme Tarihi</th>
+                        <th>Hangi Aydan Geldi</th>
+                        <th>Durum</th>
                       </tr>
                     </thead>
                     <tbody>
                       {fractionalClosureRows.length === 0 ? (
                         <tr>
-                          <td colSpan={10} className="empty">
+                          <td colSpan={11} className="empty">
                             Kayit bulunmuyor. Listelemek icin Calistir butonunu kullanin.
                           </td>
                         </tr>
@@ -11316,20 +11893,27 @@ function AdminPage() {
                               sensitivity: "base",
                             });
                           })
-                          .map((row) => (
-                          <tr key={row.chargeId}>
-                            <td>{row.blockName}</td>
-                            <td>{row.apartmentDoorNo}</td>
-                            <td>{row.apartmentOwnerName || "-"}</td>
-                            <td>{row.chargeTypeName}</td>
-                            <td>{`${String(row.periodMonth).padStart(2, "0")}/${row.periodYear}`}</td>
-                            <td>{formatDateTr(row.dueDate)}</td>
-                            <td className="col-num">{formatTry(row.amount)}</td>
-                            <td className="col-num">{formatTry(row.paidTotal)}</td>
-                            <td className="col-num col-num-negative">{formatTry(row.remaining)}</td>
-                            <td>{row.description || "-"}</td>
-                          </tr>
-                        ))
+                          .map((row) => {
+                            const sourceStatus = getFractionalClosureSourceStatus(row);
+                            return (
+                              <tr
+                                key={row.chargeId}
+                                className={sourceStatus === "Eksik Odeme" ? "fractional-closure-row-missing" : undefined}
+                              >
+                                <td>{row.blockName}</td>
+                                <td>{row.apartmentDoorNo}</td>
+                                <td>{row.apartmentOwnerName || "-"}</td>
+                                <td>{row.chargeTypeName}</td>
+                                <td>{`${String(row.periodMonth).padStart(2, "0")}/${row.periodYear}`}</td>
+                                <td className="col-num">{formatTry(row.amount)}</td>
+                                <td className="col-num">{formatTry(row.paidTotal)}</td>
+                                <td className="col-num col-num-negative">{formatTry(row.remaining)}</td>
+                                <td>{row.lastPaymentAt ? formatDateTr(row.lastPaymentAt) : "-"}</td>
+                                <td>{row.sourceMonth ?? "-"}</td>
+                                <td>{sourceStatus}</td>
+                              </tr>
+                            );
+                          })
                       )}
                     </tbody>
                   </table>
@@ -11345,6 +11929,10 @@ function AdminPage() {
               <MonthlyLedgerPrintPage />
             </Suspense>
           }
+        />
+        <Route
+          path="/reports/bank-movements"
+          element={<Navigate replace to="/admin/banks/statement-view" />}
         />
         <Route
           path="/reports/apartments/list"
@@ -11647,6 +12235,22 @@ function AdminPage() {
                 </div>
               </div>
             </section>
+          }
+        />
+        <Route
+          path="/banks/statement-view"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <BankStatementViewPage
+                loading={loading}
+                rows={bankStatementViewRows}
+                openingBalance={bankStatementViewOpeningBalance}
+                filter={bankStatementViewFilter}
+                setFilter={setBankStatementViewFilter}
+                runQuery={runBankStatementViewQuery}
+                resetToCurrentMonth={resetBankStatementViewToCurrentMonth}
+              />
+            </Suspense>
           }
         />
         <Route
@@ -11960,53 +12564,6 @@ function ResidentPage({
       }),
     [accountingStatement]
   );
-
-  function formatPaymentDayDiff(
-    dueDate: string,
-    paidAt: string | null | undefined,
-    status: string,
-    remaining: number
-  ): string {
-    const due = new Date(dueDate);
-    if (Number.isNaN(due.getTime())) {
-      return "-";
-    }
-
-    const dueStart = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
-
-    if (paidAt) {
-      const paid = new Date(paidAt);
-      if (Number.isNaN(paid.getTime())) {
-        return "-";
-      }
-
-      const paidStart = new Date(paid.getFullYear(), paid.getMonth(), paid.getDate()).getTime();
-      const diffDays = Math.round((paidStart - dueStart) / (1000 * 60 * 60 * 24));
-
-      if (diffDays > 0) {
-        return `${diffDays} gun gec`;
-      }
-      if (diffDays < 0) {
-        return `${Math.abs(diffDays)} gun erken`;
-      }
-      return "Tam gununde";
-    }
-
-    const isClosed = status === "CLOSED" || remaining <= 0.0001;
-    if (isClosed) {
-      return "-";
-    }
-
-    const today = new Date();
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-    const overdueDays = Math.floor((todayStart - dueStart) / (1000 * 60 * 60 * 24));
-
-    if (overdueDays > 0) {
-      return `${overdueDays} gun gecikmis - Odeme bekleniyor`;
-    }
-
-    return "-";
-  }
 
   const selectedExpenseItem = useMemo(
     () => expenseReport?.topItems.find((item) => item.expenseItemId === selectedExpenseItemId) ?? null,
@@ -12443,7 +13000,6 @@ function ResidentPage({
                   <th>Aciklama</th>
                   <th>Son Odeme Tarihi</th>
                   <th>Odenme Tarihi</th>
-                  <th>Adat</th>
                   <th className="col-num">Tutar</th>
                   <th className="col-num">Odenen</th>
                   <th className="col-num">Kalan</th>
@@ -12476,7 +13032,6 @@ function ResidentPage({
                     <td>{row.type}</td>
                     <td>{formatDateTr(row.dueDate)}</td>
                     <td>{row.status === "CLOSED" ? (row.paidAt ? formatDateTr(row.paidAt) : "-") : "-"}</td>
-                    <td>{formatPaymentDayDiff(row.dueDate, row.paidAt, row.status, row.remaining)}</td>
                     <td className="col-num">{formatTry(row.amount)}</td>
                     <td className="col-num">{formatTry(row.paidTotal)}</td>
                     <td className="col-num">{formatTry(row.remaining)}</td>
@@ -12486,7 +13041,7 @@ function ResidentPage({
                 })}
                 {statement.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="empty">
+                    <td colSpan={9} className="empty">
                       Henuz ekstre verisi yok
                     </td>
                   </tr>

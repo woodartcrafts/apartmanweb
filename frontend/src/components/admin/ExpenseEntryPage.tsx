@@ -64,11 +64,12 @@ export function ExpenseEntryPage({
 
   return (
     <section className="dashboard">
-      <form className="card admin-form" onSubmit={(e) => void onSubmit(e)}>
+      <form data-testid="expense-entry-form" className="card admin-form" onSubmit={(e) => void onSubmit(e)}>
         <h3>Gider Girisi</h3>
         <label>
           Gider Kalemi
           <select
+            data-testid="expense-item-select"
             value={selectedExpenseItemId}
             onChange={(e) => setExpenseForm((prev) => ({ ...prev, expenseItemId: e.target.value }))}
             required
@@ -84,6 +85,7 @@ export function ExpenseEntryPage({
         <label>
           Tarih
           <input
+            data-testid="expense-spent-at"
             type="date"
             value={expenseForm.spentAt}
             onChange={(e) => setExpenseForm((prev) => ({ ...prev, spentAt: e.target.value }))}
@@ -93,6 +95,7 @@ export function ExpenseEntryPage({
         <label>
           Tutar
           <input
+            data-testid="expense-amount"
             type="number"
             step="0.01"
             value={expenseForm.amount}
@@ -116,6 +119,7 @@ export function ExpenseEntryPage({
         <label>
           Aciklama
           <input
+            data-testid="expense-description"
             value={expenseForm.description}
             onChange={(e) => setExpenseForm((prev) => ({ ...prev, description: e.target.value }))}
             placeholder="Opsiyonel"
@@ -124,12 +128,13 @@ export function ExpenseEntryPage({
         <label>
           Referans
           <input
+            data-testid="expense-reference"
             value={expenseForm.reference}
             onChange={(e) => setExpenseForm((prev) => ({ ...prev, reference: e.target.value }))}
             placeholder="Fis no, EFT no vb."
           />
         </label>
-        <button className="btn btn-primary" type="submit" disabled={loading}>
+        <button data-testid="expense-submit" className="btn btn-primary" type="submit" disabled={loading}>
           Gideri Kaydet
         </button>
       </form>

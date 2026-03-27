@@ -3,7 +3,10 @@ import { Router } from "express";
 import multer from "multer";
 import { PDFParse } from "pdf-parse";
 import ExcelJS from "exceljs";
+import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
 import { z } from "zod";
+import { config } from "../config";
 import { prisma } from "../db";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { getApartmentStatements } from "../utils/statement";
@@ -1076,6 +1079,29 @@ type DescriptionExpenseRuleLookup = {
   expenseItemId: string;
 };
 
+type GmailListMessagesResponse = {
+  messages?: Array<{ id: string }>;
+};
+
+type GmailMessageGetResponse = {
+  id: string;
+  payload?: GmailMessagePart;
+};
+
+type GmailMessagePart = {
+  filename?: string;
+  mimeType?: string;
+  body?: {
+    attachmentId?: string;
+    data?: string;
+  };
+  parts?: GmailMessagePart[];
+};
+
+type GmailAttachmentGetResponse = {
+  data?: string;
+};
+
 function getExcelCellValue(value: ExcelJS.CellValue | undefined): unknown {
   if (value === undefined || value === null) {
     return "";
@@ -1930,6 +1956,431 @@ function matchExpenseItemId(
   return null;
 }
 
+function decodeBase64Url(data: string): Buffer {
+  const normalized = data.replace(/-/g, "+").replace(/_/g, "/");
+  const paddingLength = (4 - (normalized.length % 4)) % 4;
+  const padded = normalized + "=".repeat(paddingLength);
+  return Buffer.from(padded, "base64");
+}
+
+function collectPdfAttachmentParts(part: GmailMessagePart | undefined, bucket: GmailMessagePart[]): void {
+  if (!part) {
+    return;
+  }
+
+  const fileName = part.filename?.trim() ?? "";
+  const mimeType = part.mimeType?.toLowerCase() ?? "";
+  const isPdf = fileName.toLowerCase().endsWith(".pdf") || mimeType === "application/pdf";
+
+  if (isPdf && (part.body?.attachmentId || part.body?.data)) {
+    bucket.push(part);
+  }
+
+  for (const child of part.parts ?? []) {
+    collectPdfAttachmentParts(child, bucket);
+  }
+}
+
+function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] {
+  const rows: BankStatementRow[] = [];
+  const lines = pdfText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const dateRegex = /(\d{2}[./-]\d{2}[./-]\d{4}(?:\s+\d{2}:\d{2}(?::\d{2})?)?)/;
+  const amountRegex = /[-+]?\d{1,3}(?:[.\s]\d{3})*(?:,\d{2})|[-+]?\d+(?:,\d{2})/g;
+
+  for (const line of lines) {
+    const dateMatch = line.match(dateRegex);
+    if (!dateMatch) {
+      continue;
+    }
+
+    const occurredAt = parseFlexibleDateTime(dateMatch[1]);
+    if (!occurredAt) {
+      continue;
+    }
+
+    const amountMatches = [...line.matchAll(amountRegex)];
+    if (amountMatches.length === 0) {
+      continue;
+    }
+
+    const rawAmount = amountMatches[amountMatches.length - 1]?.[0] ?? "";
+    const parsedAmount = parseSignedAmount(rawAmount);
+    if (parsedAmount === null) {
+      continue;
+    }
+
+    const lowered = toAsciiLower(line);
+    const hasIncomingHint =
+      lowered.includes("gelen") ||
+      lowered.includes("havale") ||
+      lowered.includes("eft") ||
+      lowered.includes("fast") ||
+      lowered.includes("yatan") ||
+      lowered.includes("alacak") ||
+      lowered.includes("tahsilat");
+    const hasOutgoingHint =
+      lowered.includes("giden") ||
+      lowered.includes("odeme") ||
+      lowered.includes("borc") ||
+      lowered.includes("masraf") ||
+      lowered.includes("ucret") ||
+      lowered.includes("komisyon");
+
+    let signedAmount = Math.abs(parsedAmount);
+    if (rawAmount.trim().startsWith("-")) {
+      signedAmount = -Math.abs(parsedAmount);
+    } else if (rawAmount.trim().startsWith("+")) {
+      signedAmount = Math.abs(parsedAmount);
+    } else if (hasOutgoingHint && !hasIncomingHint) {
+      signedAmount = -Math.abs(parsedAmount);
+    }
+
+    let description = line.replace(dateMatch[1], " ");
+    description = description.replace(rawAmount, " ").replace(/\s+/g, " ").trim();
+    if (!description) {
+      description = line;
+    }
+
+    rows.push({
+      occurredAt,
+      amount: signedAmount,
+      description,
+    });
+  }
+
+  return rows;
+}
+
+async function parseBankStatementRowsFromPdfBuffer(fileBuffer: Buffer): Promise<BankStatementRow[]> {
+  const parser = new PDFParse({ data: fileBuffer });
+  const parsed = await parser.getText();
+  await parser.destroy();
+  return parseBankStatementRowsFromPdfText(parsed.text ?? "");
+}
+
+async function fetchGmailAccessToken(): Promise<string> {
+  const clientId = config.gmailBankSync.oauthClientId?.trim();
+  const clientSecret = config.gmailBankSync.oauthClientSecret?.trim();
+  const refreshToken = config.gmailBankSync.oauthRefreshToken?.trim();
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error("Gmail OAuth bilgileri eksik (GMAIL_CLIENT_ID/GMAIL_CLIENT_SECRET/GMAIL_REFRESH_TOKEN)");
+  }
+
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token",
+  });
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Gmail access token alinamadi (${response.status}): ${text}`);
+  }
+
+  const data = (await response.json()) as { access_token?: string };
+  const accessToken = data.access_token?.trim();
+  if (!accessToken) {
+    throw new Error("Gmail access token bos dondu");
+  }
+
+  return accessToken;
+}
+
+async function gmailApiGet<T>(accessToken: string, path: string): Promise<T> {
+  const userId = encodeURIComponent(config.gmailBankSync.gmailUser?.trim() || "me");
+  const url = `https://gmail.googleapis.com/gmail/v1/users/${userId}${path}`;
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Gmail API hatasi (${response.status}): ${text}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+function buildGmailQuery(): string {
+  const customQuery = config.gmailBankSync.query?.trim();
+  if (customQuery) {
+    return customQuery;
+  }
+
+  const senderFilter = config.gmailBankSync.senderFilter?.trim();
+  const lookbackDays = Math.max(1, config.gmailBankSync.lookbackDays);
+  const parts = [
+    senderFilter ? `from:${senderFilter}` : "",
+    "has:attachment",
+    "filename:pdf",
+    `newer_than:${lookbackDays}d`,
+  ].filter(Boolean);
+
+  return parts.join(" ");
+}
+
+async function fetchGmailPdfAttachments(messageId: string, accessToken: string): Promise<Array<{ fileName: string; data: Buffer }>> {
+  const message = await gmailApiGet<GmailMessageGetResponse>(
+    accessToken,
+    `/messages/${encodeURIComponent(messageId)}?format=full`
+  );
+
+  const parts: GmailMessagePart[] = [];
+  collectPdfAttachmentParts(message.payload, parts);
+
+  const attachments: Array<{ fileName: string; data: Buffer }> = [];
+  for (const part of parts) {
+    const fileName = part.filename?.trim() || `gmail-${messageId}.pdf`;
+
+    if (part.body?.data) {
+      attachments.push({ fileName, data: decodeBase64Url(part.body.data) });
+      continue;
+    }
+
+    const attachmentId = part.body?.attachmentId?.trim();
+    if (!attachmentId) {
+      continue;
+    }
+
+    const attachment = await gmailApiGet<GmailAttachmentGetResponse>(
+      accessToken,
+      `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`
+    );
+
+    if (!attachment.data) {
+      continue;
+    }
+
+    attachments.push({ fileName, data: decodeBase64Url(attachment.data) });
+  }
+
+  return attachments;
+}
+
+async function fetchImapPdfAttachments(): Promise<{
+  scannedMessageCount: number;
+  attachments: Array<{ messageKey: string; fileName: string; data: Buffer }>;
+}> {
+  const user = config.gmailBankSync.gmailUser?.trim();
+  const password = config.gmailBankSync.appPassword?.trim();
+  if (!user || !password) {
+    throw new Error("IMAP bilgileri eksik (GMAIL_USER/GMAIL_APP_PASSWORD)");
+  }
+
+  const senderFilter = config.gmailBankSync.senderFilter?.trim().toLowerCase() ?? "";
+  const lookbackDays = Math.max(1, config.gmailBankSync.lookbackDays);
+  const since = new Date();
+  since.setDate(since.getDate() - lookbackDays);
+  since.setHours(0, 0, 0, 0);
+
+  const client = new ImapFlow({
+    host: "imap.gmail.com",
+    port: 993,
+    secure: true,
+    auth: {
+      user,
+      pass: password,
+    },
+  });
+
+  await client.connect();
+  const lock = await client.getMailboxLock("INBOX");
+
+  try {
+    const uidsRaw = await client.search({ since });
+    const uids = Array.isArray(uidsRaw) ? uidsRaw : [];
+    const maxMessages = Math.max(1, Math.min(config.gmailBankSync.maxMessages, 50));
+    const selectedUids = uids.slice(-maxMessages).reverse();
+
+    const attachments: Array<{ messageKey: string; fileName: string; data: Buffer }> = [];
+
+    for await (const message of client.fetch(selectedUids, { uid: true, envelope: true, source: true })) {
+      const fromAddresses = (message.envelope?.from ?? [])
+        .map((entry) => entry.address?.toLowerCase() ?? "")
+        .filter(Boolean);
+
+      if (senderFilter && !fromAddresses.some((address) => address.includes(senderFilter))) {
+        continue;
+      }
+
+      const parsed = await simpleParser(message.source as Buffer);
+      const messageKey = (parsed.messageId?.trim() || String(message.uid)).replace(/[<>]/g, "");
+
+      for (const att of parsed.attachments) {
+        const mimeType = (att.contentType ?? "").toLowerCase();
+        const fileName = (att.filename ?? "").trim();
+        const isPdf = mimeType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf");
+        if (!isPdf) {
+          continue;
+        }
+
+        const content = Buffer.isBuffer(att.content) ? att.content : Buffer.from(att.content);
+        attachments.push({
+          messageKey,
+          fileName: fileName || `imap-${message.uid}.pdf`,
+          data: content,
+        });
+      }
+    }
+
+    return {
+      scannedMessageCount: selectedUids.length,
+      attachments,
+    };
+  } finally {
+    lock.release();
+    await client.logout();
+  }
+}
+
+export async function runGmailBankSync(uploadedById?: string): Promise<{
+  query: string;
+  scannedMessageCount: number;
+  importedBatchCount: number;
+  skippedDuplicateAttachmentCount: number;
+  skippedNoParsedRowsCount: number;
+  importedPaymentCount: number;
+  importedExpenseCount: number;
+  skippedRowCount: number;
+  batchIds: string[];
+  errors: string[];
+}> {
+  if (!config.gmailBankSync.enabled) {
+    throw new Error("Gmail bank sync kapali (GMAIL_BANK_SYNC_ENABLED=true olmali)");
+  }
+
+  const usingImap = Boolean(config.gmailBankSync.appPassword?.trim());
+  const query = usingImap
+    ? `IMAP newer_than:${Math.max(1, config.gmailBankSync.lookbackDays)}d${
+        config.gmailBankSync.senderFilter ? ` from:${config.gmailBankSync.senderFilter}` : ""
+      }`
+    : buildGmailQuery();
+
+  let importedBatchCount = 0;
+  let skippedDuplicateAttachmentCount = 0;
+  let skippedNoParsedRowsCount = 0;
+  let importedPaymentCount = 0;
+  let importedExpenseCount = 0;
+  let skippedRowCount = 0;
+  const batchIds: string[] = [];
+  const errors: string[] = [];
+
+  const allAttachments: Array<{ key: string; fileName: string; data: Buffer }> = [];
+  let scannedMessageCount = 0;
+
+  if (usingImap) {
+    const imapResult = await fetchImapPdfAttachments();
+    scannedMessageCount = imapResult.scannedMessageCount;
+    for (const attachment of imapResult.attachments) {
+      allAttachments.push({ key: attachment.messageKey, fileName: attachment.fileName, data: attachment.data });
+    }
+  } else {
+    const accessToken = await fetchGmailAccessToken();
+    const maxMessages = Math.max(1, Math.min(config.gmailBankSync.maxMessages, 50));
+    const list = await gmailApiGet<GmailListMessagesResponse>(
+      accessToken,
+      `/messages?q=${encodeURIComponent(query)}&maxResults=${maxMessages}`
+    );
+    const messages = list.messages ?? [];
+    scannedMessageCount = messages.length;
+
+    for (const message of messages) {
+      try {
+        const attachments = await fetchGmailPdfAttachments(message.id, accessToken);
+        for (const attachment of attachments) {
+          allAttachments.push({ key: message.id, fileName: attachment.fileName, data: attachment.data });
+        }
+      } catch (err) {
+        const text = err instanceof Error ? err.message : "Beklenmeyen hata";
+        errors.push(`Message ${message.id}: ${text}`);
+      }
+    }
+  }
+
+  for (const attachment of allAttachments) {
+    try {
+      const importFileName = `gmail:${attachment.key}:${attachment.fileName}`;
+      const existingBatch = await prisma.importBatch.findFirst({
+        where: {
+          kind: ImportBatchType.BANK_STATEMENT_UPLOAD,
+          fileName: importFileName,
+        },
+        select: { id: true },
+      });
+
+      if (existingBatch) {
+        skippedDuplicateAttachmentCount += 1;
+        continue;
+      }
+
+      const parsedRows = await parseBankStatementRowsFromPdfBuffer(attachment.data);
+      const filteredRows = config.gmailBankSync.importOnlyIncoming
+        ? parsedRows.filter((row) => row.amount > 0)
+        : parsedRows;
+
+      if (filteredRows.length === 0) {
+        skippedNoParsedRowsCount += 1;
+        continue;
+      }
+
+      const commitRows: BankStatementCommitRow[] = filteredRows.map((row) => ({
+        occurredAt: row.occurredAt,
+        amount: Number(Math.abs(row.amount).toFixed(2)),
+        entryType: row.amount > 0 ? "PAYMENT" : "EXPENSE",
+        description: row.description,
+        reference: row.reference,
+        txType: row.txType,
+        paymentMethod: derivePaymentMethod(row.txType),
+      }));
+
+      const result = await processBankStatementImport({
+        rows: commitRows,
+        fileName: importFileName,
+        uploadedById,
+      });
+
+      importedBatchCount += 1;
+      importedPaymentCount += result.paymentCreatedCount;
+      importedExpenseCount += result.expenseCreatedCount;
+      skippedRowCount += result.skippedCount;
+      batchIds.push(result.batchId);
+    } catch (err) {
+      const text = err instanceof Error ? err.message : "Beklenmeyen hata";
+      errors.push(`Attachment ${attachment.key}/${attachment.fileName}: ${text}`);
+    }
+  }
+
+  return {
+    query,
+    scannedMessageCount,
+    importedBatchCount,
+    skippedDuplicateAttachmentCount,
+    skippedNoParsedRowsCount,
+    importedPaymentCount,
+    importedExpenseCount,
+    skippedRowCount,
+    batchIds,
+    errors: errors.slice(0, 100),
+  };
+}
+
 async function processBankStatementImport(params: {
   rows: BankStatementCommitRow[];
   fileName: string;
@@ -2215,29 +2666,42 @@ async function processBankStatementImport(params: {
         }
 
         const paymentAmount = Number(row.amount.toFixed(2));
-        // Prefer exact remaining-amount match first; fallback stays due-date order.
-        const orderedCharges = [...openCharges].sort((a, b) => {
-          const exactA = Math.abs(a.remaining - paymentAmount) <= 0.01;
-          const exactB = Math.abs(b.remaining - paymentAmount) <= 0.01;
-          if (exactA !== exactB) {
-            return exactA ? -1 : 1;
-          }
+        const exactCharges = openCharges.filter((charge) => Math.abs(charge.remaining - paymentAmount) <= 0.01);
 
-          if (exactA && exactB) {
-            const aMeta = chargeSortMetaById.get(a.chargeId);
-            const bMeta = chargeSortMetaById.get(b.chargeId);
-            if (aMeta && bMeta) {
-              const paymentAt = row.occurredAt.getTime();
-              const aDistance = Math.abs(aMeta.dueAt - paymentAt);
-              const bDistance = Math.abs(bMeta.dueAt - paymentAt);
-              if (aDistance !== bDistance) {
-                return aDistance - bDistance;
-              }
-            }
-          }
+        // Safety gate: when debt is multi-target and there is no unique exact match,
+        // keep payment unapplied instead of doing FIFO-like auto allocation.
+        if (openCharges.length > 1 && exactCharges.length !== 1) {
+          const method = row.paymentMethod ?? derivePaymentMethod(row.txType);
+          const noteParts = [
+            reference ? `BANK_REF:${reference}` : undefined,
+            row.description ? `BANK_DESC:${row.description}` : undefined,
+            detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
+            exactCharges.length === 0
+              ? `UNAPPLIED:MANUAL_REVIEW:NO_EXACT_MATCH:${openCharges.length}`
+              : `UNAPPLIED:MANUAL_REVIEW:MULTIPLE_EXACT_MATCH:${exactCharges.length}`,
+          ].filter(Boolean) as string[];
 
-          return 0;
-        });
+          await prisma.payment.create({
+            data: {
+              importBatchId: batch.id,
+              paidAt: row.occurredAt,
+              method,
+              note: noteParts.join(" | "),
+              totalAmount: paymentAmount,
+              createdById: uploadedById,
+            },
+          });
+
+          paymentCreatedCount += 1;
+          infos.push(
+            exactCharges.length === 0
+              ? `Satir ${rowNo}: Birden fazla acik borc bulundu ve exact eslesme yok, odeme manuel incelemeye birakildi (${detectedDoorNo})`
+              : `Satir ${rowNo}: Birden fazla exact borc eslesmesi bulundu, odeme manuel incelemeye birakildi (${detectedDoorNo})`
+          );
+          continue;
+        }
+
+        const orderedCharges = exactCharges.length === 1 ? exactCharges : openCharges;
 
         let remainingToAllocate = paymentAmount;
         const items: Array<{ chargeId: string; amount: number }> = [];
@@ -3464,6 +3928,8 @@ router.post("/charges/distributed/invoices/list", async (req, res) => {
     periodYear: z.number().int().min(2000).max(2100).optional(),
     periodMonths: z.array(z.number().int().min(1).max(12)).max(12).optional(),
     chargeTypeId: z.string().min(1).optional(),
+    accrualDateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    accrualDateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   });
 
   const parsed = schema.safeParse(req.body ?? {});
@@ -3471,14 +3937,23 @@ router.post("/charges/distributed/invoices/list", async (req, res) => {
     return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
   }
 
-  const { periodYear, periodMonths, chargeTypeId } = parsed.data;
+  const { periodYear, periodMonths, chargeTypeId, accrualDateFrom, accrualDateTo } = parsed.data;
   const months = periodMonths && periodMonths.length > 0 ? [...new Set(periodMonths)] : undefined;
+
+  const createdAtFilter: Prisma.DateTimeFilter | undefined =
+    accrualDateFrom || accrualDateTo
+      ? {
+          gte: accrualDateFrom ? new Date(`${accrualDateFrom}T00:00:00.000Z`) : undefined,
+          lte: accrualDateTo ? new Date(`${accrualDateTo}T23:59:59.999Z`) : undefined,
+        }
+      : undefined;
 
   const charges = await prisma.charge.findMany({
     where: {
       chargeTypeId,
       periodYear,
       periodMonth: months ? { in: months } : undefined,
+      createdAt: createdAtFilter,
     },
     select: {
       id: true,
@@ -4183,6 +4658,156 @@ router.get("/payments/list", async (req, res) => {
   }
 
   return res.json(rows.filter((x) => x.source === source));
+});
+
+router.get("/reports/manual-review-matches", async (req, res) => {
+  const querySchema = z.object({
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+    doorNo: z.string().min(1).max(50).optional(),
+    limit: z.coerce.number().int().min(1).max(2000).optional(),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const { from, to, doorNo, limit } = parsed.data;
+  const normalizedDoorNoFilter = doorNo?.trim() || "";
+
+  const payments = await prisma.payment.findMany({
+    where: {
+      note: {
+        contains: "UNAPPLIED:MANUAL_REVIEW",
+      },
+      paidAt:
+        from || to
+          ? {
+              gte: from ? new Date(from) : undefined,
+              lte: to ? new Date(to) : undefined,
+            }
+          : undefined,
+    },
+    include: {
+      importBatch: {
+        select: { id: true, kind: true, fileName: true, uploadedAt: true },
+      },
+      itemLinks: {
+        include: {
+          charge: {
+            select: {
+              apartment: {
+                select: {
+                  id: true,
+                  doorNo: true,
+                  block: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+    take: limit ?? 500,
+  });
+
+  function parseManualReviewNote(note: string | null): {
+    doorNo: string | null;
+    reference: string | null;
+    description: string | null;
+    reasonCode: "NO_EXACT_MATCH" | "MULTIPLE_EXACT_MATCH" | "UNKNOWN";
+    reasonCount: number | null;
+  } {
+    if (!note) {
+      return {
+        doorNo: null,
+        reference: null,
+        description: null,
+        reasonCode: "UNKNOWN",
+        reasonCount: null,
+      };
+    }
+
+    const parts = note
+      .split(" | ")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    const doorPart = parts.find((x) => x.startsWith("DOOR:"));
+    const refPart = parts.find((x) => x.startsWith("BANK_REF:"));
+    const descPart = parts.find((x) => x.startsWith("BANK_DESC:"));
+    const reasonPart = parts.find((x) => x.startsWith("UNAPPLIED:MANUAL_REVIEW:"));
+
+    let reasonCode: "NO_EXACT_MATCH" | "MULTIPLE_EXACT_MATCH" | "UNKNOWN" = "UNKNOWN";
+    let reasonCount: number | null = null;
+    if (reasonPart) {
+      const segments = reasonPart.split(":");
+      const codeSegment = segments[2] ?? "";
+      const countSegment = segments[3] ?? "";
+      if (codeSegment === "NO_EXACT_MATCH") {
+        reasonCode = "NO_EXACT_MATCH";
+      } else if (codeSegment === "MULTIPLE_EXACT_MATCH") {
+        reasonCode = "MULTIPLE_EXACT_MATCH";
+      }
+      const parsedCount = Number(countSegment);
+      reasonCount = Number.isFinite(parsedCount) ? parsedCount : null;
+    }
+
+    return {
+      doorNo: doorPart ? doorPart.slice("DOOR:".length).trim() || null : null,
+      reference: refPart ? refPart.slice("BANK_REF:".length).trim() || null : null,
+      description: descPart ? descPart.slice("BANK_DESC:".length).trim() || null : null,
+      reasonCode,
+      reasonCount,
+    };
+  }
+
+  const rows = payments
+    .map((payment) => {
+      const parsedNote = parseManualReviewNote(payment.note);
+      const apartmentLabels = [...new Set(payment.itemLinks.map((item) => {
+        const blockName = item.charge.apartment.block?.name ?? "-";
+        const door = item.charge.apartment.doorNo;
+        return `${blockName}/${door}`;
+      }))];
+
+      return {
+        paymentId: payment.id,
+        paidAt: payment.paidAt,
+        createdAt: payment.createdAt,
+        totalAmount: Number(payment.totalAmount),
+        method: payment.method,
+        source:
+          payment.importBatch?.kind === ImportBatchType.BANK_STATEMENT_UPLOAD
+            ? "BANK_STATEMENT_UPLOAD"
+            : payment.importBatch?.kind === ImportBatchType.PAYMENT_UPLOAD
+              ? "PAYMENT_UPLOAD"
+              : "MANUAL",
+        importBatchId: payment.importBatch?.id ?? null,
+        importFileName: payment.importBatch?.fileName ?? null,
+        importUploadedAt: payment.importBatch?.uploadedAt ?? null,
+        note: payment.note,
+        doorNo: parsedNote.doorNo,
+        reference: parsedNote.reference,
+        description: parsedNote.description,
+        reasonCode: parsedNote.reasonCode,
+        reasonCount: parsedNote.reasonCount,
+        apartmentLabels,
+      };
+    })
+    .filter((row) => {
+      if (!normalizedDoorNoFilter) {
+        return true;
+      }
+      return (row.doorNo ?? "").trim() === normalizedDoorNoFilter;
+    });
+
+  return res.json({
+    totalCount: rows.length,
+    rows,
+  });
 });
 
 router.get("/reports/reference-search", async (req, res) => {
@@ -5228,10 +5853,22 @@ router.post("/payments/upload", upload.single("file"), async (req, res) => {
         continue;
       }
 
+      const exactCharges = openCharges.filter((charge) => Math.abs(charge.remaining - row.amount) <= 0.01);
+      if (openCharges.length > 1 && exactCharges.length !== 1) {
+        skippedCount += 1;
+        errors.push(
+          exactCharges.length === 0
+            ? `Satir ${idx + 1}: Birden fazla acik borc var ve exact eslesme yok, manuel tahsilat gerekli (${row.doorNo})`
+            : `Satir ${idx + 1}: Birden fazla exact borc eslesmesi var, manuel tahsilat gerekli (${row.doorNo})`
+        );
+        continue;
+      }
+
       let remainingToAllocate = row.amount;
       const items: Array<{ chargeId: string; amount: number }> = [];
 
-      for (const charge of openCharges) {
+      const orderedCharges = exactCharges.length === 1 ? exactCharges : openCharges;
+      for (const charge of orderedCharges) {
         if (remainingToAllocate <= 0.0001) {
           break;
         }
@@ -5469,6 +6106,20 @@ router.post("/bank-statement/import", upload.single("file"), async (req, res) =>
     console.error("[bank-statement-import-failed]", err);
     const detail = err instanceof Error ? err.message : "Beklenmeyen hata";
     return res.status(500).json({ message: `Banka ekstresi islenemedi: ${detail}` });
+  }
+});
+
+router.post("/bank-statement/gmail-sync", async (req, res) => {
+  try {
+    const result = await runGmailBankSync(req.user?.userId);
+    return res.json({
+      message: "Gmail banka ekstresi senkronizasyonu tamamlandi",
+      ...result,
+    });
+  } catch (err) {
+    console.error("[bank-statement-gmail-sync-failed]", err);
+    const detail = err instanceof Error ? err.message : "Beklenmeyen hata";
+    return res.status(500).json({ message: `Gmail senkronizasyonu basarisiz: ${detail}` });
   }
 });
 
@@ -5880,6 +6531,29 @@ router.get("/reports/fractional-closures", async (req, res) => {
               .sort((a, b) => b.getTime() - a.getTime())[0]
           : null;
 
+      const chargeMonthLabel = `${String(charge.periodMonth).padStart(2, "0")}/${charge.periodYear}`;
+      const paymentMonthLabels = [...new Set(
+        charge.paymentItems
+          .map((x) => {
+            const paidAt = x.payment.paidAt;
+            return `${String(paidAt.getUTCMonth() + 1).padStart(2, "0")}/${paidAt.getUTCFullYear()}`;
+          })
+          .sort((a, b) => {
+            const [am, ay] = a.split("/").map(Number);
+            const [bm, by] = b.split("/").map(Number);
+            if (ay !== by) {
+              return ay - by;
+            }
+            return am - bm;
+          })
+      )];
+
+      const differentMonthLabels = paymentMonthLabels.filter((x) => x !== chargeMonthLabel);
+      const sourceMonth =
+        differentMonthLabels.length > 0
+          ? differentMonthLabels.join(", ")
+          : paymentMonthLabels[0] ?? null;
+
       return {
         chargeId: charge.id,
         blockName: charge.apartment.block.name,
@@ -5894,6 +6568,7 @@ router.get("/reports/fractional-closures", async (req, res) => {
         remaining,
         description: charge.description,
         lastPaymentAt,
+        sourceMonth,
       };
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
@@ -6221,7 +6896,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
         }
       : undefined;
 
-  const [payments, expenses, expenseAgg, openingAgg] = await Promise.all([
+  const [payments, expenses, expenseAgg, openingAgg, priorPaymentAgg, priorExpenseAgg] = await Promise.all([
     prisma.payment.findMany({
       where: {
         method: PaymentMethod.BANK_TRANSFER,
@@ -6277,6 +6952,20 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       },
       _sum: { totalAmount: true },
       _min: { paidAt: true },
+    }),
+    prisma.payment.aggregate({
+      where: {
+        method: PaymentMethod.BANK_TRANSFER,
+        ...(fromDate ? { paidAt: { lt: fromDate } } : {}),
+      },
+      _sum: { totalAmount: true },
+    }),
+    prisma.expense.aggregate({
+      where: {
+        paymentMethod: PaymentMethod.BANK_TRANSFER,
+        ...(fromDate ? { spentAt: { lt: fromDate } } : {}),
+      },
+      _sum: { amount: true },
     }),
   ]);
 
@@ -6398,6 +7087,9 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
   const totalIn = movementPaymentRows.reduce((sum, row) => sum + row.amount, 0);
   const totalOut = Number(expenseAgg._sum.amount ?? 0);
   const openingBalance = Number(openingAgg._sum.totalAmount ?? 0);
+  const priorIn = Number(priorPaymentAgg._sum.totalAmount ?? 0);
+  const priorOut = Number(priorExpenseAgg._sum.amount ?? 0);
+  const startingBalance = fromDate ? priorIn - priorOut : openingBalance;
   const openingDate = openingAgg._min.paidAt;
 
   return res.json({
@@ -6412,6 +7104,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       totalOut: Number(totalOut.toFixed(2)),
       net: Number((totalIn - totalOut).toFixed(2)),
       openingBalance: Number(openingBalance.toFixed(2)),
+      startingBalance: Number(startingBalance.toFixed(2)),
       openingDate: openingDate ? openingDate.toISOString() : null,
       paymentCount: movementPaymentRows.length,
       expenseCount: expenses.length,
@@ -6830,17 +7523,25 @@ router.get("/reports/charge-consistency", async (req, res) => {
   });
 
   const grouped = new Map<string, typeof charges>();
+  const groupedChargeTypeIdsByApartmentMonth = new Map<string, Set<string>>();
   for (const charge of charges) {
-    const key = `${charge.apartmentId}|${charge.periodMonth}`;
+    const key = `${charge.apartmentId}|${charge.periodMonth}|${charge.chargeTypeId}`;
+    const apartmentMonthKey = `${charge.apartmentId}|${charge.periodMonth}`;
+
+    const existingTypeSet = groupedChargeTypeIdsByApartmentMonth.get(apartmentMonthKey) ?? new Set<string>();
+    existingTypeSet.add(charge.chargeTypeId);
+    groupedChargeTypeIdsByApartmentMonth.set(apartmentMonthKey, existingTypeSet);
+
     const rows = grouped.get(key) ?? [];
     rows.push(charge);
     grouped.set(key, rows);
   }
 
-  function inferExpectedAmountByTypeAndMonth(type: ApartmentType, month: number): number | null {
+  function inferExpectedAmountByTypeAndMonth(type: ApartmentType, month: number, effectiveChargeTypeId: string): number | null {
     const values = charges
       .filter(
         (charge) =>
+          charge.chargeTypeId === effectiveChargeTypeId &&
           charge.apartment.type === type &&
           charge.periodMonth === month &&
           eligibleApartmentIds.has(charge.apartmentId)
@@ -6870,16 +7571,21 @@ router.get("/reports/charge-consistency", async (req, res) => {
   }
 
   const resolvedExpectedByMonth = new Map<number, { BUYUK: number | null; KUCUK: number | null }>();
+  const canCheckExpectedAmount = !!selectedChargeType;
   for (const month of effectiveMonths) {
     resolvedExpectedByMonth.set(month, {
       BUYUK:
-        typeof expectedBuyukAmount === "number"
+        !canCheckExpectedAmount
+          ? null
+          : typeof expectedBuyukAmount === "number"
           ? expectedBuyukAmount
-          : inferExpectedAmountByTypeAndMonth("BUYUK", month),
+          : inferExpectedAmountByTypeAndMonth("BUYUK", month, selectedChargeType.id),
       KUCUK:
-        typeof expectedKucukAmount === "number"
+        !canCheckExpectedAmount
+          ? null
+          : typeof expectedKucukAmount === "number"
           ? expectedKucukAmount
-          : inferExpectedAmountByTypeAndMonth("KUCUK", month),
+          : inferExpectedAmountByTypeAndMonth("KUCUK", month, selectedChargeType.id),
     });
   }
 
@@ -6920,7 +7626,7 @@ router.get("/reports/charge-consistency", async (req, res) => {
     selectedChargeTypeName.includes("igdas");
   const includeMissingRows = includeMissing !== "NO" && !!restrictedChargeType;
   const enforceMonthEndBase = requireMonthEndDueDate === "YES";
-  const enforceMonthEnd = enforceMonthEndBase && (selectedChargeType ? isRecurringChargeType : true);
+  const enforceMonthEnd = enforceMonthEndBase && !!selectedChargeType && isRecurringChargeType;
 
   if (includeMissingRows && !chargeTypeId) {
     return res.status(400).json({
@@ -6966,7 +7672,7 @@ router.get("/reports/charge-consistency", async (req, res) => {
   if (restrictedChargeType) {
     for (const apartment of exemptApartments) {
       for (const month of effectiveMonths) {
-        const key = `${apartment.id}|${month}`;
+        const key = `${apartment.id}|${month}|${selectedChargeType?.id ?? ""}`;
         const rows = grouped.get(key) ?? [];
 
         for (const charge of rows) {
@@ -7001,125 +7707,75 @@ router.get("/reports/charge-consistency", async (req, res) => {
 
   for (const apartment of eligibleApartments) {
     for (const month of effectiveMonths) {
-      const key = `${apartment.id}|${month}`;
-      const rows = grouped.get(key) ?? [];
+      const apartmentMonthKey = `${apartment.id}|${month}`;
+      const chargeTypeIdsForChecks = selectedChargeType
+        ? [selectedChargeType.id]
+        : [...(groupedChargeTypeIdsByApartmentMonth.get(apartmentMonthKey) ?? new Set<string>())];
+
       const monthExpected = resolvedExpectedByMonth.get(month) ?? { BUYUK: null, KUCUK: null };
-      const expectedAmountForApartment =
-        apartment.type === "BUYUK"
-          ? monthExpected.BUYUK
-          : monthExpected.KUCUK;
       const expectedDueDateForMonth = enforceMonthEnd ? new Date(Date.UTC(periodYear, month, 0)) : null;
       const shouldCheckMissingForMonth =
         includeMissingRows && (!isDogalgazChargeType || dogalgazInvoiceMonths.has(month));
 
-      if (shouldCheckMissingForMonth && rows.length === 0) {
-        warningRows.push({
-          code: "MISSING_CHARGE",
-          severity: "WARN",
-          message: "Bu daire/ay icin tahakkuk kaydi bulunamadi.",
-          apartmentId: apartment.id,
-          blockName: apartment.block.name,
-          apartmentDoorNo: apartment.doorNo,
-          apartmentType: apartment.type,
-          apartmentOwnerName: apartment.ownerFullName,
-          residentNames: apartment.users.map((u) => u.fullName),
-          periodYear,
-          periodMonth: month,
-          chargeId: null,
-          chargeTypeName: null,
-          actualAmount: null,
-          expectedAmount: expectedAmountForApartment,
-          actualDueDate: null,
-          expectedDueDate: expectedDueDateForMonth,
-        });
-        continue;
-      }
+      for (const effectiveChargeTypeId of chargeTypeIdsForChecks) {
+        const key = `${apartment.id}|${month}|${effectiveChargeTypeId}`;
+        const rows = grouped.get(key) ?? [];
+        const expectedAmountForApartment = apartment.type === "BUYUK" ? monthExpected.BUYUK : monthExpected.KUCUK;
 
-      if (rows.length > 1) {
-        warningRows.push({
-          code: "DUPLICATE_CHARGE",
-          severity: "WARN",
-          message: `Ayni daire/ay icin birden fazla tahakkuk var (${rows.length} adet).`,
-          apartmentId: apartment.id,
-          blockName: apartment.block.name,
-          apartmentDoorNo: apartment.doorNo,
-          apartmentType: apartment.type,
-          apartmentOwnerName: apartment.ownerFullName,
-          residentNames: apartment.users.map((u) => u.fullName),
-          periodYear,
-          periodMonth: month,
-          chargeId: rows[0]?.id ?? null,
-          chargeTypeName: rows[0]?.chargeType.name ?? null,
-          actualAmount: rows[0] ? Number(rows[0].amount) : null,
-          expectedAmount: expectedAmountForApartment,
-          actualDueDate: rows[0]?.dueDate ?? null,
-          expectedDueDate: expectedDueDateForMonth,
-        });
-      }
-
-      for (const charge of rows) {
-        const expectedAmount = expectedAmountForApartment;
-        const actualAmount = Number(charge.amount);
-
-        if (actualAmount <= 0.0001) {
+        if (shouldCheckMissingForMonth && rows.length === 0) {
           warningRows.push({
-            code: "NONPOSITIVE_AMOUNT",
+            code: "MISSING_CHARGE",
             severity: "WARN",
-            message: "Tahakkuk tutari sifir veya negatif olmamali.",
+            message: "Bu daire/ay icin tahakkuk kaydi bulunamadi.",
             apartmentId: apartment.id,
             blockName: apartment.block.name,
             apartmentDoorNo: apartment.doorNo,
             apartmentType: apartment.type,
             apartmentOwnerName: apartment.ownerFullName,
-            residentNames: charge.apartment.users.map((u) => u.fullName),
+            residentNames: apartment.users.map((u) => u.fullName),
             periodYear,
             periodMonth: month,
-            chargeId: charge.id,
-            chargeTypeName: charge.chargeType.name,
-            actualAmount,
-            expectedAmount,
-            actualDueDate: charge.dueDate,
+            chargeId: null,
+            chargeTypeName: selectedChargeType?.name ?? null,
+            actualAmount: null,
+            expectedAmount: expectedAmountForApartment,
+            actualDueDate: null,
             expectedDueDate: expectedDueDateForMonth,
           });
+          continue;
         }
 
-        if (expectedAmount !== null && Math.abs(actualAmount - expectedAmount) > 0.0001) {
+        if (rows.length > 1) {
           warningRows.push({
-            code: "AMOUNT_MISMATCH",
+            code: "DUPLICATE_CHARGE",
             severity: "WARN",
-            message: "Tahakkuk tutari beklenen degerle uyusmuyor.",
+            message: `Ayni daire/ay/tip icin birden fazla tahakkuk var (${rows.length} adet).`,
             apartmentId: apartment.id,
             blockName: apartment.block.name,
             apartmentDoorNo: apartment.doorNo,
             apartmentType: apartment.type,
             apartmentOwnerName: apartment.ownerFullName,
-            residentNames: charge.apartment.users.map((u) => u.fullName),
+            residentNames: apartment.users.map((u) => u.fullName),
             periodYear,
             periodMonth: month,
-            chargeId: charge.id,
-            chargeTypeName: charge.chargeType.name,
-            actualAmount,
-            expectedAmount,
-            actualDueDate: charge.dueDate,
+            chargeId: rows[0]?.id ?? null,
+            chargeTypeName: rows[0]?.chargeType.name ?? null,
+            actualAmount: rows[0] ? Number(rows[0].amount) : null,
+            expectedAmount: expectedAmountForApartment,
+            actualDueDate: rows[0]?.dueDate ?? null,
             expectedDueDate: expectedDueDateForMonth,
           });
         }
 
-        if (enforceMonthEnd) {
-          const expectedDueDate = expectedDueDateForMonth as Date;
-          const actualUtcY = charge.dueDate.getUTCFullYear();
-          const actualUtcM = charge.dueDate.getUTCMonth() + 1;
-          const actualUtcD = charge.dueDate.getUTCDate();
-          const expectedUtcY = expectedDueDate.getUTCFullYear();
-          const expectedUtcM = expectedDueDate.getUTCMonth() + 1;
-          const expectedUtcD = expectedDueDate.getUTCDate();
+        for (const charge of rows) {
+          const expectedAmount = expectedAmountForApartment;
+          const actualAmount = Number(charge.amount);
 
-          const isMatch = actualUtcY === expectedUtcY && actualUtcM === expectedUtcM && actualUtcD === expectedUtcD;
-          if (!isMatch) {
+          if (actualAmount <= 0.0001) {
             warningRows.push({
-              code: "DUE_DATE_NOT_MONTH_END",
+              code: "NONPOSITIVE_AMOUNT",
               severity: "WARN",
-              message: "Son odeme tarihi ilgili ayin son gunu degil.",
+              message: "Tahakkuk tutari sifir veya negatif olmamali.",
               apartmentId: apartment.id,
               blockName: apartment.block.name,
               apartmentDoorNo: apartment.doorNo,
@@ -7133,8 +7789,63 @@ router.get("/reports/charge-consistency", async (req, res) => {
               actualAmount,
               expectedAmount,
               actualDueDate: charge.dueDate,
-              expectedDueDate,
+              expectedDueDate: expectedDueDateForMonth,
             });
+          }
+
+          if (expectedAmount !== null && Math.abs(actualAmount - expectedAmount) > 0.0001) {
+            warningRows.push({
+              code: "AMOUNT_MISMATCH",
+              severity: "WARN",
+              message: "Tahakkuk tutari beklenen degerle uyusmuyor.",
+              apartmentId: apartment.id,
+              blockName: apartment.block.name,
+              apartmentDoorNo: apartment.doorNo,
+              apartmentType: apartment.type,
+              apartmentOwnerName: apartment.ownerFullName,
+              residentNames: charge.apartment.users.map((u) => u.fullName),
+              periodYear,
+              periodMonth: month,
+              chargeId: charge.id,
+              chargeTypeName: charge.chargeType.name,
+              actualAmount,
+              expectedAmount,
+              actualDueDate: charge.dueDate,
+              expectedDueDate: expectedDueDateForMonth,
+            });
+          }
+
+          if (enforceMonthEnd) {
+            const expectedDueDate = expectedDueDateForMonth as Date;
+            const actualUtcY = charge.dueDate.getUTCFullYear();
+            const actualUtcM = charge.dueDate.getUTCMonth() + 1;
+            const actualUtcD = charge.dueDate.getUTCDate();
+            const expectedUtcY = expectedDueDate.getUTCFullYear();
+            const expectedUtcM = expectedDueDate.getUTCMonth() + 1;
+            const expectedUtcD = expectedDueDate.getUTCDate();
+
+            const isMatch = actualUtcY === expectedUtcY && actualUtcM === expectedUtcM && actualUtcD === expectedUtcD;
+            if (!isMatch) {
+              warningRows.push({
+                code: "DUE_DATE_NOT_MONTH_END",
+                severity: "WARN",
+                message: "Son odeme tarihi ilgili ayin son gunu degil.",
+                apartmentId: apartment.id,
+                blockName: apartment.block.name,
+                apartmentDoorNo: apartment.doorNo,
+                apartmentType: apartment.type,
+                apartmentOwnerName: apartment.ownerFullName,
+                residentNames: charge.apartment.users.map((u) => u.fullName),
+                periodYear,
+                periodMonth: month,
+                chargeId: charge.id,
+                chargeTypeName: charge.chargeType.name,
+                actualAmount,
+                expectedAmount,
+                actualDueDate: charge.dueDate,
+                expectedDueDate,
+              });
+            }
           }
         }
       }
@@ -7793,5 +8504,25 @@ router.delete("/payment-items/:paymentItemId", async (req, res) => {
 
   return res.status(204).send();
 });
+
+export async function runScheduledGmailBankSync(): Promise<void> {
+  if (!config.gmailBankSync.enabled) {
+    return;
+  }
+
+  try {
+    const result = await runGmailBankSync();
+    console.log("[gmail-bank-sync] completed", {
+      scannedMessageCount: result.scannedMessageCount,
+      importedBatchCount: result.importedBatchCount,
+      importedPaymentCount: result.importedPaymentCount,
+      importedExpenseCount: result.importedExpenseCount,
+      skippedRowCount: result.skippedRowCount,
+      errors: result.errors.length,
+    });
+  } catch (err) {
+    console.error("[gmail-bank-sync] failed", err);
+  }
+}
 
 export default router;

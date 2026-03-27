@@ -218,11 +218,12 @@ export function PaymentEntryPage({
 
   return (
     <section className="dashboard">
-      <form className="card admin-form" onSubmit={(e) => void onSubmitPayment(e)}>
+      <form data-testid="payment-entry-form" className="card admin-form" onSubmit={(e) => void onSubmitPayment(e)}>
         <h3>Tahsilat Gir</h3>
         <label>
           Daire
           <select
+            data-testid="payment-apartment-select"
             value={paymentApartmentId}
             onChange={(e) => {
               void handlePaymentApartmentChange(e.target.value);
@@ -268,6 +269,7 @@ export function PaymentEntryPage({
                     <tr key={item.chargeId}>
                       <td>
                         <input
+                          data-testid="payment-charge-checkbox"
                           type="checkbox"
                           title="Tahakkuku sec"
                           aria-label={`${String(item.periodMonth).padStart(2, "0")}/${item.periodYear} ${item.chargeTypeName} tahakkugunu sec`}
@@ -352,6 +354,7 @@ export function PaymentEntryPage({
         <label>
           Tahsilat Tarihi
           <input
+            data-testid="payment-paid-at"
             type="date"
             value={paymentForm.paidAt}
             onChange={(e) => setPaymentForm((prev) => ({ ...prev, paidAt: e.target.value }))}
@@ -387,7 +390,7 @@ export function PaymentEntryPage({
             placeholder="Opsiyonel"
           />
         </label>
-        <button className="btn btn-primary" type="submit" disabled={isPaymentSubmitDisabled}>
+        <button data-testid="payment-submit" className="btn btn-primary" type="submit" disabled={isPaymentSubmitDisabled}>
           Tahsilati Kaydet
         </button>
       </form>

@@ -613,6 +613,7 @@ export type FractionalClosureReportRow = {
   remaining: number;
   description: string | null;
   lastPaymentAt: string | null;
+  sourceMonth: string | null;
 };
 
 export type FractionalClosureReportResponse = {
@@ -653,6 +654,7 @@ export type BankReconciliationReportResponse = {
     totalOut: number;
     net: number;
     openingBalance: number;
+    startingBalance: number;
     openingDate: string | null;
     paymentCount: number;
     expenseCount: number;
@@ -820,6 +822,30 @@ export type ReferenceMovementSearchResponse = {
     net: number;
   };
   rows: ReferenceMovementSearchRow[];
+};
+
+export type ManualReviewMatchRow = {
+  paymentId: string;
+  paidAt: string;
+  createdAt: string;
+  totalAmount: number;
+  method: PaymentMethod;
+  source: "MANUAL" | "BANK_STATEMENT_UPLOAD" | "PAYMENT_UPLOAD";
+  importBatchId: string | null;
+  importFileName: string | null;
+  importUploadedAt: string | null;
+  note: string | null;
+  doorNo: string | null;
+  reference: string | null;
+  description: string | null;
+  reasonCode: "NO_EXACT_MATCH" | "MULTIPLE_EXACT_MATCH" | "UNKNOWN";
+  reasonCount: number | null;
+  apartmentLabels: string[];
+};
+
+export type ManualReviewMatchesReportResponse = {
+  totalCount: number;
+  rows: ManualReviewMatchRow[];
 };
 
 export type DescriptionDoorRule = {
@@ -1112,6 +1138,16 @@ export function mapSkippedErrors(errors: string[]): SkippedRowInfo[] {
 
 export function explainInfoMessage(raw: string): string {
   const text = raw.toLocaleLowerCase("tr");
+
+  if (text.includes("manuel incelemeye birakildi") && text.includes("exact eslesme yok")) {
+    return "Birden fazla acik borc oldugu halde tekil exact eslesme bulunamadi; odeme otomatik kapatilmayip manuel incelemeye alindi.";
+  }
+  if (text.includes("manuel incelemeye birakildi") && text.includes("birden fazla exact")) {
+    return "Birden fazla exact eslesme oldugu icin yanlis tahakkuk kapanmasi engellendi; manuel secim gerekli.";
+  }
+  if (text.includes("manual_review")) {
+    return "Sistem bu odemeyi riskli buldugu icin otomatik dagitmadan manuel incelemeye birakti.";
+  }
 
   if (text.includes("acik borc yoktu") && text.includes("dagitimsiz kaydedildi")) {
     return "Odeme kaydi olusturuldu ancak acik borc olmadigi icin herhangi bir tahakkuga dagitilmadi.";

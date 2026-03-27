@@ -144,11 +144,12 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
       <h3>Tahakkuk Girisi</h3>
       <div className="filter-dropdown-field charge-entry-apartment-filter">
         <span>Daire No</span>
-        <details className="filter-dropdown apartment-edit-select-dropdown">
-          <summary>{getApartmentSelectionSummary()}</summary>
+        <details data-testid="charge-apartment-dropdown" className="filter-dropdown apartment-edit-select-dropdown">
+          <summary data-testid="charge-apartment-summary">{getApartmentSelectionSummary()}</summary>
           <div className="filter-dropdown-panel apartment-edit-select-list">
             <label className="bulk-filter-option apartment-edit-select-item">
               <input
+                data-testid="charge-apartment-select-all"
                 type="checkbox"
                 checked={allApartmentsSelected}
                 onChange={(e) =>
@@ -165,6 +166,7 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
               return (
                 <label key={apt.id} className="bulk-filter-option apartment-edit-select-item">
                   <input
+                    data-testid="charge-apartment-option"
                     type="checkbox"
                     checked={checked}
                     onChange={(e) =>
@@ -188,6 +190,7 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
         <label>
           Yil
           <input
+            data-testid="charge-period-year"
             type="number"
             value={chargeForm.periodYear}
             onChange={(e) => setChargeForm((prev) => ({ ...prev, periodYear: e.target.value }))}
@@ -198,6 +201,7 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
       <label>
         Tip
         <select
+          data-testid="charge-type-select"
           value={selectedChargeTypeId}
           onChange={(e) => setChargeForm((prev) => ({ ...prev, chargeTypeId: e.target.value }))}
           required
@@ -234,6 +238,7 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
               <label>
                 Ay
                 <input
+                  data-testid={`charge-row-${index}-month`}
                   type="number"
                   min={1}
                   max={12}
@@ -245,6 +250,7 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
               <label>
                 Tutar
                 <input
+                  data-testid={`charge-row-${index}-amount`}
                   type="number"
                   step="0.01"
                   value={entry.amount}
@@ -257,6 +263,7 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
             <label>
               Son Odeme Tarihi
               <input
+                data-testid={`charge-row-${index}-due-date`}
                 type="date"
                 value={entry.dueDate}
                 onChange={(e) => updateChargeEntry(index, "dueDate", e.target.value)}
@@ -267,6 +274,7 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
             <label>
               Aciklama
               <input
+                data-testid={`charge-row-${index}-description`}
                 value={entry.description}
                 onChange={(e) => updateChargeEntry(index, "description", e.target.value)}
                 placeholder="Opsiyonel"
@@ -276,7 +284,7 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
         ))}
       </div>
       {formError ? <p className="small-error">{formError}</p> : null}
-      <button className="btn btn-primary" type="submit" disabled={loading}>
+      <button data-testid="charge-submit" className="btn btn-primary" type="submit" disabled={loading}>
         Tahakkuk Kaydet
       </button>
     </form>

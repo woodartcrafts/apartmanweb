@@ -120,6 +120,24 @@ Onemli enumlar:
 - `AUTH_RATE_LIMIT_WINDOW_MS` (opsiyonel, default `900000`)
 - `AUTH_RATE_LIMIT_MAX_ATTEMPTS` (opsiyonel, default `5`)
 
+Gmail otomatik banka ekstresi (opsiyonel):
+- `GMAIL_BANK_SYNC_ENABLED` (`true/false`, default `false`)
+- `GMAIL_BANK_SYNC_CRON_TOKEN` (internal cron endpoint icin zorunlu)
+- `GMAIL_USER` (genelde `me`)
+- `GMAIL_APP_PASSWORD` (varsa OAuth yerine IMAP modunda bunu kullanir)
+- `GMAIL_CLIENT_ID`
+- `GMAIL_CLIENT_SECRET`
+- `GMAIL_REFRESH_TOKEN`
+- `GMAIL_BANK_SENDER` (opsiyonel, ornek: `noreply@isbank.com.tr`)
+- `ISBANK_EMAIL_FROM` (legacy uyumluluk: `GMAIL_BANK_SENDER` bossa bunu kullanir)
+- `GMAIL_BANK_QUERY` (opsiyonel, doluysa sender filtresi yerine direkt kullanilir)
+- `GMAIL_BANK_IMPORT_ONLY_INCOMING` (default `true`)
+- `GMAIL_BANK_LOOKBACK_DAYS` (default `2`)
+- `GMAIL_BANK_MAX_MESSAGES` (default `10`)
+- `GMAIL_BANK_SYNC_SCHEDULE_HOUR` (default `12`)
+- `GMAIL_BANK_SYNC_SCHEDULE_MINUTE` (default `0`)
+- `GMAIL_BANK_SYNC_TIMEZONE` (default `Europe/Istanbul`)
+
 Opsiyonel seed degiskenleri:
 - `ADMIN_EMAIL`
 - `ADMIN_PASSWORD`
@@ -193,10 +211,18 @@ Root komutlari:
 - `npm run build`: Backend TS build
 - `npm run start`: Production backend
 - `npm run test`, `npm run test:watch`
+- `npm run test:e2e`
+- `npm run test:e2e:headed`
+- `npm run test:critical`
 - `npm run prisma:generate`
 - `npm run prisma:migrate`
 - `npm run prisma:deploy`
 - `npm run prisma:studio`
+
+E2E icin opsiyonel ortam degiskenleri:
+- `E2E_ADMIN_IDENTIFIER`
+- `E2E_ADMIN_PASSWORD`
+- `E2E_API_BASE_URL` (default: `http://127.0.0.1:3000`)
 
 Frontend komutlari (`frontend/`):
 - `npm run dev`
@@ -215,6 +241,8 @@ Prefixler:
 Temel endpointler:
 - `POST /api/auth/login`
 - `GET /api/resident/me/statement`
+- `POST /api/admin/bank-statement/gmail-sync` (admin tetiklemeli Gmail senkronizasyonu)
+- `POST /api/internal/gmail-bank-sync` (cron token ile dahili tetikleme)
 
 Admin gruplari:
 - Daire/Blok CRUD
@@ -238,6 +266,22 @@ Admin ust menu:
 - `SD`: Sistem ve duzeltme
 
 ## 12. Raporlar ve Hesaplama Notlari
+
+## 12A. Gmail Otomatik Ekstre Senkronizasyonu
+
+- Sistem acikken backend her dakika kontrol eder ve Istanbul saatine gore belirtilen saatte (`GMAIL_BANK_SYNC_SCHEDULE_HOUR:MINUTE`) Gmail senkronizasyonunu tetikler.
+- Alternatif olarak Railway Cron benzeri bir scheduler ile `POST /api/internal/gmail-bank-sync` endpointi `Authorization: Bearer <GMAIL_BANK_SYNC_CRON_TOKEN>` ile cagrilabilir.
+- Islenen PDF eklerindeki satirlar mevcut banka-ekstresi import mantigina aktarilir.
+- `GMAIL_BANK_IMPORT_ONLY_INCOMING=true` ise sadece gelen para satirlari (PAYMENT) iceri alinir.
+- Dusuk guvenli eslesmelerde tahsilat otomatik kapama yapmadan, mevcut import mantigindaki skip/info mekanizmasina duser.
+- Ayni e-posta eki iki kez islenmez (import dosya adi `gmail:<messageId>:<fileName>` formatinda batch olarak kaydedilir).
+
+Calisma modu:
+- `GMAIL_APP_PASSWORD` doluysa IMAP (`imap.gmail.com`) ile mail kutusundan PDF ekleri okunur.
+- `GMAIL_APP_PASSWORD` bossa OAuth (`GMAIL_CLIENT_ID/GMAIL_CLIENT_SECRET/GMAIL_REFRESH_TOKEN`) ile Gmail API kullanilir.
+
+Manuel test komutu:
+- `npm run gmail:sync`
 
 ### 12.1 Referans arama (`/admin/reports/reference-search`)
 
