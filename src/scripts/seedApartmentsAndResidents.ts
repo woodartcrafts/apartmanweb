@@ -155,7 +155,7 @@ async function main() {
         role: UserRole.RESIDENT,
         apartmentId: apartment.id,
         phone,
-        passwordPlaintext: residentPassword,
+        passwordPlaintext: null,
         passwordHash,
       },
       create: {
@@ -163,7 +163,6 @@ async function main() {
         role: UserRole.RESIDENT,
         email,
         phone,
-        passwordPlaintext: residentPassword,
         passwordHash,
         apartmentId: apartment.id,
       },
@@ -181,7 +180,6 @@ async function main() {
           userId: residentUser.id,
           changedByUserId: null,
           passwordHash,
-          passwordPlaintext: residentPassword,
           reason: PasswordChangeReason.INITIAL_SEED,
         },
       });
@@ -189,7 +187,6 @@ async function main() {
   }
 
   console.log(`Daire + resident import tamamlandi. Toplam: ${rows.length}`);
-  console.log(`Varsayilan resident sifresi: ${residentPassword}`);
 }
 
 main()

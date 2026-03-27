@@ -367,7 +367,7 @@ router.post("/me/password", async (req, res) => {
       where: { id: currentUserId },
       data: {
         passwordHash,
-        passwordPlaintext: parsed.data.newPassword,
+        passwordPlaintext: null,
       },
     });
 
@@ -376,7 +376,6 @@ router.post("/me/password", async (req, res) => {
         userId: currentUserId,
         changedByUserId: currentUserId,
         passwordHash,
-        passwordPlaintext: parsed.data.newPassword,
         reason: PasswordChangeReason.SELF_CHANGE,
       },
     });

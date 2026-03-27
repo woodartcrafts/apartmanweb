@@ -15,6 +15,7 @@ import { createAdminApartmentUploadRoutes } from "./adminApartmentUploadRoutes";
 import { createAdminExpenseRoutes } from "./adminExpenseRoutes";
 import { createAdminPaymentMethodRoutes } from "./adminPaymentMethodRoutes";
 import { createAdminApartmentDefinitionRoutes } from "./adminApartmentDefinitionRoutes";
+import { createAdminMeetingRoutes } from "./adminMeetingRoutes";
 import {
   buildPaymentNote,
   extractDoorNoTagFromPaymentNote,
@@ -61,6 +62,7 @@ router.use(
     ensureApartmentTypeDefinitions,
   })
 );
+router.use(createAdminMeetingRoutes());
 
 router.get("/resident-content/announcements", async (_req, res) => {
   const rows = await prisma.residentAnnouncement.findMany({
@@ -1984,24 +1986,56 @@ async function processBankStatementImport(params: {
     expenseItemId: rule.expenseItemId,
   }));
 
+  const normalizeExpenseDedupText = (value: string): string =>
+    value
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLocaleLowerCase("tr");
+
+  const toDateOnlyKey = (value: Date): string => value.toISOString().slice(0, 10);
+
+  const buildExpenseDedupKey = (input: {
+    reference: string;
+    occurredAt: Date;
+    amount: number;
+    description: string;
+  }): string => {
+    const normalizedRef = input.reference.trim();
+    const normalizedAmount = Number(Math.abs(input.amount).toFixed(2)).toFixed(2);
+    const normalizedDesc = normalizeExpenseDedupText(input.description);
+    return [normalizedRef, toDateOnlyKey(input.occurredAt), normalizedAmount, normalizedDesc].join("|");
+  };
+
   const paymentReferenceSet = new Set<string>();
-  const expenseReferenceSet = new Set<string>();
+  const expenseDedupKeySet = new Set<string>();
   const incomingExpenseReferences = [...new Set(
     rows
       .filter((r) => r.entryType === "EXPENSE")
       .map((r) => r.reference?.trim())
       .filter((ref): ref is string => Boolean(ref))
   )];
-  const existingExpenseReferenceSet = new Set(
+  const existingExpenseDedupKeySet = new Set(
     incomingExpenseReferences.length > 0
       ? (
           await prisma.expense.findMany({
             where: { reference: { in: incomingExpenseReferences } },
-            select: { reference: true },
+            select: { reference: true, spentAt: true, amount: true, description: true },
           })
         )
-          .map((row) => row.reference?.trim())
-          .filter((ref): ref is string => Boolean(ref))
+          .map((row) => {
+            const ref = row.reference?.trim();
+            if (!ref) {
+              return null;
+            }
+
+            return buildExpenseDedupKey({
+              reference: ref,
+              occurredAt: row.spentAt,
+              amount: Number(row.amount),
+              description: row.description ?? "",
+            });
+          })
+          .filter((key): key is string => Boolean(key))
       : []
   );
   const positiveCount = rows.filter((r) => r.entryType === "PAYMENT").length;
@@ -2180,10 +2214,35 @@ async function processBankStatementImport(params: {
           continue;
         }
 
-        let remainingToAllocate = Number(row.amount.toFixed(2));
+        const paymentAmount = Number(row.amount.toFixed(2));
+        // Prefer exact remaining-amount match first; fallback stays due-date order.
+        const orderedCharges = [...openCharges].sort((a, b) => {
+          const exactA = Math.abs(a.remaining - paymentAmount) <= 0.01;
+          const exactB = Math.abs(b.remaining - paymentAmount) <= 0.01;
+          if (exactA !== exactB) {
+            return exactA ? -1 : 1;
+          }
+
+          if (exactA && exactB) {
+            const aMeta = chargeSortMetaById.get(a.chargeId);
+            const bMeta = chargeSortMetaById.get(b.chargeId);
+            if (aMeta && bMeta) {
+              const paymentAt = row.occurredAt.getTime();
+              const aDistance = Math.abs(aMeta.dueAt - paymentAt);
+              const bDistance = Math.abs(bMeta.dueAt - paymentAt);
+              if (aDistance !== bDistance) {
+                return aDistance - bDistance;
+              }
+            }
+          }
+
+          return 0;
+        });
+
+        let remainingToAllocate = paymentAmount;
         const items: Array<{ chargeId: string; amount: number }> = [];
         const closedChargeIds: string[] = [];
-        for (const charge of openCharges) {
+        for (const charge of orderedCharges) {
           if (remainingToAllocate <= 0.0001) {
             break;
           }
@@ -2260,17 +2319,24 @@ async function processBankStatementImport(params: {
       }
 
       if (reference) {
-        if (expenseReferenceSet.has(reference)) {
+        const expenseDedupKey = buildExpenseDedupKey({
+          reference,
+          occurredAt: row.occurredAt,
+          amount: row.amount,
+          description: row.description,
+        });
+
+        if (expenseDedupKeySet.has(expenseDedupKey)) {
           skippedCount += 1;
-          errors.push(`Satir ${rowNo}: Ayni dosyada tekrar gider referansi (${reference})`);
+          errors.push(`Satir ${rowNo}: Ayni dosyada tekrar eden gider satiri (${reference})`);
           continue;
         }
-        if (existingExpenseReferenceSet.has(reference)) {
+        if (existingExpenseDedupKeySet.has(expenseDedupKey)) {
           skippedCount += 1;
-          errors.push(`Satir ${rowNo}: Daha once islenmis gider referansi (${reference})`);
+          errors.push(`Satir ${rowNo}: Daha once islenmis ayni gider satiri (${reference})`);
           continue;
         }
-        expenseReferenceSet.add(reference);
+        expenseDedupKeySet.add(expenseDedupKey);
       }
 
       const expenseAmount = Number(Math.abs(row.amount).toFixed(2));
@@ -5308,90 +5374,102 @@ router.post("/bank-statement/preview", upload.single("file"), async (req, res) =
 });
 
 router.post("/bank-statement/commit", async (req, res) => {
-  await ensurePaymentMethodDefinitions();
+  try {
+    await ensurePaymentMethodDefinitions();
 
-  const commitSchema = z.object({
-    fileName: z.string().min(1).optional(),
-    rows: z
-      .array(
-        z.object({
-          occurredAt: z.string().datetime(),
-          amount: z.number().positive(),
-          entryType: z.enum(["PAYMENT", "EXPENSE"]),
-          isAutoSplit: z.boolean().optional(),
-          splitSourceRowNo: z.number().int().positive().optional(),
-          doorNo: z.string().optional(),
-          expenseItemId: z.string().optional(),
-          description: z.string().min(1),
-          reference: z.string().optional(),
-          txType: z.string().optional(),
-          paymentMethod: z.nativeEnum(PaymentMethod).optional(),
-        })
-      )
-      .min(1),
-  });
+    const commitSchema = z.object({
+      fileName: z.string().min(1).optional(),
+      rows: z
+        .array(
+          z.object({
+            occurredAt: z.string().datetime(),
+            amount: z.number().positive(),
+            entryType: z.enum(["PAYMENT", "EXPENSE"]),
+            isAutoSplit: z.boolean().optional(),
+            splitSourceRowNo: z.number().int().positive().optional(),
+            doorNo: z.string().optional(),
+            expenseItemId: z.string().optional(),
+            description: z.string().min(1),
+            reference: z.string().optional(),
+            txType: z.string().optional(),
+            paymentMethod: z.nativeEnum(PaymentMethod).optional(),
+          })
+        )
+        .min(1),
+    });
 
-  const parsed = commitSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+    const parsed = commitSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+    }
+
+    const commitRows: BankStatementCommitRow[] = parsed.data.rows.map((row) => ({
+      occurredAt: new Date(row.occurredAt),
+      amount: row.amount,
+      entryType: row.entryType,
+      isAutoSplit: row.isAutoSplit,
+      splitSourceRowNo: row.splitSourceRowNo,
+      doorNo: row.doorNo?.trim() || undefined,
+      expenseItemId: row.expenseItemId?.trim() || undefined,
+      description: row.description.trim(),
+      reference: row.reference?.trim() || undefined,
+      txType: row.txType?.trim() || undefined,
+      paymentMethod: row.paymentMethod,
+    }));
+
+    const result = await processBankStatementImport({
+      rows: commitRows,
+      fileName: parsed.data.fileName ?? "bank-statement-review",
+      uploadedById: req.user?.userId,
+    });
+
+    return res.json(result);
+  } catch (err) {
+    console.error("[bank-statement-commit-failed]", err);
+    const detail = err instanceof Error ? err.message : "Beklenmeyen hata";
+    return res.status(500).json({ message: `Banka ekstresi kaydedilemedi: ${detail}` });
   }
-
-  const commitRows: BankStatementCommitRow[] = parsed.data.rows.map((row) => ({
-    occurredAt: new Date(row.occurredAt),
-    amount: row.amount,
-    entryType: row.entryType,
-    isAutoSplit: row.isAutoSplit,
-    splitSourceRowNo: row.splitSourceRowNo,
-    doorNo: row.doorNo?.trim() || undefined,
-    expenseItemId: row.expenseItemId?.trim() || undefined,
-    description: row.description.trim(),
-    reference: row.reference?.trim() || undefined,
-    txType: row.txType?.trim() || undefined,
-    paymentMethod: row.paymentMethod,
-  }));
-
-  const result = await processBankStatementImport({
-    rows: commitRows,
-    fileName: parsed.data.fileName ?? "bank-statement-review",
-    uploadedById: req.user?.userId,
-  });
-
-  return res.json(result);
 });
 
 router.post("/bank-statement/import", upload.single("file"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: "File is required" });
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "File is required" });
+    }
+
+    if (req.file.originalname.toLowerCase().endsWith(".xls")) {
+      return res.status(400).json({ message: LEGACY_XLS_UNSUPPORTED_MESSAGE });
+    }
+
+    await ensurePaymentMethodDefinitions();
+
+    const rows = await parseBankStatementRows(req.file);
+    if (rows.length === 0) {
+      return res.status(400).json({ message: "No valid bank statement rows found" });
+    }
+
+    const commitRows: BankStatementCommitRow[] = rows.map((row) => ({
+      occurredAt: row.occurredAt,
+      amount: Number(Math.abs(row.amount).toFixed(2)),
+      entryType: row.amount > 0 ? "PAYMENT" : "EXPENSE",
+      description: row.description,
+      reference: row.reference,
+      txType: row.txType,
+      paymentMethod: derivePaymentMethod(row.txType),
+    }));
+
+    const result = await processBankStatementImport({
+      rows: commitRows,
+      fileName: req.file.originalname,
+      uploadedById: req.user?.userId,
+    });
+
+    return res.json(result);
+  } catch (err) {
+    console.error("[bank-statement-import-failed]", err);
+    const detail = err instanceof Error ? err.message : "Beklenmeyen hata";
+    return res.status(500).json({ message: `Banka ekstresi islenemedi: ${detail}` });
   }
-
-  if (req.file.originalname.toLowerCase().endsWith(".xls")) {
-    return res.status(400).json({ message: LEGACY_XLS_UNSUPPORTED_MESSAGE });
-  }
-
-  await ensurePaymentMethodDefinitions();
-
-  const rows = await parseBankStatementRows(req.file);
-  if (rows.length === 0) {
-    return res.status(400).json({ message: "No valid bank statement rows found" });
-  }
-
-  const commitRows: BankStatementCommitRow[] = rows.map((row) => ({
-    occurredAt: row.occurredAt,
-    amount: Number(Math.abs(row.amount).toFixed(2)),
-    entryType: row.amount > 0 ? "PAYMENT" : "EXPENSE",
-    description: row.description,
-    reference: row.reference,
-    txType: row.txType,
-    paymentMethod: derivePaymentMethod(row.txType),
-  }));
-
-  const result = await processBankStatementImport({
-    rows: commitRows,
-    fileName: req.file.originalname,
-    uploadedById: req.user?.userId,
-  });
-
-  return res.json(result);
 });
 
 router.post("/charges/:chargeId/close", async (req, res) => {
@@ -6350,6 +6428,261 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       source: row.source,
       fileName: row.fileName,
     })),
+  });
+});
+
+router.get("/reports/monthly-ledger-print", async (req, res) => {
+  const querySchema = z.object({
+    year: z.coerce.number().int().min(2000).max(2100),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const year = parsed.data.year;
+  const yearStart = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
+  const yearEndExclusive = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0, 0));
+
+  function toUtcDateOnlyIso(value: Date): string {
+    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 0, 0, 0, 0)).toISOString();
+  }
+
+  function parsePaymentLedgerNote(note: string | null | undefined): { description: string | null; reference: string | null } {
+    if (!note) {
+      return { description: null, reference: null };
+    }
+
+    const parts = note
+      .split(" | ")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    let reference: string | null = null;
+    let description: string | null = null;
+    const freeText: string[] = [];
+
+    for (const part of parts) {
+      const upper = part.toUpperCase();
+
+      if (upper.startsWith("BANK_REF:")) {
+        reference = part.slice(part.indexOf(":") + 1).trim() || null;
+        continue;
+      }
+      if (upper.startsWith("REF:")) {
+        reference = reference ?? (part.slice(part.indexOf(":") + 1).trim() || null);
+        continue;
+      }
+      if (upper.startsWith("BANK_DESC:")) {
+        description = part.slice(part.indexOf(":") + 1).trim() || null;
+        continue;
+      }
+
+      if (
+        upper.startsWith("DOOR:") ||
+        upper.startsWith("PAYMENT_UPLOAD:") ||
+        upper.startsWith("UNAPPLIED:") ||
+        upper.startsWith("CARRY_FORWARD:") ||
+        upper.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX)
+      ) {
+        continue;
+      }
+
+      freeText.push(part);
+    }
+
+    return {
+      description: description ?? (freeText.length > 0 ? freeText.join(" | ") : null),
+      reference,
+    };
+  }
+
+  const [
+    incomeBeforeYearAgg,
+    expenseBeforeYearAgg,
+    openingBeforeYearAgg,
+    openingInYearAgg,
+    paymentsInYearRaw,
+    expensesInYearRaw,
+  ] = await Promise.all([
+    prisma.payment.aggregate({
+      where: {
+        method: PaymentMethod.BANK_TRANSFER,
+        paidAt: { lt: yearStart },
+        NOT: {
+          note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX },
+        },
+      },
+      _sum: { totalAmount: true },
+    }),
+    prisma.expense.aggregate({
+      where: {
+        paymentMethod: PaymentMethod.BANK_TRANSFER,
+        spentAt: { lt: yearStart },
+      },
+      _sum: { amount: true },
+    }),
+    prisma.payment.aggregate({
+      where: {
+        method: PaymentMethod.BANK_TRANSFER,
+        note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX },
+        paidAt: { lt: yearStart },
+      },
+      _sum: { totalAmount: true },
+    }),
+    prisma.payment.aggregate({
+      where: {
+        method: PaymentMethod.BANK_TRANSFER,
+        note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX },
+        paidAt: { gte: yearStart, lt: yearEndExclusive },
+      },
+      _sum: { totalAmount: true },
+    }),
+    prisma.payment.findMany({
+      where: {
+        method: PaymentMethod.BANK_TRANSFER,
+        paidAt: { gte: yearStart, lt: yearEndExclusive },
+      },
+      select: {
+        id: true,
+        paidAt: true,
+        totalAmount: true,
+        note: true,
+      },
+      orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    }),
+    prisma.expense.findMany({
+      where: {
+        paymentMethod: PaymentMethod.BANK_TRANSFER,
+        spentAt: { gte: yearStart, lt: yearEndExclusive },
+      },
+      select: {
+        id: true,
+        spentAt: true,
+        amount: true,
+        description: true,
+        reference: true,
+        expenseItem: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: [{ spentAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    }),
+  ]);
+
+  const openingBeforeYear = Number(openingBeforeYearAgg._sum.totalAmount ?? 0);
+  const openingInYear = Number(openingInYearAgg._sum.totalAmount ?? 0);
+  const openingBalanceForYear = Number((openingBeforeYear + openingInYear).toFixed(2));
+
+  const previousIncomeTotal = Number(incomeBeforeYearAgg._sum.totalAmount ?? 0);
+  const previousExpenseTotal = Number(expenseBeforeYearAgg._sum.amount ?? 0);
+
+  const paymentsInYear = paymentsInYearRaw
+    .filter((row) => !row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX))
+    .map((row) => {
+      const parsedNote = parsePaymentLedgerNote(row.note);
+      return {
+        id: row.id,
+        date: row.paidAt,
+        amount: Number(row.totalAmount),
+        description: parsedNote.description ?? "Odeme",
+        reference: parsedNote.reference,
+      };
+    });
+
+  const expensesInYear = expensesInYearRaw.map((row) => ({
+    id: row.id,
+    date: row.spentAt,
+    amount: Number(row.amount),
+    description: row.description ?? row.expenseItem.name,
+    reference: row.reference,
+  }));
+
+  let incomeRunningYear = 0;
+  let expenseRunningYear = 0;
+  const monthNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+  const months = monthNumbers.map((month) => {
+    const monthIncomeRows = paymentsInYear
+      .filter((row) => row.date.getUTCMonth() + 1 === month)
+      .map((row, idx) => ({
+        seqNo: idx + 1,
+        id: row.id,
+        date: toUtcDateOnlyIso(row.date),
+        description: row.description,
+        reference: row.reference,
+        amount: Number(row.amount.toFixed(2)),
+      }));
+
+    const monthExpenseRows = expensesInYear
+      .filter((row) => row.date.getUTCMonth() + 1 === month)
+      .map((row, idx) => ({
+        seqNo: idx + 1,
+        id: row.id,
+        date: toUtcDateOnlyIso(row.date),
+        description: row.description,
+        reference: row.reference,
+        amount: Number(row.amount.toFixed(2)),
+      }));
+
+    const monthIncomeTotal = Number(monthIncomeRows.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
+    const monthExpenseTotal = Number(monthExpenseRows.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
+
+    const incomeCarryInTotal = Number((previousIncomeTotal + incomeRunningYear).toFixed(2));
+    const expenseCarryInTotal = Number((previousExpenseTotal + expenseRunningYear).toFixed(2));
+
+    incomeRunningYear = Number((incomeRunningYear + monthIncomeTotal).toFixed(2));
+    expenseRunningYear = Number((expenseRunningYear + monthExpenseTotal).toFixed(2));
+
+    const incomeCumulativeTotal = Number((previousIncomeTotal + incomeRunningYear).toFixed(2));
+    const expenseCumulativeTotal = Number((previousExpenseTotal + expenseRunningYear).toFixed(2));
+
+    const monthNet = Number((monthIncomeTotal - monthExpenseTotal).toFixed(2));
+    const closingBankBalance = Number((openingBalanceForYear + incomeRunningYear - expenseRunningYear).toFixed(2));
+
+    return {
+      month,
+      incomeRows: monthIncomeRows,
+      expenseRows: monthExpenseRows,
+      incomeMonthTotal: monthIncomeTotal,
+      expenseMonthTotal: monthExpenseTotal,
+      incomeCarryInTotal,
+      expenseCarryInTotal,
+      incomeCumulativeTotal,
+      expenseCumulativeTotal,
+      monthNet,
+      closingBankBalance,
+    };
+  });
+
+  const incomeYearTotal = Number(incomeRunningYear.toFixed(2));
+  const expenseYearTotal = Number(expenseRunningYear.toFixed(2));
+  const yearNet = Number((incomeYearTotal - expenseYearTotal).toFixed(2));
+  const yearEndBankBalance = Number((openingBalanceForYear + incomeYearTotal - expenseYearTotal).toFixed(2));
+
+  return res.json({
+    snapshotAt: new Date(),
+    criteria: {
+      year,
+      paymentMethod: PaymentMethod.BANK_TRANSFER,
+    },
+    opening: {
+      openingBalance: openingBalanceForYear,
+      previousIncomeTotal: Number(previousIncomeTotal.toFixed(2)),
+      previousExpenseTotal: Number(previousExpenseTotal.toFixed(2)),
+      openingBeforeYear: Number(openingBeforeYear.toFixed(2)),
+      openingInYear: Number(openingInYear.toFixed(2)),
+    },
+    totals: {
+      incomeYearTotal,
+      expenseYearTotal,
+      yearNet,
+      yearEndBankBalance,
+    },
+    months,
   });
 });
 

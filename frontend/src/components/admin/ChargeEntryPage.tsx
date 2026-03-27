@@ -13,7 +13,7 @@ type ChargeEntryPageProps = {
   apartmentOptions: ApartmentOption[];
   chargeTypeOptions: ChargeTypeDefinition[];
   onCreateCharge: (payload: {
-    apartmentId: string;
+    apartmentIds: string[];
     chargeTypeId: string;
     periodYear: number;
     entries: Array<{
@@ -27,7 +27,7 @@ type ChargeEntryPageProps = {
 
 export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, onCreateCharge }: ChargeEntryPageProps) {
   const [chargeForm, setChargeForm] = useState({
-    apartmentId: "",
+    apartmentIds: [] as string[],
     chargeTypeId: "",
     periodYear: String(new Date().getFullYear()),
   });
@@ -42,10 +42,21 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
     },
   ]);
 
-  const firstApartmentId = apartmentOptions[0]?.id ?? "";
+  const apartmentValues = apartmentOptions.map((apt) => apt.id);
+  const allApartmentsSelected =
+    apartmentValues.length > 0 && chargeForm.apartmentIds.length === apartmentValues.length;
   const firstActiveChargeTypeId = (chargeTypeOptions.find((x) => x.isActive) ?? chargeTypeOptions[0])?.id ?? "";
-  const selectedApartmentId = chargeForm.apartmentId || firstApartmentId;
   const selectedChargeTypeId = chargeForm.chargeTypeId || firstActiveChargeTypeId;
+
+  function getApartmentSelectionSummary(): string {
+    if (chargeForm.apartmentIds.length === 0) {
+      return "Daire seciniz";
+    }
+    if (allApartmentsSelected) {
+      return "Hepsi";
+    }
+    return `${chargeForm.apartmentIds.length} secili`;
+  }
 
   function addChargeEntry(): void {
     setChargeEntries((prev) => [
@@ -81,6 +92,11 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
       return;
     }
 
+    if (chargeForm.apartmentIds.length === 0) {
+      setFormError("En az bir daire seciniz");
+      return;
+    }
+
     let entries: Array<{
       periodMonth: number;
       amount: number;
@@ -103,7 +119,7 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
       });
 
       await onCreateCharge({
-        apartmentId: selectedApartmentId,
+        apartmentIds: chargeForm.apartmentIds,
         chargeTypeId: selectedChargeTypeId,
         periodYear: Number(chargeForm.periodYear),
         entries,
@@ -126,22 +142,48 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
   return (
     <form className="card admin-form" onSubmit={(e) => void onSubmit(e)}>
       <h3>Tahakkuk Girisi</h3>
-      <label>
-        Apartment
-        <select
-          value={selectedApartmentId}
-          onChange={(e) => setChargeForm((prev) => ({ ...prev, apartmentId: e.target.value }))}
-          required
-        >
-          <option value="">Daire seciniz</option>
-          {apartmentOptions.map((apt) => (
-            <option key={apt.id} value={apt.id}>
-              {apt.blockName} / {apt.doorNo} / {apt.type}
-              {apt.ownerFullName ? ` / ${apt.ownerFullName}` : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="filter-dropdown-field charge-entry-apartment-filter">
+        <span>Daire No</span>
+        <details className="filter-dropdown apartment-edit-select-dropdown">
+          <summary>{getApartmentSelectionSummary()}</summary>
+          <div className="filter-dropdown-panel apartment-edit-select-list">
+            <label className="bulk-filter-option apartment-edit-select-item">
+              <input
+                type="checkbox"
+                checked={allApartmentsSelected}
+                onChange={(e) =>
+                  setChargeForm((prev) => ({
+                    ...prev,
+                    apartmentIds: e.target.checked ? apartmentValues : [],
+                  }))
+                }
+              />
+              Hepsini Sec
+            </label>
+            {apartmentOptions.map((apt) => {
+              const checked = chargeForm.apartmentIds.includes(apt.id);
+              return (
+                <label key={apt.id} className="bulk-filter-option apartment-edit-select-item">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) =>
+                      setChargeForm((prev) => ({
+                        ...prev,
+                        apartmentIds: e.target.checked
+                          ? [...prev.apartmentIds, apt.id]
+                          : prev.apartmentIds.filter((x) => x !== apt.id),
+                      }))
+                    }
+                  />
+                  {apt.blockName} / {apt.doorNo} / {apt.type}
+                  {apt.ownerFullName ? ` / ${apt.ownerFullName}` : ""}
+                </label>
+              );
+            })}
+          </div>
+        </details>
+      </div>
       <div className="compact-row">
         <label>
           Yil

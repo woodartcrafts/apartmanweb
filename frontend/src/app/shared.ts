@@ -169,6 +169,7 @@ export type ApartmentOption = {
   id: string;
   blockName: string;
   doorNo: string;
+  m2: number | null;
   type: ApartmentType;
   apartmentClassId: string | null;
   apartmentClassCode: string | null;
@@ -197,7 +198,6 @@ export type ApartmentOption = {
     fullName: string;
     email: string;
     phone: string | null;
-    currentPasswordPlaintext: string | null;
     lastPasswordChangedAt: string | null;
     lastPasswordChangeReason: "INITIAL_SEED" | "ADMIN_SET" | "SELF_CHANGE" | null;
     lastPasswordChangedByName: string | null;
@@ -210,7 +210,6 @@ export type ResidentPasswordHistoryRow = {
   userId: string;
   userFullName: string;
   userEmail: string;
-  passwordPlaintext: string | null;
   reason: "INITIAL_SEED" | "ADMIN_SET" | "SELF_CHANGE";
   changedAt: string;
   changedByUserId: string | null;
@@ -660,6 +659,51 @@ export type BankReconciliationReportResponse = {
     movementCount: number;
   };
   rows: BankReconciliationRow[];
+};
+
+export type MonthlyLedgerPrintRow = {
+  seqNo: number;
+  id: string;
+  date: string;
+  description: string;
+  reference: string | null;
+  amount: number;
+};
+
+export type MonthlyLedgerPrintMonth = {
+  month: number;
+  incomeRows: MonthlyLedgerPrintRow[];
+  expenseRows: MonthlyLedgerPrintRow[];
+  incomeMonthTotal: number;
+  expenseMonthTotal: number;
+  incomeCarryInTotal: number;
+  expenseCarryInTotal: number;
+  incomeCumulativeTotal: number;
+  expenseCumulativeTotal: number;
+  monthNet: number;
+  closingBankBalance: number;
+};
+
+export type MonthlyLedgerPrintResponse = {
+  snapshotAt: string;
+  criteria: {
+    year: number;
+    paymentMethod: PaymentMethod;
+  };
+  opening: {
+    openingBalance: number;
+    previousIncomeTotal: number;
+    previousExpenseTotal: number;
+    openingBeforeYear: number;
+    openingInYear: number;
+  };
+  totals: {
+    incomeYearTotal: number;
+    expenseYearTotal: number;
+    yearNet: number;
+    yearEndBankBalance: number;
+  };
+  months: MonthlyLedgerPrintMonth[];
 };
 
 export type ChargeConsistencyWarningRow = {

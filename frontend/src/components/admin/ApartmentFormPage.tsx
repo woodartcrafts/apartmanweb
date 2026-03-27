@@ -16,6 +16,7 @@ import {
 type ApartmentFormState = {
   blockName: string;
   doorNo: string;
+  m2: string;
   type: ApartmentType;
   apartmentClassId: string;
   apartmentDutyId: string;
@@ -40,6 +41,7 @@ type ApartmentFormState = {
 const initialFormState: ApartmentFormState = {
   blockName: "",
   doorNo: "",
+  m2: "",
   type: "BUYUK",
   apartmentClassId: "",
   apartmentDutyId: "",
@@ -107,6 +109,7 @@ export function ApartmentFormPage() {
     () => apartmentOptions.filter((x) => editingApartmentIds.includes(x.id)),
     [apartmentOptions, editingApartmentIds]
   );
+  const allApartmentsSelected = apartmentOptions.length > 0 && editingApartmentIds.length === apartmentOptions.length;
 
   useEffect(() => {
     if (!isEditRoute || apartmentOptions.length === 0) {
@@ -176,6 +179,7 @@ export function ApartmentFormPage() {
     setFormState({
       blockName: apartment.blockName,
       doorNo: apartment.doorNo,
+      m2: apartment.m2 !== null && Number.isFinite(apartment.m2) ? String(apartment.m2) : "",
       type: apartment.type,
       apartmentClassId: apartment.apartmentClassId ?? "",
       apartmentDutyId: apartment.apartmentDutyId ?? "",
@@ -329,7 +333,7 @@ export function ApartmentFormPage() {
       const next = { ...prev };
       for (const resident of selectedResidents) {
         if (!next[resident.id]) {
-          next[resident.id] = resident.currentPasswordPlaintext ?? "Daire123!";
+          next[resident.id] = "";
         }
       }
       return next;
@@ -369,6 +373,7 @@ export function ApartmentFormPage() {
       const sharedPayload = {
         blockName: formState.blockName,
         doorNo: formState.doorNo,
+        m2: formState.m2.trim() === "" ? undefined : Number(formState.m2),
         type: formState.type,
         apartmentClassId: formState.apartmentClassId || undefined,
         apartmentDutyId: formState.apartmentDutyId || undefined,
@@ -450,6 +455,7 @@ export function ApartmentFormPage() {
       setFormState((prev) => ({
         ...prev,
         doorNo: "",
+        m2: "",
         ownerFullName: "",
         email1: "",
         email2: "",
@@ -539,7 +545,10 @@ export function ApartmentFormPage() {
   }
 
   return (
-    <form className="card admin-form apartment-form-grid" onSubmit={onSubmit}>
+    <form
+      className={`card admin-form apartment-form-grid apartment-form-surface ${isEditRoute ? "apartment-form-edit" : "apartment-form-create"}`}
+      onSubmit={onSubmit}
+    >
       {saveNotice && (
         <div className="blocking-modal" role="status" aria-live="polite" aria-busy="false">
           <div className="blocking-modal-card save-notice-modal-card">
@@ -560,6 +569,31 @@ export function ApartmentFormPage() {
             <details className="filter-dropdown apartment-edit-select-dropdown">
               <summary>{editingApartmentIds.length === 0 ? "Daire secin" : `${editingApartmentIds.length} daire secili`}</summary>
               <div className="filter-dropdown-panel apartment-edit-select-list">
+                <div className="filter-dropdown-head">
+                  <span className="small">Daire Secimi</span>
+                </div>
+                <label className="bulk-filter-option apartment-edit-select-item">
+                  <input
+                    type="checkbox"
+                    checked={allApartmentsSelected}
+                    onChange={(e) => {
+                      if (!e.target.checked) {
+                        setEditingApartmentIds([]);
+                        resetCreateMode(false);
+                        return;
+                      }
+
+                      const allIds = apartmentOptions.map((x) => x.id);
+                      setEditingApartmentIds(allIds);
+                      const first = apartmentOptions[0];
+                      if (first) {
+                        applyApartmentToForm(first, { syncSelection: false });
+                      }
+                      setMessage(`${allIds.length} daire secildi`);
+                    }}
+                  />
+                  Hepsini Sec
+                </label>
                 {apartmentOptions.map((apartment) => {
                   const checked = editingApartmentIds.includes(apartment.id);
                   return (
@@ -722,7 +756,7 @@ export function ApartmentFormPage() {
                             <td>
                               {row.userFullName} ({row.userEmail})
                             </td>
-                            <td>{row.passwordPlaintext ?? "-"}</td>
+                            <td>Gizli</td>
                             <td>{row.reason}</td>
                             <td>{row.changedByName ? `${row.changedByName} (${row.changedByEmail ?? "-"})` : "Sistem"}</td>
                           </tr>
@@ -772,6 +806,18 @@ export function ApartmentFormPage() {
           onChange={(e) => setFormState((prev) => ({ ...prev, doorNo: e.target.value }))}
           placeholder="101"
           required
+        />
+      </label>
+
+      <label>
+        m2
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={formState.m2}
+          onChange={(e) => setFormState((prev) => ({ ...prev, m2: e.target.value }))}
+          placeholder="120"
         />
       </label>
 

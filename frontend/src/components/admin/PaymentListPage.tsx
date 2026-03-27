@@ -1,4 +1,4 @@
-import type { Dispatch, FormEvent, SetStateAction } from "react";
+import { useMemo, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import {
   formatDateTimeTr,
   formatDateTr,
@@ -25,6 +25,60 @@ type PaymentListEditFormState = {
   reference: string;
   apartmentId: string;
 };
+
+type PaymentListHeaderFilterState = {
+  paidAt: string;
+  doorNo: string;
+  occupant: string;
+  method: string;
+  amount: string;
+  description: string;
+  reference: string;
+  source: string;
+  createdBy: string;
+  createdAt: string;
+};
+
+const initialHeaderFilters: PaymentListHeaderFilterState = {
+  paidAt: "",
+  doorNo: "",
+  occupant: "",
+  method: "",
+  amount: "",
+  description: "",
+  reference: "",
+  source: "",
+  createdBy: "",
+  createdAt: "",
+};
+
+function normalizeFilterText(value: string | null | undefined): string {
+  return (value ?? "").toLocaleLowerCase("tr-TR");
+}
+
+function toSourceLabel(source: PaymentListRow["source"]): string {
+  if (source === "BANK_STATEMENT_UPLOAD") {
+    return "Banka Ekstresi Upload";
+  }
+  if (source === "PAYMENT_UPLOAD") {
+    return "Toplu Tahsilat Upload";
+  }
+  return "Manuel";
+}
+
+function resolveOccupantName(row: PaymentListRow, apartmentOptions: ApartmentOption[]): string {
+  const apartment = apartmentOptions.find((x) => x.id === row.apartmentId);
+  if (!apartment) {
+    return "-";
+  }
+
+  const residentNames = apartment.residentUsers.map((x) => x.fullName).filter((x) => x && x.trim().length > 0);
+  if (residentNames.length > 0) {
+    return residentNames.join(", ");
+  }
+
+  return apartment.ownerFullName?.trim() || "-";
+}
 
 type PaymentListPageProps = {
   loading: boolean;
@@ -69,11 +123,46 @@ export function PaymentListPage({
   startEditPaymentListRow,
   deletePaymentListRow,
 }: PaymentListPageProps) {
+  const [headerFilters, setHeaderFilters] = useState<PaymentListHeaderFilterState>(initialHeaderFilters);
+
+  const filteredRows = useMemo(() => {
+    return paymentListRows.filter((row) => {
+      const methodName = paymentMethodOptions.find((x) => x.code === row.method)?.name ?? row.method;
+      const sourceLabel = toSourceLabel(row.source);
+      const doorNoText = row.apartments.length > 0 ? row.apartments.join(", ") : "-";
+      const occupantText = resolveOccupantName(row, apartmentOptions);
+
+      const paidAtText = normalizeFilterText(formatDateTr(row.paidAt));
+      const doorNoFilterText = normalizeFilterText(doorNoText);
+      const occupantFilterText = normalizeFilterText(occupantText);
+      const methodFilterText = normalizeFilterText(methodName);
+      const amountFilterText = normalizeFilterText(formatTry(row.totalAmount));
+      const descriptionFilterText = normalizeFilterText(row.description ?? "-");
+      const referenceFilterText = normalizeFilterText(row.reference ?? "-");
+      const sourceFilterText = normalizeFilterText(sourceLabel);
+      const createdByFilterText = normalizeFilterText(row.createdByName ?? "-");
+      const createdAtFilterText = normalizeFilterText(formatDateTimeTr(row.createdAt));
+
+      return (
+        paidAtText.includes(normalizeFilterText(headerFilters.paidAt)) &&
+        doorNoFilterText.includes(normalizeFilterText(headerFilters.doorNo)) &&
+        occupantFilterText.includes(normalizeFilterText(headerFilters.occupant)) &&
+        methodFilterText.includes(normalizeFilterText(headerFilters.method)) &&
+        amountFilterText.includes(normalizeFilterText(headerFilters.amount)) &&
+        descriptionFilterText.includes(normalizeFilterText(headerFilters.description)) &&
+        referenceFilterText.includes(normalizeFilterText(headerFilters.reference)) &&
+        sourceFilterText.includes(normalizeFilterText(headerFilters.source)) &&
+        createdByFilterText.includes(normalizeFilterText(headerFilters.createdBy)) &&
+        createdAtFilterText.includes(normalizeFilterText(headerFilters.createdAt))
+      );
+    });
+  }, [apartmentOptions, headerFilters, paymentListRows, paymentMethodOptions]);
+
   return (
     <section className="dashboard">
       <div className="card table-card">
         <div className="section-head">
-          <h3>Odeme Listesi</h3>
+          <h3>Tahsilat Raporu</h3>
           <div className="admin-row">
             <button className="btn btn-primary btn-run" type="button" onClick={() => void runPaymentListQuery()}>
               Calistir
@@ -116,10 +205,10 @@ export function PaymentListPage({
         </div>
         {editingPaymentListId && (
           <form className="admin-form" onSubmit={submitPaymentListRowEdit}>
-            <h4>Secili Odeme Satirini Duzenle</h4>
+            <h4>Secili Tahsilat Satirini Duzenle</h4>
             <div className="compact-row">
               <label>
-                Odeme Tarihi
+                Tahsilat Tarihi
                 <input
                   type="datetime-local"
                   value={paymentListEditForm.paidAt}
@@ -210,8 +299,9 @@ export function PaymentListPage({
           <table className="apartment-list-table report-compact-table payment-list-table">
             <thead>
               <tr>
-                <th>Odeme Tarihi</th>
+                <th>Tahsilat Tarihi</th>
                 <th>D.No</th>
+                <th>Oturan Kisi</th>
                 <th>Ynt.</th>
                 <th className="col-num">Tutar</th>
                 <th>Aciklama</th>
@@ -221,21 +311,112 @@ export function PaymentListPage({
                 <th>Giris Zamani</th>
                 <th>Islem</th>
               </tr>
+              <tr>
+                <th>
+                  <input
+                    value={headerFilters.paidAt}
+                    onChange={(e) => setHeaderFilters((prev) => ({ ...prev, paidAt: e.target.value }))}
+                    placeholder="Filtre"
+                  />
+                </th>
+                <th>
+                  <input
+                    value={headerFilters.doorNo}
+                    onChange={(e) => setHeaderFilters((prev) => ({ ...prev, doorNo: e.target.value }))}
+                    placeholder="Filtre"
+                  />
+                </th>
+                <th>
+                  <input
+                    value={headerFilters.occupant}
+                    onChange={(e) => setHeaderFilters((prev) => ({ ...prev, occupant: e.target.value }))}
+                    placeholder="Filtre"
+                  />
+                </th>
+                <th>
+                  <select
+                    value={headerFilters.method}
+                    onChange={(e) => setHeaderFilters((prev) => ({ ...prev, method: e.target.value }))}
+                    aria-label="Yontem filtresi"
+                    title="Yontem filtresi"
+                  >
+                    <option value="">Hepsi</option>
+                    {paymentMethodEnumOptions.map((method) => {
+                      const label = paymentMethodOptions.find((x) => x.code === method)?.name ?? method;
+                      return (
+                        <option key={method} value={label}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </th>
+                <th>
+                  <span className="small">-</span>
+                </th>
+                <th>
+                  <input
+                    value={headerFilters.description}
+                    onChange={(e) => setHeaderFilters((prev) => ({ ...prev, description: e.target.value }))}
+                    placeholder="Filtre"
+                  />
+                </th>
+                <th>
+                  <input
+                    value={headerFilters.reference}
+                    onChange={(e) => setHeaderFilters((prev) => ({ ...prev, reference: e.target.value }))}
+                    placeholder="Filtre"
+                  />
+                </th>
+                <th>
+                  <select
+                    value={headerFilters.source}
+                    onChange={(e) => setHeaderFilters((prev) => ({ ...prev, source: e.target.value }))}
+                    aria-label="Kaynak filtresi"
+                    title="Kaynak filtresi"
+                  >
+                    <option value="">Hepsi</option>
+                    <option value="Manuel">Manuel</option>
+                    <option value="Banka Ekstresi Upload">Banka Ekstresi Upload</option>
+                    <option value="Toplu Tahsilat Upload">Toplu Tahsilat Upload</option>
+                  </select>
+                </th>
+                <th>
+                  <input
+                    value={headerFilters.createdBy}
+                    onChange={(e) => setHeaderFilters((prev) => ({ ...prev, createdBy: e.target.value }))}
+                    placeholder="Filtre"
+                  />
+                </th>
+                <th>
+                  <input
+                    value={headerFilters.createdAt}
+                    onChange={(e) => setHeaderFilters((prev) => ({ ...prev, createdAt: e.target.value }))}
+                    placeholder="Filtre"
+                  />
+                </th>
+                <th>
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    onClick={() => setHeaderFilters(initialHeaderFilters)}
+                  >
+                    Sifirla
+                  </button>
+                </th>
+              </tr>
             </thead>
             <tbody>
-              {paymentListRows.map((row) => {
+              {filteredRows.map((row) => {
                 const methodName = paymentMethodOptions.find((x) => x.code === row.method)?.name ?? row.method;
-                const sourceLabel =
-                  row.source === "BANK_STATEMENT_UPLOAD"
-                    ? "Banka Ekstresi Upload"
-                    : row.source === "PAYMENT_UPLOAD"
-                      ? "Toplu Odeme Upload"
-                      : "Manuel";
+                const sourceLabel = toSourceLabel(row.source);
+                const occupantName = resolveOccupantName(row, apartmentOptions);
 
                 return (
                   <tr key={row.id}>
                     <td>{formatDateTr(row.paidAt)}</td>
                     <td>{row.apartments.length > 0 ? row.apartments.join(", ") : "-"}</td>
+                    <td>{occupantName}</td>
                     <td>{methodName}</td>
                     <td className="col-num">{formatTry(row.totalAmount)}</td>
                     <td>{row.description ?? "-"}</td>
@@ -254,10 +435,10 @@ export function PaymentListPage({
                   </tr>
                 );
               })}
-              {paymentListRows.length === 0 && (
+              {filteredRows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="empty">
-                    {paymentListError || "Odeme kaydi yok"}
+                  <td colSpan={11} className="empty">
+                    {paymentListError || "Filtreye uygun tahsilat kaydi yok"}
                   </td>
                 </tr>
               )}

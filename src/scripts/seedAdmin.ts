@@ -11,12 +11,11 @@ async function main() {
 
   const admin = await prisma.user.upsert({
     where: { email },
-    update: { fullName, passwordHash, passwordPlaintext: password, role: UserRole.ADMIN },
+    update: { fullName, passwordHash, passwordPlaintext: null, role: UserRole.ADMIN },
     create: {
       email,
       fullName,
       passwordHash,
-      passwordPlaintext: password,
       role: UserRole.ADMIN,
     },
   });
@@ -33,7 +32,6 @@ async function main() {
         userId: admin.id,
         changedByUserId: null,
         passwordHash,
-        passwordPlaintext: password,
         reason: PasswordChangeReason.INITIAL_SEED,
       },
     });

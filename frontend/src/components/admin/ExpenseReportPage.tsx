@@ -13,8 +13,8 @@ import {
 type ExpenseReportFilterState = {
   from: string;
   to: string;
-  source: ExpenseSourceFilter;
-  expenseItemId: string;
+  sources: Array<Exclude<ExpenseSourceFilter, "">>;
+  expenseItemIds: string[];
 };
 
 type ExpenseReportEditFormState = {
@@ -82,6 +82,34 @@ export function ExpenseReportPage({
   deleteExpenseReportRow,
   expenseReportError,
 }: ExpenseReportPageProps) {
+  const sourceValues: Array<Exclude<ExpenseSourceFilter, "">> = ["MANUAL", "BANK_STATEMENT_UPLOAD", "CHARGE_DISTRIBUTION"];
+  const activeExpenseItems =
+    expenseItemOptions.filter((x) => x.isActive).length > 0 ? expenseItemOptions.filter((x) => x.isActive) : expenseItemOptions;
+
+  const allSourcesSelected = sourceValues.length > 0 && expenseReportFilter.sources.length === sourceValues.length;
+  const allExpenseItemsSelected =
+    activeExpenseItems.length > 0 && expenseReportFilter.expenseItemIds.length === activeExpenseItems.length;
+
+  function getSelectionSummary(selectedCount: number, allCount: number, emptyText: string): string {
+    if (selectedCount === 0) {
+      return emptyText;
+    }
+    if (allCount > 0 && selectedCount === allCount) {
+      return "Hepsi";
+    }
+    return `${selectedCount} secili`;
+  }
+
+  function sourceLabel(value: Exclude<ExpenseSourceFilter, "">): string {
+    if (value === "MANUAL") {
+      return "Manuel";
+    }
+    if (value === "BANK_STATEMENT_UPLOAD") {
+      return "Banka Ekstresi Upload";
+    }
+    return "Tahakkuk (Gider)";
+  }
+
   return (
     <section className="dashboard">
       <div className="card table-card">
@@ -115,34 +143,85 @@ export function ExpenseReportPage({
           </label>
           <label>
             Kaynak
-            <select
-              value={expenseReportFilter.source}
-              onChange={(e) =>
-                setExpenseReportFilter((prev) => ({ ...prev, source: e.target.value as ExpenseSourceFilter }))
-              }
-            >
-              <option value="">Hepsi</option>
-              <option value="MANUAL">Manuel</option>
-              <option value="BANK_STATEMENT_UPLOAD">Banka Ekstresi Upload</option>
-              <option value="CHARGE_DISTRIBUTION">Tahakkuk (Gider)</option>
-            </select>
+            <details className="filter-dropdown apartment-edit-select-dropdown">
+              <summary>{getSelectionSummary(expenseReportFilter.sources.length, sourceValues.length, "Hepsi")}</summary>
+              <div className="filter-dropdown-panel apartment-edit-select-list">
+                <label className="bulk-filter-option apartment-edit-select-item">
+                  <input
+                    type="checkbox"
+                    checked={allSourcesSelected}
+                    onChange={(e) =>
+                      setExpenseReportFilter((prev) => ({
+                        ...prev,
+                        sources: e.target.checked ? sourceValues : [],
+                      }))
+                    }
+                  />
+                  Hepsini Sec
+                </label>
+                {sourceValues.map((value) => {
+                  const checked = expenseReportFilter.sources.includes(value);
+                  return (
+                    <label key={value} className="bulk-filter-option apartment-edit-select-item">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) =>
+                          setExpenseReportFilter((prev) => ({
+                            ...prev,
+                            sources: e.target.checked
+                              ? [...prev.sources, value]
+                              : prev.sources.filter((x) => x !== value),
+                          }))
+                        }
+                      />
+                      {sourceLabel(value)}
+                    </label>
+                  );
+                })}
+              </div>
+            </details>
           </label>
           <label>
             Gider Kalemi
-            <select
-              value={expenseReportFilter.expenseItemId}
-              onChange={(e) => setExpenseReportFilter((prev) => ({ ...prev, expenseItemId: e.target.value }))}
-            >
-              <option value="">Hepsi</option>
-              {(expenseItemOptions.filter((x) => x.isActive).length > 0
-                ? expenseItemOptions.filter((x) => x.isActive)
-                : expenseItemOptions
-              ).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} ({item.code})
-                </option>
-              ))}
-            </select>
+            <details className="filter-dropdown apartment-edit-select-dropdown">
+              <summary>{getSelectionSummary(expenseReportFilter.expenseItemIds.length, activeExpenseItems.length, "Hepsi")}</summary>
+              <div className="filter-dropdown-panel apartment-edit-select-list">
+                <label className="bulk-filter-option apartment-edit-select-item">
+                  <input
+                    type="checkbox"
+                    checked={allExpenseItemsSelected}
+                    onChange={(e) =>
+                      setExpenseReportFilter((prev) => ({
+                        ...prev,
+                        expenseItemIds: e.target.checked ? activeExpenseItems.map((item) => item.id) : [],
+                      }))
+                    }
+                  />
+                  Hepsini Sec
+                </label>
+                {activeExpenseItems.map((item) => {
+                  const checked = expenseReportFilter.expenseItemIds.includes(item.id);
+                  return (
+                    <label key={item.id} className="bulk-filter-option apartment-edit-select-item">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) =>
+                          setExpenseReportFilter((prev) => ({
+                            ...prev,
+                            expenseItemIds: e.target.checked
+                              ? [...prev.expenseItemIds, item.id]
+                              : prev.expenseItemIds.filter((x) => x !== item.id),
+                          }))
+                        }
+                      />
+                      {item.name} ({item.code})
+                    </label>
+                  );
+                })}
+              </div>
+            </details>
           </label>
         </div>
 

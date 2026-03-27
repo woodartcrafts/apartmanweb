@@ -37,7 +37,7 @@ export function PaymentMethodManagementPage({
   return (
     <section className="dashboard compact-management-page">
       <form className="card admin-form" onSubmit={onSubmitPaymentMethod}>
-        <h3>{editingPaymentMethodId ? "Odeme Tipi Degistir" : "Odeme Tipi Ekle"}</h3>
+        <h3>{editingPaymentMethodId ? "Tahsilat Tipi Degistir" : "Tahsilat Tipi Ekle"}</h3>
         <label>
           Kod
           <select
@@ -79,7 +79,7 @@ export function PaymentMethodManagementPage({
       </form>
 
       <div className="card table-card">
-        <h3>Odeme Tipi Listesi</h3>
+        <h3>Tahsilat Tipi Listesi</h3>
         <div className="table-wrap">
           <table>
             <thead>
@@ -109,7 +109,7 @@ export function PaymentMethodManagementPage({
               {paymentMethodOptions.length === 0 && (
                 <tr>
                   <td colSpan={4} className="empty">
-                    Odeme tipi yok
+                    Tahsilat tipi yok
                   </td>
                 </tr>
               )}

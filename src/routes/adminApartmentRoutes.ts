@@ -13,6 +13,7 @@ type ApartmentSnapshotInput = {
   id: string;
   block: { name: string };
   doorNo: string;
+  m2: number | null;
   type: ApartmentType;
   apartmentClassId: string | null;
   apartmentDutyId: string | null;
@@ -39,6 +40,7 @@ type ApartmentSnapshotInput = {
 type ApartmentSnapshot = {
   blockName: string;
   doorNo: string;
+  m2: number | null;
   type: ApartmentType;
   apartmentClassId: string | null;
   apartmentClassCode: string | null;
@@ -68,6 +70,7 @@ function createApartmentSnapshot(apartment: ApartmentSnapshotInput): ApartmentSn
   return {
     blockName: apartment.block.name,
     doorNo: apartment.doorNo,
+    m2: apartment.m2,
     type: apartment.type,
     apartmentClassId: apartment.apartmentClassId,
     apartmentClassCode: apartment.apartmentClass?.code ?? null,
@@ -257,6 +260,7 @@ async function findApartmentDuplicateWarnings(input: {
 const apartmentCreateSchema = z.object({
   blockName: z.string().min(1),
   doorNo: z.string().min(1),
+  m2: z.coerce.number().min(0).optional().nullable(),
   type: z.nativeEnum(ApartmentType).optional(),
   apartmentClassId: z.string().optional().nullable(),
   apartmentDutyId: z.string().optional().nullable(),
@@ -281,6 +285,7 @@ const apartmentCreateSchema = z.object({
 const apartmentUpdateSchema = z.object({
   blockName: z.string().min(1),
   doorNo: z.string().min(1),
+  m2: z.coerce.number().min(0).optional().nullable(),
   type: z.nativeEnum(ApartmentType),
   apartmentClassId: z.string().optional().nullable(),
   apartmentDutyId: z.string().optional().nullable(),
@@ -513,7 +518,11 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         users: {
           where: { role: UserRole.RESIDENT },
           orderBy: [{ createdAt: "asc" }],
-          include: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true,
             passwordHistoryAsSubject: {
               orderBy: [{ changedAt: "desc" }],
               take: 1,
@@ -540,6 +549,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         id: apartment.id,
         blockName: apartment.block.name,
         doorNo: apartment.doorNo,
+        m2: apartment.m2,
         type: apartment.type,
         apartmentClassId: apartment.apartmentClassId,
         apartmentClassCode: apartment.apartmentClass?.code ?? null,
@@ -570,7 +580,6 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
             fullName: user.fullName,
             email: user.email,
             phone: user.phone,
-            currentPasswordPlaintext: user.passwordPlaintext,
             lastPasswordChangedAt: latestPasswordChange?.changedAt ?? null,
             lastPasswordChangeReason: latestPasswordChange?.reason ?? null,
             lastPasswordChangedByName: latestPasswordChange?.changedBy?.fullName ?? null,
@@ -625,7 +634,6 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         userId: row.userId,
         userFullName: row.user.fullName,
         userEmail: row.user.email,
-        passwordPlaintext: row.passwordPlaintext,
         reason: row.reason,
         changedAt: row.changedAt,
         changedByUserId: row.changedByUserId,
@@ -688,7 +696,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         where: { id: targetUser.id },
         data: {
           passwordHash,
-          passwordPlaintext: parsed.data.password,
+          passwordPlaintext: null,
         },
       });
 
@@ -697,7 +705,6 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
           userId: targetUser.id,
           changedByUserId: actorUserId,
           passwordHash,
-          passwordPlaintext: parsed.data.password,
           reason: PasswordChangeReason.ADMIN_SET,
         },
       });
@@ -708,7 +715,6 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
       userId: targetUser.id,
       userFullName: targetUser.fullName,
       userEmail: targetUser.email,
-      passwordPlaintext: parsed.data.password,
       message: "Resident sifresi guncellendi",
     });
   });
@@ -722,6 +728,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
     const {
       blockName,
       doorNo,
+      m2,
       type,
       apartmentClassId,
       apartmentDutyId,
@@ -812,6 +819,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
       data: {
         blockId: block.id,
         doorNo: normalizedDoorNo,
+        m2: m2 ?? null,
         type,
         apartmentClassId: normalizedApartmentClassId,
         apartmentDutyId: normalizedApartmentDutyId,
@@ -947,6 +955,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         data: {
           blockId: block.id,
           doorNo: normalizedDoorNo,
+          m2: parsed.data.m2 ?? null,
           type: parsed.data.type,
           apartmentClassId: normalizedApartmentClassId,
           apartmentDutyId: normalizedApartmentDutyId,

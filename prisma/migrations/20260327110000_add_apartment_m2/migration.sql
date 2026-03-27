@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Apartment"
+ADD COLUMN "m2" DOUBLE PRECISION;

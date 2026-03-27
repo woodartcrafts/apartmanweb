@@ -98,6 +98,11 @@ const ApartmentDutyManagementPage = lazy(() =>
     default: module.ApartmentDutyManagementPage,
   }))
 );
+const BuildingInfoPage = lazy(() =>
+  import("./components/admin/BuildingInfoPage").then((module) => ({
+    default: module.BuildingInfoPage,
+  }))
+);
 const BlockManagementPage = lazy(() =>
   import("./components/admin/BlockManagementPage").then((module) => ({
     default: module.BlockManagementPage,
@@ -206,6 +211,16 @@ const ApartmentChangeHistoryPage = lazy(() =>
 const BankManagementPage = lazy(() =>
   import("./components/admin/BankManagementPage").then((module) => ({
     default: module.BankManagementPage,
+  }))
+);
+const MonthlyLedgerPrintPage = lazy(() =>
+  import("./components/admin/MonthlyLedgerPrintPage").then((module) => ({
+    default: module.MonthlyLedgerPrintPage,
+  }))
+);
+const MeetingGuidePage = lazy(() =>
+  import("./components/admin/MeetingGuidePage").then((module) => ({
+    default: module.MeetingGuidePage,
   }))
 );
 
@@ -585,8 +600,8 @@ function AdminPage() {
   const [expenseReportFilter, setExpenseReportFilter] = useState({
     from: "",
     to: "",
-    source: "" as ExpenseSourceFilter,
-    expenseItemId: "",
+    sources: [] as Array<Exclude<ExpenseSourceFilter, "">>,
+    expenseItemIds: [] as string[],
   });
   const [expenseReportAutoRefreshEnabled, setExpenseReportAutoRefreshEnabled] = useState(false);
   const [expenseReportSort, setExpenseReportSort] = useState<{
@@ -735,8 +750,8 @@ function AdminPage() {
   const [overduePaymentsFilter, setOverduePaymentsFilter] = useState({
     from: "",
     to: "",
-    blockId: "",
-    doorNo: "",
+    blockIds: [] as string[],
+    doorNos: [] as string[],
   });
   const [deletingUploadBatchId, setDeletingUploadBatchId] = useState<string | null>(null);
   const [deletingUploadBatchFileName, setDeletingUploadBatchFileName] = useState<string>("");
@@ -763,6 +778,37 @@ function AdminPage() {
     expenseItemId: "",
     isActive: true,
   });
+
+  const overdueBlockValues = useMemo(() => blockOptions.map((x) => x.id), [blockOptions]);
+  const overdueSelectedBlockNames = useMemo(
+    () => new Set(blockOptions.filter((x) => overduePaymentsFilter.blockIds.includes(x.id)).map((x) => x.name)),
+    [blockOptions, overduePaymentsFilter.blockIds]
+  );
+  const overdueDoorValues = useMemo(() => {
+    const shouldFilterByBlock = overduePaymentsFilter.blockIds.length > 0;
+    const values = apartmentOptions
+      .filter((apt) => !shouldFilterByBlock || overdueSelectedBlockNames.has(apt.blockName))
+      .map((apt) => apt.doorNo.trim())
+      .filter((x) => x.length > 0);
+
+    return [...new Set(values)].sort((a, b) => a.localeCompare(b, "tr", { numeric: true }));
+  }, [apartmentOptions, overduePaymentsFilter.blockIds, overdueSelectedBlockNames]);
+  const allOverdueBlocksSelected =
+    overdueBlockValues.length > 0 && overduePaymentsFilter.blockIds.length === overdueBlockValues.length;
+  const allOverdueDoorsSelected =
+    overdueDoorValues.length > 0 && overduePaymentsFilter.doorNos.length === overdueDoorValues.length;
+  const overdueBlockSummary =
+    overduePaymentsFilter.blockIds.length === 0
+      ? "Tum bloklar"
+      : allOverdueBlocksSelected
+        ? "Hepsi"
+        : `${overduePaymentsFilter.blockIds.length} secili`;
+  const overdueDoorSummary =
+    overduePaymentsFilter.doorNos.length === 0
+      ? "Tum daireler"
+      : allOverdueDoorsSelected
+        ? "Hepsi"
+        : `${overduePaymentsFilter.doorNos.length} secili`;
   const [lastSkippedRows, setLastSkippedRows] = useState<SkippedRowInfo[]>([]);
   const [lastSkippedTitle, setLastSkippedTitle] = useState<string>("");
   const [lastImportInfos, setLastImportInfos] = useState<ImportInfoNote[]>([]);
@@ -1526,6 +1572,25 @@ function AdminPage() {
     return debtMap;
   }, [bulkStatement]);
 
+  const bankPreviewOpenDebtByDoorNo = useMemo(() => {
+    const debtMap = new Map<string, number>();
+
+    for (const row of bulkStatement) {
+      if (row.remaining <= 0) {
+        continue;
+      }
+
+      const normalizedDoorNo = normalizeDoorNoForMatch(row.apartmentDoorNo);
+      if (!normalizedDoorNo) {
+        continue;
+      }
+
+      debtMap.set(normalizedDoorNo, Number(((debtMap.get(normalizedDoorNo) ?? 0) + row.remaining).toFixed(2)));
+    }
+
+    return debtMap;
+  }, [bulkStatement]);
+
   const bankPreviewPreSaveWarnings = useMemo(() => {
     const warnings: Array<{ rowNo: number; code: string; message: string }> = [];
 
@@ -1593,6 +1658,15 @@ function AdminPage() {
       }
 
       const totalPaymentForDoor = paymentDoorTotals.get(normalizedDoorNo) ?? 0;
+      const openDebt = bankPreviewOpenDebtByDoorNo.get(normalizedDoorNo);
+
+      if (openDebt !== undefined && Math.abs(totalPaymentForDoor - openDebt) > 0.01) {
+        warnings.push({
+          rowNo: row.rowNo,
+          code: "CHARGE_NOT_EXACT_CLOSE",
+          message: `Odeme tutari tahakkuku birebir kapatmiyor (acik tahakkuk: ${formatTry(openDebt)}, odeme toplami: ${formatTry(totalPaymentForDoor)})`,
+        });
+      }
 
       if (overdueOpenDebt <= 0.01 && totalPaymentForDoor > 0.01) {
         warnings.push({
@@ -1627,7 +1701,7 @@ function AdminPage() {
     }
 
     return [...unique.values()].sort((a, b) => a.rowNo - b.rowNo || a.code.localeCompare(b.code));
-  }, [bankPreviewRowsWithFlags, bankPreviewOverdueDebtByDoorNo, formatTry]);
+  }, [bankPreviewRowsWithFlags, bankPreviewOpenDebtByDoorNo, bankPreviewOverdueDebtByDoorNo, formatTry]);
 
   const expenseReportItemSummary = useMemo(() => {
     const normalizeSummaryItemName = (value: string): string =>
@@ -3603,19 +3677,27 @@ function AdminPage() {
       if (filter.to) {
         params.set("to", dateInputToIso(filter.to));
       }
-      if (filter.source && (filter.source === "MANUAL" || filter.source === "BANK_STATEMENT_UPLOAD" || filter.source === "CHARGE_DISTRIBUTION")) {
-        params.set("source", filter.source);
+      if (filter.sources.length === 1) {
+        params.set("source", filter.sources[0]);
       }
-      if (filter.expenseItemId) {
-        params.set("expenseItemId", filter.expenseItemId);
+      if (filter.expenseItemIds.length === 1) {
+        params.set("expenseItemId", filter.expenseItemIds[0]);
       }
-      if (filter.source === "MANUAL" || filter.source === "BANK_STATEMENT_UPLOAD") {
-        params.set("includeDistributed", "false");
-      }
+
+      const includeDistributed = filter.sources.length === 0 || filter.sources.includes("CHARGE_DISTRIBUTION");
+      params.set("includeDistributed", String(includeDistributed));
 
       const endpoint = `/api/admin/expenses/report${params.toString() ? `?${params.toString()}` : ""}`;
       const data = await authorizedRequest<ExpenseReportRow[]>(endpoint);
-      setExpenseReportRows(data);
+
+      const sourceFiltered =
+        filter.sources.length > 0 ? data.filter((row) => filter.sources.includes(row.source)) : data;
+      const expenseItemFiltered =
+        filter.expenseItemIds.length > 0
+          ? sourceFiltered.filter((row) => filter.expenseItemIds.includes(row.expenseItemId))
+          : sourceFiltered;
+
+      setExpenseReportRows(expenseItemFiltered);
     } catch (err) {
       console.error(err);
       const text = err instanceof Error ? err.message : "Gider raporu alinamadi";
@@ -3645,8 +3727,8 @@ function AdminPage() {
     const reset = {
       from: "",
       to: "",
-      source: "" as ExpenseSourceFilter,
-      expenseItemId: "",
+      sources: [] as Array<Exclude<ExpenseSourceFilter, "">>,
+      expenseItemIds: [] as string[],
     };
     setExpenseReportAutoRefreshEnabled(false);
     skipNextExpenseReportAutoRefreshRef.current = true;
@@ -3660,8 +3742,8 @@ function AdminPage() {
     const nextFilter = {
       from: "",
       to: "",
-      source: "" as ExpenseSourceFilter,
-      expenseItemId,
+      sources: [] as Array<Exclude<ExpenseSourceFilter, "">>,
+      expenseItemIds: [expenseItemId],
     };
 
     setLoading(true);
@@ -4140,17 +4222,35 @@ function AdminPage() {
       if (overduePaymentsFilter.to) {
         params.set("to", dateInputToIso(overduePaymentsFilter.to));
       }
-      if (overduePaymentsFilter.blockId) {
-        params.set("blockId", overduePaymentsFilter.blockId);
+      if (overduePaymentsFilter.blockIds.length === 1) {
+        params.set("blockId", overduePaymentsFilter.blockIds[0]);
       }
-      if (overduePaymentsFilter.doorNo.trim()) {
-        params.set("doorNo", overduePaymentsFilter.doorNo.trim());
+      if (overduePaymentsFilter.doorNos.length === 1) {
+        params.set("doorNo", overduePaymentsFilter.doorNos[0]);
       }
 
       const endpoint = `/api/admin/reports/overdue-payments${params.toString() ? `?${params.toString()}` : ""}`;
       const data = await authorizedRequest<OverduePaymentsReportResponse>(endpoint);
-      setOverduePaymentsRows(data.rows);
-      setOverduePaymentsTotals(data.totals);
+
+      let filteredRows = data.rows;
+      if (overduePaymentsFilter.blockIds.length > 0) {
+        filteredRows = filteredRows.filter((row) => overdueSelectedBlockNames.has(row.blockName));
+      }
+      if (overduePaymentsFilter.doorNos.length > 0) {
+        filteredRows = filteredRows.filter((row) => overduePaymentsFilter.doorNos.includes(row.apartmentDoorNo));
+      }
+
+      const totalAmount = Number(filteredRows.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
+      const totalPaid = Number(filteredRows.reduce((sum, row) => sum + row.paidTotal, 0).toFixed(2));
+      const totalRemaining = Number(filteredRows.reduce((sum, row) => sum + row.remaining, 0).toFixed(2));
+
+      setOverduePaymentsRows(filteredRows);
+      setOverduePaymentsTotals({
+        rowCount: filteredRows.length,
+        totalAmount,
+        totalPaid,
+        totalRemaining,
+      });
       if (!silent) {
         setMessage("Gecikmis odemeler raporu guncellendi");
       }
@@ -4175,7 +4275,7 @@ function AdminPage() {
   }
 
   function clearOverduePaymentsFilters(): void {
-    setOverduePaymentsFilter({ from: "", to: "", blockId: "", doorNo: "" });
+    setOverduePaymentsFilter({ from: "", to: "", blockIds: [], doorNos: [] });
     setOverduePaymentsRows([]);
     setOverduePaymentsTotals(null);
     setMessage("Gecikmis odeme filtreleri temizlendi. Listelemek icin Calistir butonuna basin");
@@ -5357,7 +5457,7 @@ function AdminPage() {
   }
 
   async function onCreateCharge(payload: {
-    apartmentId: string;
+    apartmentIds: string[];
     chargeTypeId: string;
     periodYear: number;
     entries: Array<{
@@ -5371,31 +5471,47 @@ function AdminPage() {
     setMessage("Tahakkuk olusturuluyor...");
 
     try {
-      const data = await authorizedRequest<{ id?: string; createdCount?: number; createdIds?: string[]; firstId?: string }>(
-        "/api/admin/charges",
-        {
-          method: "POST",
-          payload: {
-            apartmentId: payload.apartmentId,
-            chargeTypeId: payload.chargeTypeId,
-            periodYear: payload.periodYear,
-            entries: payload.entries,
-          },
-        }
-      );
+      if (!Array.isArray(payload.apartmentIds) || payload.apartmentIds.length === 0) {
+        throw new Error("En az bir daire seciniz");
+      }
 
-      const firstChargeId = data.firstId ?? data.createdIds?.[0] ?? data.id;
+      let firstChargeId: string | undefined;
+      let totalCreatedCount = 0;
+      for (const apartmentId of payload.apartmentIds) {
+        const data = await authorizedRequest<{ id?: string; createdCount?: number; createdIds?: string[]; firstId?: string }>(
+          "/api/admin/charges",
+          {
+            method: "POST",
+            payload: {
+              apartmentId,
+              chargeTypeId: payload.chargeTypeId,
+              periodYear: payload.periodYear,
+              entries: payload.entries,
+            },
+          }
+        );
+
+        if (!firstChargeId) {
+          firstChargeId = data.firstId ?? data.createdIds?.[0] ?? data.id;
+        }
+        totalCreatedCount += data.createdCount ?? payload.entries.length;
+      }
+
       if (firstChargeId) {
         setLastCreatedChargeId(firstChargeId);
         setCloseForm({ chargeId: firstChargeId });
       }
 
-      const createdCount = data.createdCount ?? payload.entries.length;
-      setMessage(`Tahakkuk olustu. Kayit sayisi: ${createdCount}${firstChargeId ? `, Ilk Charge ID: ${firstChargeId}` : ""}`);
+      setMessage(
+        `Tahakkuk olustu. Daire: ${payload.apartmentIds.length}, Kayit sayisi: ${totalCreatedCount}${
+          firstChargeId ? `, Ilk Charge ID: ${firstChargeId}` : ""
+        }`
+      );
 
-      if (payload.apartmentId) {
-        setActiveApartmentId(payload.apartmentId);
-        await fetchStatement(payload.apartmentId);
+      const firstApartmentId = payload.apartmentIds[0];
+      if (firstApartmentId) {
+        setActiveApartmentId(firstApartmentId);
+        await fetchStatement(firstApartmentId);
       }
     } catch (err) {
       console.error(err);
@@ -7034,8 +7150,8 @@ function AdminPage() {
     expenseReportAutoRefreshEnabled,
     expenseReportFilter.from,
     expenseReportFilter.to,
-    expenseReportFilter.source,
-    expenseReportFilter.expenseItemId,
+    expenseReportFilter.sources,
+    expenseReportFilter.expenseItemIds,
     location.pathname,
   ]);
 
@@ -7126,6 +7242,9 @@ function AdminPage() {
             <NavLink className="btn btn-ghost" to="/admin/apartments/history">
               Daire Degisiklik Gecmisi
             </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/building-info">
+              Bina Bilgileri
+            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/blocks">
               Blok Ekle
             </NavLink>
@@ -7171,17 +7290,17 @@ function AdminPage() {
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon">OD</span>
-            Odeme
+            Tahsilat
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
             <NavLink className="btn btn-ghost" to="/admin/payment-methods">
-              Odeme Tipleri
+              Tahsilat Tipleri
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/payments/new">
-              Odeme Gir
+              Tahsilat Gir
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/payments/list">
-              Odeme Raporu
+              Tahsilat Raporu
             </NavLink>
           </div>
         </details>
@@ -7235,7 +7354,7 @@ function AdminPage() {
               Gider Raporu
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/payments/list">
-              Odeme Listesi
+              Tahsilat Raporu
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/apartments/list">
               Daire Listesi
@@ -7243,11 +7362,11 @@ function AdminPage() {
             <NavLink className="btn btn-ghost" to="/admin/reports/overdue-payments">
               Gecikmis Odemeler
             </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/reports/charge-consistency">
-              Tahakkuk Kontrol
-            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/monthly-balance-matrix">
               Aylik Bakiye Matrisi
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/reports/monthly-ledger-print">
+              Gelir-Gider Defteri Print
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/fractional-closures">
               Kismi Kapama Raporu
@@ -7279,6 +7398,21 @@ function AdminPage() {
             <NavLink className="btn btn-ghost" to="/admin/upload-batches">
               Yukleme Kayitlari
             </NavLink>
+          </div>
+        </details>
+
+        <details className="admin-subnav-group admin-subnav-dropdown">
+          <summary className="admin-subnav-title">
+            <span className="admin-subnav-icon">KT</span>
+            Kontrol
+          </summary>
+          <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
+            <NavLink className="btn btn-ghost" to="/admin/reports/charge-consistency">
+              Tahakkuk Kontrol
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/reconcile/door-mismatch-report">
+              Banka Eslestirme Kontrolu
+            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/bank-statement">
               Banka Ekstresi Karsilastirma
             </NavLink>
@@ -7300,9 +7434,6 @@ function AdminPage() {
             <NavLink className="btn btn-ghost" to="/admin/statement/reconcile">
               Tum Eslestirmeleri (Kapamalari) Tekrar Yap
             </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/reconcile/door-mismatch-report">
-              Banka Eslestirme Kontrolu
-            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/resident-content">
               Duyurular ve Anketler
             </NavLink>
@@ -7315,8 +7446,17 @@ function AdminPage() {
             <NavLink className="btn btn-ghost" to="/admin/audit-logs">
               Islem Gecmisi
             </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/guide/manual">
-              Kullanim Kilavuzu
+          </div>
+        </details>
+
+        <details className="admin-subnav-group admin-subnav-dropdown">
+          <summary className="admin-subnav-title">
+            <span className="admin-subnav-icon">TP</span>
+            Toplanti
+          </summary>
+          <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
+            <NavLink className="btn btn-ghost" to="/admin/meeting">
+              Toplanti Hazirlik ve Tutanaklar
             </NavLink>
           </div>
         </details>
@@ -8136,33 +8276,115 @@ function AdminPage() {
                   </label>
                   <label>
                     Blok
-                    <select
-                      value={overduePaymentsFilter.blockId}
-                      onChange={(e) => setOverduePaymentsFilter((prev) => ({ ...prev, blockId: e.target.value }))}
-                    >
-                      <option value="">Tum bloklar</option>
-                      {blockOptions.map((block) => (
-                        <option key={block.id} value={block.id}>
-                          {block.name}
-                        </option>
-                      ))}
-                    </select>
+                    <details className="filter-dropdown apartment-edit-select-dropdown">
+                      <summary>{overdueBlockSummary}</summary>
+                      <div className="filter-dropdown-panel apartment-edit-select-list">
+                        <label className="bulk-filter-option apartment-edit-select-item">
+                          <input
+                            type="checkbox"
+                            checked={allOverdueBlocksSelected}
+                            onChange={(e) =>
+                              setOverduePaymentsFilter((prev) => {
+                                const nextBlockIds = e.target.checked ? overdueBlockValues : [];
+                                const nextBlockNames = new Set(
+                                  blockOptions.filter((x) => nextBlockIds.includes(x.id)).map((x) => x.name)
+                                );
+                                const nextDoorNos = prev.doorNos.filter((doorNo) =>
+                                  apartmentOptions.some(
+                                    (apt) =>
+                                      apt.doorNo === doorNo &&
+                                      (nextBlockIds.length === 0 || nextBlockNames.has(apt.blockName))
+                                  )
+                                );
+
+                                return {
+                                  ...prev,
+                                  blockIds: nextBlockIds,
+                                  doorNos: nextDoorNos,
+                                };
+                              })
+                            }
+                          />
+                          Hepsini Sec
+                        </label>
+                        {blockOptions.map((block) => {
+                          const checked = overduePaymentsFilter.blockIds.includes(block.id);
+                          return (
+                            <label key={block.id} className="bulk-filter-option apartment-edit-select-item">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) =>
+                                  setOverduePaymentsFilter((prev) => {
+                                    const nextBlockIds = e.target.checked
+                                      ? [...prev.blockIds, block.id]
+                                      : prev.blockIds.filter((id) => id !== block.id);
+                                    const nextBlockNames = new Set(
+                                      blockOptions.filter((x) => nextBlockIds.includes(x.id)).map((x) => x.name)
+                                    );
+                                    const nextDoorNos = prev.doorNos.filter((doorNo) =>
+                                      apartmentOptions.some(
+                                        (apt) =>
+                                          apt.doorNo === doorNo &&
+                                          (nextBlockIds.length === 0 || nextBlockNames.has(apt.blockName))
+                                      )
+                                    );
+
+                                    return {
+                                      ...prev,
+                                      blockIds: nextBlockIds,
+                                      doorNos: nextDoorNos,
+                                    };
+                                  })
+                                }
+                              />
+                              {block.name}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </details>
                   </label>
                   <label>
                     Daire No
-                    <select
-                      value={overduePaymentsFilter.doorNo}
-                      onChange={(e) => setOverduePaymentsFilter((prev) => ({ ...prev, doorNo: e.target.value }))}
-                    >
-                      <option value="">Tum daireler</option>
-                      {apartmentOptions
-                        .filter((apt) => !overduePaymentsFilter.blockId || apt.blockName === (blockOptions.find((b) => b.id === overduePaymentsFilter.blockId)?.name ?? ""))
-                        .map((apt) => (
-                          <option key={apt.id} value={apt.doorNo}>
-                            {apt.doorNo}
-                          </option>
-                        ))}
-                    </select>
+                    <details className="filter-dropdown apartment-edit-select-dropdown">
+                      <summary>{overdueDoorSummary}</summary>
+                      <div className="filter-dropdown-panel apartment-edit-select-list">
+                        <label className="bulk-filter-option apartment-edit-select-item">
+                          <input
+                            type="checkbox"
+                            checked={allOverdueDoorsSelected}
+                            onChange={(e) =>
+                              setOverduePaymentsFilter((prev) => ({
+                                ...prev,
+                                doorNos: e.target.checked ? overdueDoorValues : [],
+                              }))
+                            }
+                          />
+                          Hepsini Sec
+                        </label>
+                        {overdueDoorValues.map((doorNo) => {
+                          const checked = overduePaymentsFilter.doorNos.includes(doorNo);
+                          return (
+                            <label key={doorNo} className="bulk-filter-option apartment-edit-select-item">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) =>
+                                  setOverduePaymentsFilter((prev) => ({
+                                    ...prev,
+                                    doorNos: e.target.checked
+                                      ? [...prev.doorNos, doorNo]
+                                      : prev.doorNos.filter((x) => x !== doorNo),
+                                  }))
+                                }
+                              />
+                              {doorNo}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </details>
                   </label>
                 </div>
 
@@ -11117,6 +11339,14 @@ function AdminPage() {
           }
         />
         <Route
+          path="/reports/monthly-ledger-print"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <MonthlyLedgerPrintPage />
+            </Suspense>
+          }
+        />
+        <Route
           path="/reports/apartments/list"
           element={<Navigate replace to="/admin/apartments/list" />}
         />
@@ -11139,6 +11369,14 @@ function AdminPage() {
           element={
             <Suspense fallback={<LazyAdminPageFallback />}>
               <ApartmentChangeHistoryPage apartmentOptions={apartmentOptions} />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/building-info"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <BuildingInfoPage />
             </Suspense>
           }
         />
@@ -11504,6 +11742,14 @@ function AdminPage() {
           element={
             <Suspense fallback={<LazyAdminPageFallback />}>
               <GuideManualPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/meeting"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <MeetingGuidePage />
             </Suspense>
           }
         />
@@ -12468,6 +12714,9 @@ function App() {
         </h1>
         {isAdmin && (
           <div className="hero-actions">
+            <NavLink className="btn btn-ghost" to="/admin/guide/manual">
+              Kullanim Kilavuzu
+            </NavLink>
             <button className="btn btn-ghost" type="button" onClick={openCurrentScreenInNewTab}>
               Yeni Ekran Ac
             </button>

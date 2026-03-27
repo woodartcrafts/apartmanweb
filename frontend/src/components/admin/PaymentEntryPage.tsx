@@ -219,7 +219,7 @@ export function PaymentEntryPage({
   return (
     <section className="dashboard">
       <form className="card admin-form" onSubmit={(e) => void onSubmitPayment(e)}>
-        <h3>Odeme Gir</h3>
+        <h3>Tahsilat Gir</h3>
         <label>
           Daire
           <select
@@ -347,10 +347,10 @@ export function PaymentEntryPage({
           </table>
         </div>
         <p className="small">
-          Secilen tahakkuk: {paymentForm.items.length} | Toplam odeme: <b>{formatTry(selectedPaymentTotal)}</b>
+          Secilen tahakkuk: {paymentForm.items.length} | Toplam tahsilat: <b>{formatTry(selectedPaymentTotal)}</b>
         </p>
         <label>
-          Odeme Tarihi
+          Tahsilat Tarihi
           <input
             type="date"
             value={paymentForm.paidAt}
@@ -388,7 +388,7 @@ export function PaymentEntryPage({
           />
         </label>
         <button className="btn btn-primary" type="submit" disabled={isPaymentSubmitDisabled}>
-          Odemeyi Kaydet
+          Tahsilati Kaydet
         </button>
       </form>
 
@@ -457,11 +457,11 @@ export function PaymentEntryPage({
       </form>
 
       <form className="card admin-form" onSubmit={(e) => void onSubmitUpload(e)}>
-        <h3>Toplu Odeme Upload</h3>
+        <h3>Toplu Tahsilat Upload</h3>
         <p className="small">Desteklenen formatlar: `.xlsx`, `.xls`, `.csv`, `.txt`, `.pdf`.</p>
         <p className="small">Beklenen kolonlar: `tarih`, `tutar`, `daire no`, `aciklama`, `referans`.</p>
         <label>
-          Odeme Araci
+          Tahsilat Araci
           <select
             value={selectedMethod}
             onChange={(e) => setPaymentForm((prev) => ({ ...prev, method: e.target.value as PaymentMethod }))}
@@ -483,7 +483,7 @@ export function PaymentEntryPage({
           />
         </label>
         <button className="btn btn-primary" type="submit" disabled={loading || !paymentUploadFile}>
-          Toplu Odemeyi Yukle
+          Toplu Tahsilati Yukle
         </button>
       </form>
 

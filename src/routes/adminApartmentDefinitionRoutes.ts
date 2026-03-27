@@ -360,5 +360,65 @@ export function createAdminApartmentDefinitionRoutes(deps: ApartmentDefinitionRo
     return res.status(204).send();
   });
 
+  apartmentDefinitionRoutes.get("/building-profile", async (_req, res) => {
+    const [profile, apartmentCount, blocks] = await Promise.all([
+      prisma.buildingProfile.findUnique({ where: { singletonKey: "DEFAULT" } }),
+      prisma.apartment.count(),
+      prisma.block.findMany({ orderBy: { name: "asc" }, select: { name: true } }),
+    ]);
+
+    const defaultBuildingName =
+      blocks.length === 0 ? "Apartman Yonetimi" : blocks.length === 1 ? blocks[0].name : blocks.map((x) => x.name).join("; ");
+
+    return res.json({
+      buildingName: profile?.buildingName ?? defaultBuildingName,
+      parcelInfo: profile?.parcelInfo ?? "",
+      address: profile?.address ?? "",
+      totalIndependentSections: profile?.totalIndependentSections ?? apartmentCount,
+      updatedAt: profile?.updatedAt ?? null,
+    });
+  });
+
+  apartmentDefinitionRoutes.put("/building-profile", async (req, res) => {
+    const schema = z.object({
+      buildingName: z.string().trim().max(200).optional(),
+      parcelInfo: z.string().trim().max(200).optional(),
+      address: z.string().trim().max(1000).optional(),
+      totalIndependentSections: z.number().int().positive().max(100000).nullable().optional(),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+    }
+
+    const payload = parsed.data;
+
+    const updated = await prisma.buildingProfile.upsert({
+      where: { singletonKey: "DEFAULT" },
+      update: {
+        buildingName: payload.buildingName ?? null,
+        parcelInfo: payload.parcelInfo ?? null,
+        address: payload.address ?? null,
+        totalIndependentSections: payload.totalIndependentSections ?? null,
+      },
+      create: {
+        singletonKey: "DEFAULT",
+        buildingName: payload.buildingName ?? null,
+        parcelInfo: payload.parcelInfo ?? null,
+        address: payload.address ?? null,
+        totalIndependentSections: payload.totalIndependentSections ?? null,
+      },
+    });
+
+    return res.json({
+      buildingName: updated.buildingName ?? "",
+      parcelInfo: updated.parcelInfo ?? "",
+      address: updated.address ?? "",
+      totalIndependentSections: updated.totalIndependentSections ?? null,
+      updatedAt: updated.updatedAt,
+    });
+  });
+
   return apartmentDefinitionRoutes;
 }
