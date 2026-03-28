@@ -2521,9 +2521,18 @@ async function processBankStatementImport(params: {
     select: {
       id: true,
       apartmentId: true,
+      periodYear: true,
+      periodMonth: true,
+      description: true,
       amount: true,
       dueDate: true,
       createdAt: true,
+      chargeType: {
+        select: {
+          code: true,
+          name: true,
+        },
+      },
     },
   });
 
@@ -2563,6 +2572,18 @@ async function processBankStatementImport(params: {
   const chargeSortMetaById = new Map(
     openChargeRows.map((row) => [row.id, { dueAt: row.dueDate.getTime(), createdAt: row.createdAt.getTime() }])
   );
+  const chargeMetaById = new Map(
+    openChargeRows.map((row) => [
+      row.id,
+      {
+        periodYear: row.periodYear,
+        periodMonth: row.periodMonth,
+        chargeTypeCode: toAsciiLower(row.chargeType.code),
+        chargeTypeName: toAsciiLower(row.chargeType.name),
+        chargeDescription: toAsciiLower(row.description ?? ""),
+      },
+    ])
+  );
   for (const list of openChargeStatesByApartment.values()) {
     list.sort((a, b) => {
       const aMeta = chargeSortMetaById.get(a.chargeId);
@@ -2583,6 +2604,144 @@ async function processBankStatementImport(params: {
 
       return a.chargeId.localeCompare(b.chargeId);
     });
+  }
+
+  const monthTokenToNumber = new Map<string, number>([
+    ["ocak", 1],
+    ["subat", 2],
+    ["mart", 3],
+    ["nisan", 4],
+    ["mayis", 5],
+    ["haziran", 6],
+    ["temmuz", 7],
+    ["agustos", 8],
+    ["eylul", 9],
+    ["ekim", 10],
+    ["kasim", 11],
+    ["aralik", 12],
+  ]);
+
+  function detectChargeTypeHints(normalizedDescription: string): Set<"aidat" | "dogalgaz" | "su" | "elektrik"> {
+    const hints = new Set<"aidat" | "dogalgaz" | "su" | "elektrik">();
+    if (/\baida[tr]\b/.test(normalizedDescription)) {
+      hints.add("aidat");
+    }
+    if (
+      normalizedDescription.includes("dogalgaz") ||
+      normalizedDescription.includes("dogal gaz") ||
+      normalizedDescription.includes("igdas")
+    ) {
+      hints.add("dogalgaz");
+    }
+    if (normalizedDescription.includes("iski") || normalizedDescription.includes("water")) {
+      hints.add("su");
+    }
+    if (normalizedDescription.includes("elektrik") || normalizedDescription.includes("electric")) {
+      hints.add("elektrik");
+    }
+    return hints;
+  }
+
+  function chargeMatchesTypeHints(
+    chargeId: string,
+    hints: Set<"aidat" | "dogalgaz" | "su" | "elektrik">
+  ): boolean {
+    if (hints.size === 0) {
+      return true;
+    }
+
+    const meta = chargeMetaById.get(chargeId);
+    if (!meta) {
+      return false;
+    }
+
+    const haystack = `${meta.chargeTypeCode} ${meta.chargeTypeName} ${meta.chargeDescription}`;
+    for (const hint of hints) {
+      if (hint === "aidat" && haystack.includes("aidat")) {
+        return true;
+      }
+      if (hint === "dogalgaz" && (haystack.includes("dogalgaz") || haystack.includes("dogal gaz") || haystack.includes("igdas"))) {
+        return true;
+      }
+      if (hint === "su" && (haystack.includes("su") || haystack.includes("iski") || haystack.includes("water"))) {
+        return true;
+      }
+      if (hint === "elektrik" && (haystack.includes("elektrik") || haystack.includes("electric"))) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function pickPreferredOpenChargesFromDescription(
+    openCharges: Array<{ chargeId: string; remaining: number; closedInImport: boolean }>,
+    description: string | undefined,
+    paymentAmount: number
+  ): { charges: Array<{ chargeId: string; remaining: number; closedInImport: boolean }>; reason: string } | null {
+    const normalizedDescription = normalizeKeywordForMatch(description ?? "");
+    if (!normalizedDescription) {
+      return null;
+    }
+
+    const monthHints = new Set<number>();
+    for (const token of normalizedDescription.split(" ")) {
+      const monthNo = monthTokenToNumber.get(token);
+      if (monthNo) {
+        monthHints.add(monthNo);
+      }
+    }
+
+    // Month hint is required to keep this auto-selection safe.
+    if (monthHints.size === 0) {
+      return null;
+    }
+
+    const yearMatch = normalizedDescription.match(/\b(20\d{2})\b/);
+    const yearHint = yearMatch ? Number(yearMatch[1]) : null;
+    const typeHints = detectChargeTypeHints(normalizedDescription);
+
+    const monthScoped = openCharges.filter((charge) => {
+      const meta = chargeMetaById.get(charge.chargeId);
+      if (!meta) {
+        return false;
+      }
+      if (!monthHints.has(meta.periodMonth)) {
+        return false;
+      }
+      if (yearHint !== null && meta.periodYear !== yearHint) {
+        return false;
+      }
+      return true;
+    });
+
+    if (monthScoped.length === 0) {
+      return null;
+    }
+
+    const monthAndTypeScoped =
+      typeHints.size > 0 ? monthScoped.filter((charge) => chargeMatchesTypeHints(charge.chargeId, typeHints)) : monthScoped;
+    const scoped = monthAndTypeScoped.length > 0 ? monthAndTypeScoped : monthScoped;
+
+    const scopedExact = scoped.filter((charge) => Math.abs(charge.remaining - paymentAmount) <= 0.01);
+    if (scopedExact.length === 1) {
+      return { charges: scopedExact, reason: "DESCRIPTION_HINT:UNIQUE_EXACT" };
+    }
+
+    if (scopedExact.length > 1) {
+      return null;
+    }
+
+    const scopedTotal = Number(scoped.reduce((sum, charge) => sum + charge.remaining, 0).toFixed(2));
+    if (Math.abs(scopedTotal - paymentAmount) <= 0.01) {
+      return { charges: scoped, reason: "DESCRIPTION_HINT:SUM_MATCH" };
+    }
+
+    if (scoped.length === 1) {
+      return { charges: scoped, reason: "DESCRIPTION_HINT:SINGLE_CANDIDATE" };
+    }
+
+    return null;
   }
 
   let paymentCreatedCount = 0;
@@ -2691,10 +2850,22 @@ async function processBankStatementImport(params: {
 
         const paymentAmount = Number(row.amount.toFixed(2));
         const exactCharges = openCharges.filter((charge) => Math.abs(charge.remaining - paymentAmount) <= 0.01);
+        let autoMatchHintReason: string | undefined;
+        let orderedCharges = exactCharges.length === 1 ? exactCharges : openCharges;
 
         // Safety gate: when debt is multi-target and there is no unique exact match,
         // keep payment unapplied instead of doing FIFO-like auto allocation.
         if (openCharges.length > 1 && exactCharges.length !== 1) {
+          const hintedSelection = pickPreferredOpenChargesFromDescription(openCharges, row.description, paymentAmount);
+          if (hintedSelection) {
+            orderedCharges = hintedSelection.charges;
+            autoMatchHintReason = hintedSelection.reason;
+            infos.push(
+              `Satir ${rowNo}: Aciklama ipucuyla otomatik eslestirme uygulandi (${detectedDoorNo}) [${hintedSelection.reason}]`
+            );
+          }
+
+          if (!hintedSelection) {
           const method = row.paymentMethod ?? derivePaymentMethod(row.txType);
           const noteParts = [
             reference ? `BANK_REF:${reference}` : undefined,
@@ -2717,15 +2888,16 @@ async function processBankStatementImport(params: {
           });
 
           paymentCreatedCount += 1;
+          const manualReviewDoor = detectedDoorNo && detectedDoorNo.trim().length > 0 ? detectedDoorNo.trim() : "-";
+          const manualReviewAmount = paymentAmount.toFixed(2);
           infos.push(
             exactCharges.length === 0
-              ? `Satir ${rowNo}: Birden fazla acik borc bulundu ve exact eslesme yok, odeme manuel incelemeye birakildi (${detectedDoorNo})`
-              : `Satir ${rowNo}: Birden fazla exact borc eslesmesi bulundu, odeme manuel incelemeye birakildi (${detectedDoorNo})`
+              ? `Satir ${rowNo}: Birden fazla acik borc bulundu ve exact eslesme yok, odeme manuel incelemeye birakildi (${manualReviewDoor}) [DAIRE:${manualReviewDoor} | TUTAR:${manualReviewAmount}]`
+              : `Satir ${rowNo}: Birden fazla exact borc eslesmesi bulundu, odeme manuel incelemeye birakildi (${manualReviewDoor}) [DAIRE:${manualReviewDoor} | TUTAR:${manualReviewAmount}]`
           );
           continue;
+          }
         }
-
-        const orderedCharges = exactCharges.length === 1 ? exactCharges : openCharges;
 
         let remainingToAllocate = paymentAmount;
         const items: Array<{ chargeId: string; amount: number }> = [];
@@ -2758,6 +2930,7 @@ async function processBankStatementImport(params: {
           reference ? `BANK_REF:${reference}` : undefined,
           row.description ? `BANK_DESC:${row.description}` : undefined,
           detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
+          autoMatchHintReason ? `AUTO_MATCH:${autoMatchHintReason}` : undefined,
           remainingToAllocate > 0.01 ? `UNAPPLIED:OVERPAYMENT:${remainingToAllocate.toFixed(2)}` : undefined,
         ].filter(Boolean) as string[];
 

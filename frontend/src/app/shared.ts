@@ -1140,14 +1140,45 @@ export function mapSkippedErrors(errors: string[]): SkippedRowInfo[] {
 export function explainInfoMessage(raw: string): string {
   const text = raw.toLocaleLowerCase("tr");
 
+  const parseManualReviewContext = (): { doorNo: string | null; amountText: string | null } => {
+    const bracketDoorMatch = raw.match(/\[\s*DAIRE\s*:\s*([^\]|]+)\s*\|/i);
+    const fallbackDoorMatch = raw.match(/manuel incelemeye birakildi\s*\(([^)]+)\)/i);
+    const amountMatch = raw.match(/\|\s*TUTAR\s*:\s*([0-9]+(?:\.[0-9]{1,2})?)\s*\]/i);
+
+    const normalize = (value: string | undefined): string | null => {
+      if (!value) {
+        return null;
+      }
+      const cleaned = value.trim();
+      if (!cleaned || cleaned === "-") {
+        return null;
+      }
+      return cleaned;
+    };
+
+    return {
+      doorNo: normalize(bracketDoorMatch?.[1] ?? fallbackDoorMatch?.[1]),
+      amountText: normalize(amountMatch?.[1]),
+    };
+  };
+
+  const manualContext = parseManualReviewContext();
+  const details = [
+    manualContext.doorNo ? `Daire: ${manualContext.doorNo}` : null,
+    manualContext.amountText ? `Tutar: ${manualContext.amountText}` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+  const detailsSuffix = details ? ` (${details})` : "";
+
   if (text.includes("manuel incelemeye birakildi") && text.includes("exact eslesme yok")) {
-    return "Birden fazla acik borc oldugu halde tekil exact eslesme bulunamadi; odeme otomatik kapatilmayip manuel incelemeye alindi.";
+    return `Birden fazla acik borc oldugu halde tekil exact eslesme bulunamadi; odeme otomatik kapatilmayip manuel incelemeye alindi.${detailsSuffix}`;
   }
   if (text.includes("manuel incelemeye birakildi") && text.includes("birden fazla exact")) {
-    return "Birden fazla exact eslesme oldugu icin yanlis tahakkuk kapanmasi engellendi; manuel secim gerekli.";
+    return `Birden fazla exact eslesme oldugu icin yanlis tahakkuk kapanmasi engellendi; manuel secim gerekli.${detailsSuffix}`;
   }
   if (text.includes("manual_review")) {
-    return "Sistem bu odemeyi riskli buldugu icin otomatik dagitmadan manuel incelemeye birakti.";
+    return `Sistem bu odemeyi riskli buldugu icin otomatik dagitmadan manuel incelemeye birakti.${detailsSuffix}`;
   }
 
   if (text.includes("acik borc yoktu") && text.includes("dagitimsiz kaydedildi")) {
