@@ -2850,15 +2850,32 @@ async function processBankStatementImport(params: {
 
         const paymentAmount = Number(row.amount.toFixed(2));
         const exactCharges = openCharges.filter((charge) => Math.abs(charge.remaining - paymentAmount) <= 0.01);
+        const totalOpenDebt = Number(openCharges.reduce((sum, charge) => sum + charge.remaining, 0).toFixed(2));
+        const safelyCoversAllOpenDebt = paymentAmount >= totalOpenDebt - 0.01;
         let autoMatchHintReason: string | undefined;
-        let orderedCharges = exactCharges.length === 1 ? exactCharges : openCharges;
+        let orderedCharges = openCharges;
+
+        if (exactCharges.length === 1) {
+          orderedCharges = exactCharges;
+        } else if (exactCharges.length > 1) {
+          // Deterministic tie-breaker: close the oldest exact-matching debt first.
+          orderedCharges = [exactCharges[0]];
+          autoMatchHintReason = "EXACT_OLDEST_MATCH";
+          infos.push(
+            `Satir ${rowNo}: Birden fazla exact eslesmede en eski tahakkuk secildi (${detectedDoorNo})`
+          );
+        }
 
         // Safety gate: when debt is multi-target and there is no unique exact match,
         // keep payment unapplied instead of doing FIFO-like auto allocation.
-        if (openCharges.length > 1 && exactCharges.length !== 1) {
+        if (openCharges.length > 1 && exactCharges.length === 0 && !safelyCoversAllOpenDebt) {
           const hintedSelection = pickPreferredOpenChargesFromDescription(openCharges, row.description, paymentAmount);
           if (hintedSelection) {
-            orderedCharges = hintedSelection.charges;
+            const hintedChargeIds = new Set(hintedSelection.charges.map((charge) => charge.chargeId));
+            const hintedOrdered = openCharges.filter((charge) => hintedChargeIds.has(charge.chargeId));
+            const remainingOrdered = openCharges.filter((charge) => !hintedChargeIds.has(charge.chargeId));
+            // Apply hinted candidates first but continue with remaining open debts for leftover amount.
+            orderedCharges = [...hintedOrdered, ...remainingOrdered];
             autoMatchHintReason = hintedSelection.reason;
             infos.push(
               `Satir ${rowNo}: Aciklama ipucuyla otomatik eslestirme uygulandi (${detectedDoorNo}) [${hintedSelection.reason}]`
@@ -2871,9 +2888,7 @@ async function processBankStatementImport(params: {
             reference ? `BANK_REF:${reference}` : undefined,
             row.description ? `BANK_DESC:${row.description}` : undefined,
             detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
-            exactCharges.length === 0
-              ? `UNAPPLIED:MANUAL_REVIEW:NO_EXACT_MATCH:${openCharges.length}`
-              : `UNAPPLIED:MANUAL_REVIEW:MULTIPLE_EXACT_MATCH:${exactCharges.length}`,
+            `UNAPPLIED:MANUAL_REVIEW:NO_EXACT_MATCH:${openCharges.length}`,
           ].filter(Boolean) as string[];
 
           await prisma.payment.create({
@@ -2891,12 +2906,16 @@ async function processBankStatementImport(params: {
           const manualReviewDoor = detectedDoorNo && detectedDoorNo.trim().length > 0 ? detectedDoorNo.trim() : "-";
           const manualReviewAmount = paymentAmount.toFixed(2);
           infos.push(
-            exactCharges.length === 0
-              ? `Satir ${rowNo}: Birden fazla acik borc bulundu ve exact eslesme yok, odeme manuel incelemeye birakildi (${manualReviewDoor}) [DAIRE:${manualReviewDoor} | TUTAR:${manualReviewAmount}]`
-              : `Satir ${rowNo}: Birden fazla exact borc eslesmesi bulundu, odeme manuel incelemeye birakildi (${manualReviewDoor}) [DAIRE:${manualReviewDoor} | TUTAR:${manualReviewAmount}]`
+            `Satir ${rowNo}: Birden fazla acik borc bulundu ve exact eslesme yok, odeme manuel incelemeye birakildi (${manualReviewDoor}) [DAIRE:${manualReviewDoor} | TUTAR:${manualReviewAmount}]`
           );
           continue;
           }
+        }
+
+        if (openCharges.length > 1 && exactCharges.length === 0 && safelyCoversAllOpenDebt) {
+          infos.push(
+            `Satir ${rowNo}: Odeme acik borcun tamamini karsiladi, tum acik tahakkuklar kapatildi (${detectedDoorNo})`
+          );
         }
 
         let remainingToAllocate = paymentAmount;

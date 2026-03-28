@@ -1180,9 +1180,18 @@ export function explainInfoMessage(raw: string): string {
   if (text.includes("manual_review")) {
     return `Sistem bu odemeyi riskli buldugu icin otomatik dagitmadan manuel incelemeye birakti.${detailsSuffix}`;
   }
+  if (text.includes("birden fazla exact eslesmede en eski tahakkuk secildi")) {
+    return "Birden fazla birebir eslesme oldugu icin sistem en eski acik borcu secerek otomatik dagitim yapti.";
+  }
 
   if (text.includes("acik borc yoktu") && text.includes("dagitimsiz kaydedildi")) {
     return "Odeme kaydi olusturuldu ancak acik borc olmadigi icin herhangi bir tahakkuga dagitilmadi.";
+  }
+  if (text.includes("odeme acik borcu asti") && text.includes("dagitimsiz birakildi")) {
+    return "Odeme mevcut acik borclara dagitildi; borcu asan kalan tutar dagitimsiz kaydedildi.";
+  }
+  if (text.includes("acik borcun tamamini karsiladi") && text.includes("tahakkuklar kapatildi")) {
+    return "Odeme, dairenin tum acik tahakkuklarini otomatik kapatti.";
   }
   if (text.includes("ayni dosya referansi kabul edildi")) {
     return "Ayni dosyada tekrar eden referans, banka masrafi istisnasi nedeniyle kaydedildi.";
