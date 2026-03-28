@@ -8272,7 +8272,7 @@ function AdminPage() {
                     <input
                       key={bankStatementFileInputKey}
                       type="file"
-                      accept=".xlsx,.xls"
+                      accept=".xlsx"
                       onChange={(e) => setBankStatementFile(e.target.files?.[0] ?? null)}
                       required
                     />
@@ -11467,7 +11467,7 @@ function AdminPage() {
                   <input
                     key={bankStatementFileInputKey}
                     type="file"
-                    accept=".xlsx,.xls"
+                    accept=".xlsx"
                     onChange={(e) => setBankStatementFile(e.target.files?.[0] ?? null)}
                     required
                   />
@@ -11851,7 +11851,7 @@ function AdminPage() {
             <section className="dashboard">
               <form className="card admin-form" onSubmit={onUploadApartments}>
                 <h3>Daire Listesi Excel Yukle</h3>
-                <p className="small">Toplu yaratma icin xlsx/xls dosyasi secin. Bos opsiyonel alanlar kabul edilir.</p>
+                <p className="small">Toplu yaratma icin .xlsx dosyasi secin. Bos opsiyonel alanlar kabul edilir.</p>
                 <p className="small">
                   Beklenen kolonlar: blockName/blok, doorNo/daireno ve opsiyonel olarak type, apartmentClassCode,
                   apartmentDutyCode, hasAidat, hasDogalgaz, hasOtherDues, hasIncome, hasExpenses, ownerFullName,
@@ -11865,7 +11865,7 @@ function AdminPage() {
                   Excel Dosyasi
                   <input
                     type="file"
-                    accept=".xlsx,.xls"
+                    accept=".xlsx"
                     onChange={(e) => setApartmentUploadFile(e.target.files?.[0] ?? null)}
                     required
                   />

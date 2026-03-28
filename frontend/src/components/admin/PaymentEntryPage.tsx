@@ -461,7 +461,7 @@ export function PaymentEntryPage({
 
       <form className="card admin-form" onSubmit={(e) => void onSubmitUpload(e)}>
         <h3>Toplu Tahsilat Upload</h3>
-        <p className="small">Desteklenen formatlar: `.xlsx`, `.xls`, `.csv`, `.txt`, `.pdf`.</p>
+        <p className="small">Desteklenen formatlar: `.xlsx`, `.csv`, `.txt`, `.pdf`.</p>
         <p className="small">Beklenen kolonlar: `tarih`, `tutar`, `daire no`, `aciklama`, `referans`.</p>
         <label>
           Tahsilat Araci
@@ -480,7 +480,7 @@ export function PaymentEntryPage({
           Dosya
           <input
             type="file"
-            accept=".xlsx,.xls,.csv,.txt,.pdf"
+            accept=".xlsx,.csv,.txt,.pdf"
             onChange={(e) => setPaymentUploadFile(e.target.files?.[0] ?? null)}
             required
           />
