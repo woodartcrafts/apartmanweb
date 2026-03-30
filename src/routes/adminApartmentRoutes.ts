@@ -24,6 +24,7 @@ type ApartmentSnapshotInput = {
   hasExpenses: boolean;
   ownerFullName: string | null;
   occupancyType: OccupancyType;
+  moveInDate: Date | null;
   email1: string | null;
   email2: string | null;
   email3: string | null;
@@ -55,6 +56,7 @@ type ApartmentSnapshot = {
   hasExpenses: boolean;
   ownerFullName: string | null;
   occupancyType: OccupancyType;
+  moveInDate: string | null;
   email1: string | null;
   email2: string | null;
   email3: string | null;
@@ -85,6 +87,7 @@ function createApartmentSnapshot(apartment: ApartmentSnapshotInput): ApartmentSn
     hasExpenses: apartment.hasExpenses,
     ownerFullName: apartment.ownerFullName,
     occupancyType: apartment.occupancyType,
+    moveInDate: apartment.moveInDate ? apartment.moveInDate.toISOString() : null,
     email1: apartment.email1,
     email2: apartment.email2,
     email3: apartment.email3,
@@ -271,6 +274,7 @@ const apartmentCreateSchema = z.object({
   hasExpenses: z.boolean().optional(),
   ownerFullName: z.string().optional(),
   occupancyType: z.nativeEnum(OccupancyType).optional(),
+  moveInDate: z.string().optional().or(z.literal("")),
   email1: z.string().email().optional().or(z.literal("")),
   email2: z.string().email().optional().or(z.literal("")),
   email3: z.string().email().optional().or(z.literal("")),
@@ -296,6 +300,7 @@ const apartmentUpdateSchema = z.object({
   hasExpenses: z.boolean().optional(),
   ownerFullName: z.string().optional(),
   occupancyType: z.nativeEnum(OccupancyType),
+  moveInDate: z.string().optional().or(z.literal("")),
   email1: z.string().email().optional().or(z.literal("")),
   email2: z.string().email().optional().or(z.literal("")),
   email3: z.string().email().optional().or(z.literal("")),
@@ -564,6 +569,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         hasExpenses: apartment.hasExpenses,
         ownerFullName: apartment.ownerFullName,
         occupancyType: apartment.occupancyType,
+        moveInDate: apartment.moveInDate,
         email1: apartment.email1,
         email2: apartment.email2,
         email3: apartment.email3,
@@ -739,6 +745,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
       hasExpenses,
       ownerFullName,
       occupancyType,
+      moveInDate,
       email1,
       email2,
       email3,
@@ -763,6 +770,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
     const normalizedLandlordPhone = normalizeApartmentText(landlordPhone);
     const normalizedLandlordEmail = normalizeApartmentText(landlordEmail);
     const normalizedOccupancyType = occupancyType ?? OccupancyType.OWNER;
+    const normalizedMoveInDate = moveInDate?.trim() ? new Date(`${moveInDate.trim()}T00:00:00.000Z`) : null;
     const normalizedApartmentClassId = apartmentClassId?.trim() ? apartmentClassId.trim() : null;
     const normalizedApartmentDutyId = apartmentDutyId?.trim() ? apartmentDutyId.trim() : null;
 
@@ -830,6 +838,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         hasExpenses: hasExpenses ?? true,
         ownerFullName: normalizedOwnerFullName,
         occupancyType: normalizedOccupancyType,
+        moveInDate: normalizedMoveInDate,
         email1: normalizedEmail1,
         email2: normalizedEmail2,
         email3: normalizedEmail3,
@@ -897,6 +906,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
       const normalizedLandlordFullName = normalizeApartmentText(parsed.data.landlordFullName);
       const normalizedLandlordPhone = normalizeApartmentText(parsed.data.landlordPhone);
       const normalizedLandlordEmail = normalizeApartmentText(parsed.data.landlordEmail);
+      const normalizedMoveInDate = parsed.data.moveInDate?.trim() ? new Date(`${parsed.data.moveInDate.trim()}T00:00:00.000Z`) : null;
       const normalizedApartmentClassId = parsed.data.apartmentClassId?.trim() ? parsed.data.apartmentClassId.trim() : null;
       const normalizedApartmentDutyId = parsed.data.apartmentDutyId?.trim() ? parsed.data.apartmentDutyId.trim() : null;
 
@@ -966,6 +976,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
           hasExpenses: parsed.data.hasExpenses ?? existing.hasExpenses,
           ownerFullName: normalizedOwnerFullName,
           occupancyType: parsed.data.occupancyType,
+          moveInDate: normalizedMoveInDate,
           email1: normalizedEmail1,
           email2: normalizedEmail2,
           email3: normalizedEmail3,

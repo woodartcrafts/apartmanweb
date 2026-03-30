@@ -1,0 +1,2 @@
+ALTER TABLE "Apartment"
+ADD COLUMN "moveInDate" TIMESTAMP(3);

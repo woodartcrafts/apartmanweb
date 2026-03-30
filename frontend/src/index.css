@@ -1611,33 +1611,88 @@ button:active:not(:disabled) {
 }
 
 .apartment-form-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   column-gap: 12px;
+}
+
+@media (max-width: 1320px) {
+  .apartment-form-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .apartment-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .apartment-form-surface {
   border: 1px solid #b8cce0;
-  border-radius: 16px;
+  border-radius: 18px;
   background:
-    radial-gradient(140% 120% at 100% 0%, #e8f3ff 0%, transparent 42%),
-    radial-gradient(120% 120% at 0% 100%, #eef9f2 0%, transparent 40%),
+    radial-gradient(140% 120% at 100% 0%, #dff0ff 0%, transparent 42%),
+    radial-gradient(120% 120% at 0% 100%, #e8f8ef 0%, transparent 40%),
     #ffffff;
-  box-shadow: 0 10px 28px rgba(33, 57, 86, 0.08);
-  gap: 12px;
+  box-shadow: 0 14px 34px rgba(27, 55, 82, 0.1);
+  gap: 14px;
+  padding: 14px;
 }
 
 .apartment-form-surface .section-head {
-  padding: 10px 12px;
+  padding: 12px;
   border: 1px solid #ccd9e8;
-  border-radius: 12px;
+  border-radius: 14px;
   background: linear-gradient(180deg, #f9fcff, #edf4fb);
 }
 
-.apartment-form-surface > label {
+.apartment-form-section {
+  grid-column: 1 / -1;
+  border: 1px solid #d3e0ee;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f7fbff);
+  box-shadow: 0 4px 12px rgba(36, 61, 87, 0.06);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.apartment-form-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px dashed #cfdeee;
+  padding-bottom: 8px;
+}
+
+.apartment-form-section-head h4 {
+  margin: 0;
+  font-size: 0.98rem;
+  color: #183f64;
+}
+
+.apartment-form-section-head .small {
+  margin: 0;
+  color: #4d6780;
+}
+
+.apartment-form-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.apartment-form-fields > label {
   padding: 10px;
-  border: 1px solid #d7e2ef;
+  border: 1px solid #d9e4f0;
   border-radius: 12px;
   background: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.apartment-form-inline-note {
+  margin: 0;
 }
 
 .apartment-form-surface input,
@@ -1648,13 +1703,20 @@ button:active:not(:disabled) {
   background: #fcfeff;
 }
 
+.apartment-form-surface input:focus,
+.apartment-form-surface select:focus,
+.apartment-form-surface textarea:focus {
+  border-color: #6fa6d8;
+  box-shadow: 0 0 0 3px rgba(69, 132, 191, 0.16);
+}
+
 .apartment-form-surface .btn-primary {
   box-shadow: 0 4px 14px rgba(10, 110, 209, 0.22);
 }
 
 .apartment-form-surface .apartment-feature-grid {
   border-color: #c4d6e9;
-  background: linear-gradient(180deg, #f8fcff, #eef5fc);
+  background: linear-gradient(180deg, #f3f9ff, #ebf4fe);
 }
 
 .apartment-form-surface .edit-hint,
@@ -1669,15 +1731,151 @@ button:active:not(:disabled) {
   grid-column: 1 / -1;
 }
 
-.apartment-feature-grid {
+.apartment-form-grid > .table-card {
   grid-column: 1 / -1;
+}
+
+.apartment-feature-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px 10px;
-  padding: 8px 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: #f8fbff;
+}
+
+.apartment-feature-grid .checkbox-row {
+  border: 1px solid #d4e0ee;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #ffffff;
+  font-size: 0.84rem;
+}
+
+.apartment-form-tenant-section {
+  border-color: #d7dbef;
+  background: linear-gradient(180deg, #fcfcff, #f8f9ff);
+}
+
+.apartment-form-feature-section {
+  border-color: #cedff0;
+}
+
+.resident-password-list {
+  gap: 6px;
+  width: 100%;
+}
+
+.resident-password-row {
+  display: grid;
+  grid-template-columns: 1.05fr auto 2.6fr 1.5fr auto 2.2fr;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.resident-password-row .small {
+  margin: 0;
+  min-width: 0;
+}
+
+.resident-password-user,
+.resident-password-meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resident-password-input {
+  min-width: 150px;
+}
+
+.resident-password-apartment {
+  font-size: 0.83rem;
+}
+
+.resident-password-history-action {
+  display: flex;
+  align-items: center;
+}
+
+.resident-password-history-action .btn {
+  padding: 5px 8px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.resident-password-input {
+  margin: 0;
+}
+
+.resident-password-action {
+  margin-top: 0;
+}
+
+.resident-password-action .btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 1320px) {
+  .apartment-form-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .apartment-feature-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .apartment-form-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .apartment-feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resident-password-row {
+    grid-template-columns: 1fr auto 2.2fr 1.4fr auto;
+  }
+
+  .resident-password-meta {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .apartment-form-surface {
+    padding: 10px;
+  }
+
+  .apartment-form-section {
+    padding: 10px;
+  }
+
+  .apartment-form-section-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .apartment-form-fields,
+  .apartment-feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .resident-password-row {
+    grid-template-columns: 1fr;
+  }
+
+  .resident-password-user,
+  .resident-password-meta {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
 }
 
 .admin-form h3 {
@@ -1728,6 +1926,38 @@ button:active:not(:disabled) {
 
 .warning-list p {
   margin: 4px 0;
+}
+
+.selected-apartments-strip {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.selected-apartments-strip > .small {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.selected-apartments-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.selected-apartments-chip {
+  border: 1px solid #c9d8ea;
+  border-radius: 999px;
+  background: #f2f8ff;
+  color: #1f466d;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 6px 10px;
+  white-space: nowrap;
 }
 
 .success-hint {
@@ -1984,6 +2214,8 @@ button:active:not(:disabled) {
 }
 
 .statement-accounting-table .statement-accounting-description {
+  font-size: 0.82rem;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -5375,6 +5607,64 @@ tbody tr:hover {
   body.ledger-print-mode table {
     min-width: 0 !important;
     width: 100% !important;
+  }
+
+  body.apartment-list-print-mode .hero,
+  body.apartment-list-print-mode .top-nav,
+  body.apartment-list-print-mode .admin-subnav,
+  body.apartment-list-print-mode .status-bar,
+  body.apartment-list-print-mode .print-hide,
+  body.apartment-list-print-mode .apartment-list-hero-card,
+  body.apartment-list-print-mode .apartment-list-filter-card,
+  body.apartment-list-print-mode .apartment-list-page-table th:last-child,
+  body.apartment-list-print-mode .apartment-list-page-table td.actions-cell {
+    display: none !important;
+  }
+
+  body.apartment-list-print-mode .page,
+  body.apartment-list-print-mode .dashboard,
+  body.apartment-list-print-mode .workspace,
+  body.apartment-list-print-mode .apartment-list-report-page {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    gap: 0 !important;
+  }
+
+  body.apartment-list-print-mode .apartment-list-report-page > .card.table-card.report-page-card:not(:last-child) {
+    display: none !important;
+  }
+
+  body.apartment-list-print-mode .apartment-list-report-page > .card.table-card.report-page-card:last-child {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  body.apartment-list-print-mode .apartment-list-page-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+  }
+
+  body.apartment-list-print-mode .apartment-list-page-table th,
+  body.apartment-list-print-mode .apartment-list-page-table td {
+    font-size: 9px;
+    line-height: 1.2;
+    padding: 3px 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  body.apartment-list-print-mode .apartment-list-run-meta {
+    margin: 0 0 4px;
+    font-size: 9.4px;
+  }
+
+  body.apartment-list-print-mode .table-wrap {
+    border: 1px solid #d6dce3;
   }
 }
 

@@ -27,6 +27,7 @@ type ApartmentFormState = {
   hasExpenses: boolean;
   ownerFullName: string;
   occupancyType: OccupancyType;
+  moveInDate: string;
   email1: string;
   email2: string;
   email3: string;
@@ -52,6 +53,7 @@ const initialFormState: ApartmentFormState = {
   hasExpenses: true,
   ownerFullName: "",
   occupancyType: "OWNER",
+  moveInDate: "",
   email1: "",
   email2: "",
   email3: "",
@@ -104,6 +106,17 @@ export function ApartmentFormPage() {
       .filter((x): x is string => Boolean(x))
       .join(", ");
   }, [apartmentOptions, editingApartmentIds]);
+
+  const selectedApartmentLabels = useMemo(
+    () =>
+      editingApartmentIds
+        .map((id) => {
+          const apt = apartmentOptions.find((x) => x.id === id);
+          return apt ? `${apt.blockName}/${apt.doorNo}` : null;
+        })
+        .filter((x): x is string => Boolean(x)),
+    [apartmentOptions, editingApartmentIds]
+  );
 
   const selectedApartments = useMemo(
     () => apartmentOptions.filter((x) => editingApartmentIds.includes(x.id)),
@@ -190,6 +203,7 @@ export function ApartmentFormPage() {
       hasExpenses: apartment.hasExpenses,
       ownerFullName: apartment.ownerFullName ?? "",
       occupancyType: apartment.occupancyType,
+      moveInDate: apartment.moveInDate ? apartment.moveInDate.slice(0, 10) : "",
       email1: apartment.email1 ?? "",
       email2: apartment.email2 ?? "",
       email3: apartment.email3 ?? "",
@@ -363,6 +377,22 @@ export function ApartmentFormPage() {
     }, 5000);
   }
 
+  function clearEditSelectionAfterSave(): void {
+    if (!isEditRoute) {
+      return;
+    }
+
+    setEditingApartmentId(null);
+    setEditingApartmentIds([]);
+    setWarnings([]);
+
+    if (window.location.search) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+
+    resetCreateMode(false);
+  }
+
   async function onSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
     setLoading(true);
@@ -384,6 +414,7 @@ export function ApartmentFormPage() {
         hasExpenses: formState.hasExpenses,
         ownerFullName: formState.ownerFullName || undefined,
         occupancyType: formState.occupancyType,
+        moveInDate: formState.moveInDate || undefined,
         email1: formState.email1 || undefined,
         email2: formState.email2 || undefined,
         email3: formState.email3 || undefined,
@@ -436,6 +467,7 @@ export function ApartmentFormPage() {
           setMessage(`${success.length} daire guncellendi${failCount > 0 ? `, ${failCount} daire guncellenemedi` : ""}`);
         }
         showSaveNotice(failCount > 0 ? "Degisiklikler kaydedildi (kismi basarili)" : "Degisiklik kaydedildi");
+        clearEditSelectionAfterSave();
         return;
       }
 
@@ -457,6 +489,7 @@ export function ApartmentFormPage() {
         doorNo: "",
         m2: "",
         ownerFullName: "",
+        moveInDate: "",
         email1: "",
         email2: "",
         email3: "",
@@ -476,6 +509,7 @@ export function ApartmentFormPage() {
         setMessage(targetApartmentId ? "Daire guncellendi" : `Daire olusturuldu. Apartment ID: ${data.id}`);
       }
       showSaveNotice(targetApartmentId ? "Degisiklik kaydedildi" : "Daire olusturuldu ve kaydedildi");
+      clearEditSelectionAfterSave();
     } catch (err) {
       console.error(err);
       setWarnings([]);
@@ -640,7 +674,18 @@ export function ApartmentFormPage() {
               </div>
             </details>
           </label>
-          {editingApartmentIds.length > 0 && <p className="small">Secili daireler: {selectedApartmentText}</p>}
+          {editingApartmentIds.length > 0 && (
+            <div className="selected-apartments-strip">
+              <span className="small">Secili daireler:</span>
+              <div className="selected-apartments-chip-row" title={selectedApartmentText}>
+                {selectedApartmentLabels.map((label) => (
+                  <span key={label} className="selected-apartments-chip">
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           {!editingApartmentId && <p className="small">Kayit degistirmek icin once daire secin.</p>}
         </>
       )}
@@ -682,25 +727,27 @@ export function ApartmentFormPage() {
             const historyRows = passwordHistoryByApartmentId[apartment.id] ?? null;
             return (
               <div key={apartment.id} className="card compact-row-top-gap">
-                <div className="section-head">
-                  <h4>
-                    {apartment.blockName}/{apartment.doorNo}
-                  </h4>
-                  <button className="btn btn-ghost" type="button" onClick={() => void togglePasswordHistory(apartment.id)}>
-                    {historyRows ? "Gecmisi Gizle" : "Sifre Gecmisi"}
-                  </button>
-                </div>
-
                 {apartment.residentUsers.length === 0 ? (
                   <p className="small">Bu daireye bagli resident kullanici yok.</p>
                 ) : (
-                  <div className="guide-list compact-row-top-gap">
+                  <div className="guide-list compact-row-top-gap resident-password-list">
                     {apartment.residentUsers.map((resident) => (
-                      <article key={resident.id} className="card">
-                        <p className="small">
+                      <article key={resident.id} className="card resident-password-row">
+                        <p className="small resident-password-apartment">
+                          <b>
+                            {apartment.blockName}/{apartment.doorNo}
+                          </b>
+                        </p>
+                        <div className="resident-password-history-action">
+                          <button className="btn btn-ghost" type="button" onClick={() => void togglePasswordHistory(apartment.id)}>
+                            {historyRows ? "Gecmisi Gizle" : "Sifre Gecmisi"}
+                          </button>
+                        </div>
+                        <p className="small resident-password-user">
                           <b>{resident.fullName}</b> ({resident.email})
                         </p>
                         <input
+                          className="resident-password-input"
                           type="text"
                           value={passwordDraftByUserId[resident.id] ?? ""}
                           onChange={(e) =>
@@ -711,7 +758,7 @@ export function ApartmentFormPage() {
                           }
                           placeholder="Resident sifresi"
                         />
-                        <div className="admin-row compact-row-top-gap">
+                        <div className="admin-row resident-password-action">
                           <button
                             type="button"
                             className="btn btn-primary"
@@ -721,7 +768,7 @@ export function ApartmentFormPage() {
                             {passwordSavingUserId === resident.id ? "Kaydediliyor..." : "Sifreyi Kaydet"}
                           </button>
                         </div>
-                        <p className="small">
+                        <p className="small resident-password-meta">
                           Son degisim: {resident.lastPasswordChangedAt ? formatDateTimeTr(resident.lastPasswordChangedAt) : "-"}
                           {resident.lastPasswordChangedByName ? ` | ${resident.lastPasswordChangedByName}` : ""}
                         </p>
@@ -778,175 +825,212 @@ export function ApartmentFormPage() {
         </div>
       )}
 
-      <label>
-        Blok
-        <select
-          value={formState.blockName}
-          onChange={(e) => setFormState((prev) => ({ ...prev, blockName: e.target.value }))}
-          required
-        >
-          {blockOptions.length === 0 ? (
-            <option value="">Once Blok Yonetimi'nden blok ekleyin</option>
-          ) : (
-            blockOptions.map((block) => (
-              <option key={block.id} value={block.name}>
-                {block.name}
-              </option>
-            ))
-          )}
-        </select>
-      </label>
-      {blockOptions.length === 0 && <p className="small">Daire eklemek icin once DR &gt; Blok Yonetimi ekranindan blok olusturun.</p>}
+      <section className="apartment-form-section">
+        <div className="apartment-form-section-head">
+          <h4>Temel Bilgiler</h4>
+          <p className="small">Dairenin kimlik ve durum bilgileri</p>
+        </div>
+        <div className="apartment-form-fields">
+          <label>
+            Blok
+            <select
+              value={formState.blockName}
+              onChange={(e) => setFormState((prev) => ({ ...prev, blockName: e.target.value }))}
+              required
+            >
+              {blockOptions.length === 0 ? (
+                <option value="">Once Blok Yonetimi'nden blok ekleyin</option>
+              ) : (
+                blockOptions.map((block) => (
+                  <option key={block.id} value={block.name}>
+                    {block.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
 
-      <label>
-        Daire No
-        <input
-          ref={apartmentDoorInputRef}
-          value={formState.doorNo}
-          onChange={(e) => setFormState((prev) => ({ ...prev, doorNo: e.target.value }))}
-          placeholder="101"
-          required
-        />
-      </label>
+          <label>
+            Daire No
+            <input
+              ref={apartmentDoorInputRef}
+              value={formState.doorNo}
+              onChange={(e) => setFormState((prev) => ({ ...prev, doorNo: e.target.value }))}
+              placeholder="101"
+              required
+            />
+          </label>
 
-      <label>
-        m2
-        <input
-          type="number"
-          min={0}
-          step="0.01"
-          value={formState.m2}
-          onChange={(e) => setFormState((prev) => ({ ...prev, m2: e.target.value }))}
-          placeholder="120"
-        />
-      </label>
+          <label>
+            m2
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={formState.m2}
+              onChange={(e) => setFormState((prev) => ({ ...prev, m2: e.target.value }))}
+              placeholder="120"
+            />
+          </label>
 
-      <label>
-        Daire Tipi
-        <select value={formState.type} onChange={(e) => setFormState((prev) => ({ ...prev, type: e.target.value as ApartmentType }))}>
-          <option value="BUYUK">BUYUK</option>
-          <option value="KUCUK">KUCUK</option>
-        </select>
-      </label>
+          <label>
+            Daire Tipi
+            <select value={formState.type} onChange={(e) => setFormState((prev) => ({ ...prev, type: e.target.value as ApartmentType }))}>
+              <option value="BUYUK">BUYUK</option>
+              <option value="KUCUK">KUCUK</option>
+            </select>
+          </label>
 
-      <label>
-        Daire Sinifi
-        <select value={formState.apartmentClassId} onChange={(e) => setFormState((prev) => ({ ...prev, apartmentClassId: e.target.value }))}>
-          <option value="">Sinif Secin</option>
-          {apartmentClassOptions.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.code} - {item.name}
-            </option>
-          ))}
-        </select>
-      </label>
+          <label>
+            Daire Sinifi
+            <select value={formState.apartmentClassId} onChange={(e) => setFormState((prev) => ({ ...prev, apartmentClassId: e.target.value }))}>
+              <option value="">Sinif Secin</option>
+              {apartmentClassOptions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.code} - {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-      <label>
-        Daire Gorevi
-        <select value={formState.apartmentDutyId} onChange={(e) => setFormState((prev) => ({ ...prev, apartmentDutyId: e.target.value }))}>
-          <option value="">Gorev Secin</option>
-          {apartmentDutyOptions.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.code} - {item.name}
-            </option>
-          ))}
-        </select>
-      </label>
+          <label>
+            Daire Gorevi
+            <select value={formState.apartmentDutyId} onChange={(e) => setFormState((prev) => ({ ...prev, apartmentDutyId: e.target.value }))}>
+              <option value="">Gorev Secin</option>
+              {apartmentDutyOptions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.code} - {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-      <div className="apartment-feature-grid">
-        <label className="checkbox-row">
-          <input type="checkbox" checked={formState.hasAidat} onChange={(e) => setFormState((prev) => ({ ...prev, hasAidat: e.target.checked }))} />
-          Aidat Var
-        </label>
-        <label className="checkbox-row">
-          <input type="checkbox" checked={formState.hasDogalgaz} onChange={(e) => setFormState((prev) => ({ ...prev, hasDogalgaz: e.target.checked }))} />
-          Dogalgaz Var
-        </label>
-        <label className="checkbox-row">
-          <input type="checkbox" checked={formState.hasOtherDues} onChange={(e) => setFormState((prev) => ({ ...prev, hasOtherDues: e.target.checked }))} />
-          Diger Tum Borclar Var
-        </label>
-        <label className="checkbox-row">
-          <input type="checkbox" checked={formState.hasIncome} onChange={(e) => setFormState((prev) => ({ ...prev, hasIncome: e.target.checked }))} />
-          Gelir Var
-        </label>
-        <label className="checkbox-row">
-          <input type="checkbox" checked={formState.hasExpenses} onChange={(e) => setFormState((prev) => ({ ...prev, hasExpenses: e.target.checked }))} />
-          Gider Var
-        </label>
-      </div>
+          <label>
+            Oturan / Malik
+            <input value={formState.ownerFullName} onChange={(e) => setFormState((prev) => ({ ...prev, ownerFullName: e.target.value }))} placeholder="Ad Soyad" />
+          </label>
 
-      <label>
-        Oturan / Malik
-        <input value={formState.ownerFullName} onChange={(e) => setFormState((prev) => ({ ...prev, ownerFullName: e.target.value }))} placeholder="Ad Soyad" />
-      </label>
+          <label>
+            Ev Durumu
+            <select
+              value={formState.occupancyType}
+              onChange={(e) => setFormState((prev) => ({ ...prev, occupancyType: e.target.value as OccupancyType }))}
+            >
+              <option value="OWNER">Ev Sahibi</option>
+              <option value="TENANT">Kiraci</option>
+            </select>
+          </label>
 
-      <label>
-        Ev Durumu
-        <select
-          value={formState.occupancyType}
-          onChange={(e) => setFormState((prev) => ({ ...prev, occupancyType: e.target.value as OccupancyType }))}
-        >
-          <option value="OWNER">Ev Sahibi Oturuyor</option>
-          <option value="TENANT">Kiraci Oturuyor</option>
-        </select>
-      </label>
+          <label>
+            Tasinma Tarihi
+            <input
+              type="date"
+              value={formState.moveInDate}
+              onChange={(e) => setFormState((prev) => ({ ...prev, moveInDate: e.target.value }))}
+            />
+          </label>
+        </div>
+        {blockOptions.length === 0 && <p className="small apartment-form-inline-note">Daire eklemek icin once DR &gt; Blok Yonetimi ekranindan blok olusturun.</p>}
+      </section>
 
-      <label>
-        E-posta 1
-        <input type="email" value={formState.email1} onChange={(e) => setFormState((prev) => ({ ...prev, email1: e.target.value }))} placeholder="ornek1@mail.com" />
-      </label>
-      <label>
-        E-posta 2
-        <input type="email" value={formState.email2} onChange={(e) => setFormState((prev) => ({ ...prev, email2: e.target.value }))} placeholder="ornek2@mail.com" />
-      </label>
-      <label>
-        E-posta 3
-        <input type="email" value={formState.email3} onChange={(e) => setFormState((prev) => ({ ...prev, email3: e.target.value }))} placeholder="ornek3@mail.com" />
-      </label>
+      <section className="apartment-form-section">
+        <div className="apartment-form-section-head">
+          <h4>Iletisim</h4>
+          <p className="small">Birincil ve alternatif iletisim kanallari</p>
+        </div>
+        <div className="apartment-form-fields">
+          <label>
+            E-posta 1
+            <input type="email" value={formState.email1} onChange={(e) => setFormState((prev) => ({ ...prev, email1: e.target.value }))} placeholder="ornek1@mail.com" />
+          </label>
+          <label>
+            E-posta 2
+            <input type="email" value={formState.email2} onChange={(e) => setFormState((prev) => ({ ...prev, email2: e.target.value }))} placeholder="ornek2@mail.com" />
+          </label>
+          <label>
+            E-posta 3
+            <input type="email" value={formState.email3} onChange={(e) => setFormState((prev) => ({ ...prev, email3: e.target.value }))} placeholder="ornek3@mail.com" />
+          </label>
 
-      <label>
-        Telefon 1
-        <input value={formState.phone1} onChange={(e) => setFormState((prev) => ({ ...prev, phone1: e.target.value }))} placeholder="05xx xxx xx xx" />
-      </label>
-      <label>
-        Telefon 2
-        <input value={formState.phone2} onChange={(e) => setFormState((prev) => ({ ...prev, phone2: e.target.value }))} placeholder="05xx xxx xx xx" />
-      </label>
-      <label>
-        Telefon 3
-        <input value={formState.phone3} onChange={(e) => setFormState((prev) => ({ ...prev, phone3: e.target.value }))} placeholder="05xx xxx xx xx" />
-      </label>
+          <label>
+            Telefon 1
+            <input value={formState.phone1} onChange={(e) => setFormState((prev) => ({ ...prev, phone1: e.target.value }))} placeholder="05xx xxx xx xx" />
+          </label>
+          <label>
+            Telefon 2
+            <input value={formState.phone2} onChange={(e) => setFormState((prev) => ({ ...prev, phone2: e.target.value }))} placeholder="05xx xxx xx xx" />
+          </label>
+          <label>
+            Telefon 3
+            <input value={formState.phone3} onChange={(e) => setFormState((prev) => ({ ...prev, phone3: e.target.value }))} placeholder="05xx xxx xx xx" />
+          </label>
+        </div>
+      </section>
 
       {formState.occupancyType === "TENANT" && (
-        <>
-          <label>
-            Daire Sahibi Ad Soyad
-            <input
-              value={formState.landlordFullName}
-              onChange={(e) => setFormState((prev) => ({ ...prev, landlordFullName: e.target.value }))}
-              placeholder="Ev sahibi adi soyadi"
-            />
-          </label>
-          <label>
-            Daire Sahibi Telefon
-            <input
-              value={formState.landlordPhone}
-              onChange={(e) => setFormState((prev) => ({ ...prev, landlordPhone: e.target.value }))}
-              placeholder="05xx xxx xx xx"
-            />
-          </label>
-          <label>
-            Daire Sahibi E-posta
-            <input
-              type="email"
-              value={formState.landlordEmail}
-              onChange={(e) => setFormState((prev) => ({ ...prev, landlordEmail: e.target.value }))}
-              placeholder="evsahibi@mail.com"
-            />
-          </label>
-        </>
+        <section className="apartment-form-section apartment-form-tenant-section">
+          <div className="apartment-form-section-head">
+            <h4>Ev Sahibi Bilgisi</h4>
+            <p className="small">Kiraci secildiginde doldurulur</p>
+          </div>
+          <div className="apartment-form-fields">
+            <label>
+              Daire Sahibi Ad Soyad
+              <input
+                value={formState.landlordFullName}
+                onChange={(e) => setFormState((prev) => ({ ...prev, landlordFullName: e.target.value }))}
+                placeholder="Ev sahibi adi soyadi"
+              />
+            </label>
+            <label>
+              Daire Sahibi Telefon
+              <input
+                value={formState.landlordPhone}
+                onChange={(e) => setFormState((prev) => ({ ...prev, landlordPhone: e.target.value }))}
+                placeholder="05xx xxx xx xx"
+              />
+            </label>
+            <label>
+              Daire Sahibi E-posta
+              <input
+                type="email"
+                value={formState.landlordEmail}
+                onChange={(e) => setFormState((prev) => ({ ...prev, landlordEmail: e.target.value }))}
+                placeholder="evsahibi@mail.com"
+              />
+            </label>
+          </div>
+        </section>
       )}
+
+      <section className="apartment-form-section apartment-form-feature-section">
+        <div className="apartment-form-section-head">
+          <h4>Hizmet ve Islem Ozellikleri</h4>
+          <p className="small">Daireye uygulanacak hareket tiplerini secin</p>
+        </div>
+        <div className="apartment-feature-grid">
+          <label className="checkbox-row">
+            <input type="checkbox" checked={formState.hasAidat} onChange={(e) => setFormState((prev) => ({ ...prev, hasAidat: e.target.checked }))} />
+            Aidat Var
+          </label>
+          <label className="checkbox-row">
+            <input type="checkbox" checked={formState.hasDogalgaz} onChange={(e) => setFormState((prev) => ({ ...prev, hasDogalgaz: e.target.checked }))} />
+            Dogalgaz Var
+          </label>
+          <label className="checkbox-row">
+            <input type="checkbox" checked={formState.hasOtherDues} onChange={(e) => setFormState((prev) => ({ ...prev, hasOtherDues: e.target.checked }))} />
+            Diger Tum Borclar Var
+          </label>
+          <label className="checkbox-row">
+            <input type="checkbox" checked={formState.hasIncome} onChange={(e) => setFormState((prev) => ({ ...prev, hasIncome: e.target.checked }))} />
+            Gelir Var
+          </label>
+          <label className="checkbox-row">
+            <input type="checkbox" checked={formState.hasExpenses} onChange={(e) => setFormState((prev) => ({ ...prev, hasExpenses: e.target.checked }))} />
+            Gider Var
+          </label>
+        </div>
+      </section>
 
       {message && <p className="small">{message}</p>}
     </form>

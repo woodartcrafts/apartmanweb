@@ -184,6 +184,7 @@ export type ApartmentOption = {
   hasExpenses: boolean;
   ownerFullName: string | null;
   occupancyType: OccupancyType;
+  moveInDate: string | null;
   email1: string | null;
   email2: string | null;
   email3: string | null;

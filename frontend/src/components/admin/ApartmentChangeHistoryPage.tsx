@@ -24,6 +24,7 @@ const FIELD_LABELS: Record<string, string> = {
   hasExpenses: "Gider Aktif",
   ownerFullName: "Oturan/Malik",
   occupancyType: "Ev Durumu",
+  moveInDate: "Tasinma Tarihi",
   email1: "E-Posta 1",
   email2: "E-Posta 2",
   email3: "E-Posta 3",

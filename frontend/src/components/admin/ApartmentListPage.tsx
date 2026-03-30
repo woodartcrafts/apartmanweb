@@ -1,4 +1,5 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import {
   apiBase,
   formatDateTimeTr,
@@ -38,6 +39,13 @@ export function ApartmentListPage({
   onEditApartment: (apartment: ApartmentOption) => void;
   onDeleteApartment: (apartment: ApartmentOption) => Promise<void>;
 }) {
+  useEffect(() => {
+    document.body.classList.add("apartment-list-print-mode");
+    return () => {
+      document.body.classList.remove("apartment-list-print-mode");
+    };
+  }, []);
+
   const typeValues: ApartmentType[] = ["BUYUK", "KUCUK"];
   const occupancyValues: OccupancyType[] = ["OWNER", "TENANT"];
 
@@ -339,6 +347,64 @@ export function ApartmentListPage({
     return `${selectedCount} secili`;
   }
 
+  function handlePrint(): void {
+    const pageStyle = document.createElement("style");
+    pageStyle.setAttribute("data-apartment-list-print-page", "true");
+    pageStyle.textContent = "@page { size: A4 landscape; margin: 8mm 7mm; }";
+    document.head.appendChild(pageStyle);
+
+    const cleanup = () => {
+      pageStyle.remove();
+    };
+
+    window.addEventListener("afterprint", cleanup, { once: true });
+    window.print();
+    window.setTimeout(cleanup, 1200);
+  }
+
+  function handleExportExcel(): void {
+    if (sortedRows.length === 0) {
+      setError("Excel'e aktarmak icin once liste olusturun");
+      return;
+    }
+
+    const rowsForExcel: string[][] = [
+      [
+        "Blok",
+        "Daire No",
+        "Oturan",
+        "Ev Durumu",
+        "Tip",
+        "Daire Sinifi",
+        "Daire Gorevi",
+        "Aidat",
+        "Dogalgaz",
+        "Diger Borclar",
+        "Gelir",
+        "Gider",
+      ],
+      ...sortedRows.map((apartment) => [
+        apartment.blockName,
+        apartment.doorNo,
+        apartment.ownerFullName ?? "-",
+        apartment.occupancyType === "OWNER" ? "Ev Sahibi" : apartment.occupancyType === "TENANT" ? "Kiraci" : "-",
+        apartment.type,
+        apartment.apartmentClassName ?? apartment.apartmentClassCode ?? "-",
+        apartment.apartmentDutyName ?? apartment.apartmentDutyCode ?? "-",
+        apartment.hasAidat ? "Var" : "Yok",
+        apartment.hasDogalgaz ? "Var" : "Yok",
+        apartment.hasOtherDues ? "Var" : "Yok",
+        apartment.hasIncome ? "Var" : "Yok",
+        apartment.hasExpenses ? "Var" : "Yok",
+      ]),
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet(rowsForExcel);
+    XLSX.utils.book_append_sheet(workbook, sheet, "DaireListesi");
+    XLSX.writeFile(workbook, "daire-listesi.xlsx");
+  }
+
   async function handleDelete(apartment: ApartmentOption): Promise<void> {
     await onDeleteApartment(apartment);
     if (hasRun) {
@@ -420,6 +486,12 @@ export function ApartmentListPage({
             </button>
             <button className="btn btn-ghost" type="button" onClick={clearFilters} disabled={loading}>
               Temizle
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={handlePrint} disabled={loading || sortedRows.length === 0}>
+              Print Al
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={handleExportExcel} disabled={loading || sortedRows.length === 0}>
+              Excel'e Aktar
             </button>
           </div>
         </div>
@@ -743,9 +815,14 @@ export function ApartmentListPage({
                 <th>
                   <span className="apartment-list-th-head">
                     <span>Oturan</span>
-                    <button type="button" className="btn btn-ghost apartment-list-sort-btn" onClick={() => toggleSort("ownerFullName")} title={getSortButtonTitle("ownerFullName")}>
+                    <button type="button" className="btn btn-ghost apartment-list-sort-btn" onClick={() => toggleSort("ownerFullName")} title={getSortButtonTitle("ownerFullName")}> 
                       {getSortButtonText("ownerFullName")}
                     </button>
+                  </span>
+                </th>
+                <th>
+                  <span className="apartment-list-th-head">
+                    <span>Kiracı mı / Ev Sahibi mi</span>
                   </span>
                 </th>
                 <th>
@@ -812,15 +889,7 @@ export function ApartmentListPage({
                     </button>
                   </span>
                 </th>
-                <th>
-                  <span className="apartment-list-th-head">
-                    <span>Iletisim</span>
-                    <button type="button" className="btn btn-ghost apartment-list-sort-btn" onClick={() => toggleSort("contact")} title={getSortButtonTitle("contact")}>
-                      {getSortButtonText("contact")}
-                    </button>
-                  </span>
-                </th>
-                <th>Resident Sifre</th>
+                {/* Iletisim ve Resident Sifre kolonları kaldırıldı */}
                 <th>Islem</th>
               </tr>
             </thead>
@@ -833,6 +902,7 @@ export function ApartmentListPage({
                       <td>{apartment.blockName}</td>
                       <td>{apartment.doorNo}</td>
                       <td>{apartment.ownerFullName ?? "-"}</td>
+                      <td>{apartment.occupancyType === "OWNER" ? "Ev Sahibi" : apartment.occupancyType === "TENANT" ? "Kiracı" : "-"}</td>
                       <td>{apartment.type}</td>
                       <td>{apartment.apartmentClassName ?? apartment.apartmentClassCode ?? "-"}</td>
                       <td>{apartment.apartmentDutyName ?? apartment.apartmentDutyCode ?? "-"}</td>
@@ -841,50 +911,9 @@ export function ApartmentListPage({
                       <td>{renderFeatureBadge(apartment.hasOtherDues)}</td>
                       <td>{renderFeatureBadge(apartment.hasIncome)}</td>
                       <td>{renderFeatureBadge(apartment.hasExpenses)}</td>
-                      <td>{getContactText(apartment) || "-"}</td>
-                      <td>
-                        {apartment.residentUsers.length === 0 ? (
-                          <span className="small">Resident kullanici yok</span>
-                        ) : (
-                          <div className="apartment-resident-inline-list">
-                            {apartment.residentUsers.map((resident) => (
-                              <div key={resident.id} className="apartment-resident-inline">
-                                <input
-                                  type="text"
-                                  value={passwordDraftByUserId[resident.id] ?? ""}
-                                  onChange={(e) =>
-                                    setPasswordDraftByUserId((prev) => ({
-                                      ...prev,
-                                      [resident.id]: e.target.value,
-                                    }))
-                                  }
-                                  placeholder={`Resident sifresi (${resident.fullName})`}
-                                  title={`${resident.fullName} (${resident.email})`}
-                                />
-                                <button
-                                  type="button"
-                                  className="btn btn-primary"
-                                  disabled={passwordSavingUserId === resident.id}
-                                  onClick={() => void setResidentPassword(apartment.id, resident.id)}
-                                  title={
-                                    `Son degisim: ${
-                                      resident.lastPasswordChangedAt ? formatDateTimeTr(resident.lastPasswordChangedAt) : "-"
-                                    }${resident.lastPasswordChangedByName ? ` | ${resident.lastPasswordChangedByName}` : ""}`
-                                  }
-                                >
-                                  {passwordSavingUserId === resident.id ? "Kaydediliyor..." : "Kaydet"}
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </td>
                       <td className="actions-cell">
                         <button className="btn btn-ghost" type="button" onClick={() => onEditApartment(apartment)}>
                           Degistir
-                        </button>
-                        <button className="btn btn-ghost" type="button" onClick={() => void togglePasswordHistory(apartment.id)}>
-                          {historyRows ? "Gecmisi Gizle" : "Sifre Gecmisi"}
                         </button>
                         <button className="btn btn-danger" type="button" onClick={() => void handleDelete(apartment)}>
                           Sil
