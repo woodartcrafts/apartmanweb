@@ -188,9 +188,11 @@ export type ApartmentOption = {
   email1: string | null;
   email2: string | null;
   email3: string | null;
+  email4: string | null;
   phone1: string | null;
   phone2: string | null;
   phone3: string | null;
+  phone4: string | null;
   landlordFullName: string | null;
   landlordPhone: string | null;
   landlordEmail: string | null;
@@ -547,6 +549,12 @@ export type ReportsSummaryResponse = {
       apartment: string;
     }>;
   };
+  latestBankMovements: Array<{
+    id: string;
+    occurredAt: string;
+    amount: number;
+    description: string;
+  }>;
   latestUploadBatches: Array<{
     id: string;
     kind: UploadBatchKind;

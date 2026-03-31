@@ -419,10 +419,10 @@ export function PaymentListPage({
                     <td>{occupantName}</td>
                     <td>{methodName}</td>
                     <td className="col-num">{formatTry(row.totalAmount)}</td>
-                    <td>{row.description ?? "-"}</td>
-                    <td>{row.reference ?? "-"}</td>
-                    <td>{sourceLabel}</td>
-                    <td>{row.createdByName ?? "-"}</td>
+                    <td title={row.description ?? "-"}>{row.description ?? "-"}</td>
+                    <td title={row.reference ?? "-"}>{row.reference ?? "-"}</td>
+                    <td title={sourceLabel}>{sourceLabel}</td>
+                    <td title={row.createdByName ?? "-"}>{row.createdByName ?? "-"}</td>
                     <td>{formatDateTimeTr(row.createdAt)}</td>
                     <td className="actions-cell">
                       <button className="btn btn-ghost" type="button" onClick={() => startEditPaymentListRow(row)}>

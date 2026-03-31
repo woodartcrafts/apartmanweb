@@ -7498,6 +7498,10 @@ function AdminPage() {
   }, []);
 
   useEffect(() => {
+    closeAdminSubnavMenus();
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
     if (!expenseReportAutoRefreshEnabled) {
       return;
     }
@@ -8017,232 +8021,225 @@ function AdminPage() {
                       </article>
                     </div>
 
-                    <article className="card table-card compact-row-top-gap">
-                      <div className="section-head">
-                        <h3>En Yuksek 10 Gider Kalemi</h3>
-                      </div>
-                      <div className="table-wrap compact-row-top-gap">
-                        <table className="apartment-list-table report-compact-table">
-                          <thead>
-                            <tr>
-                              <th>Gider Kalemi</th>
-                              <th>Son Gider Tarihi</th>
-                              <th className="col-num">Islem Adedi</th>
-                              <th className="col-num">Toplam Tutar</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {reportsSummary.topExpenses.length > 0 ? (
-                              reportsSummary.topExpenses.map((row) => (
-                                <tr
-                                  key={row.id}
-                                  className="report-row-clickable"
-                                  onClick={() => void openExpenseReportForItem(row.id)}
-                                  role="button"
-                                  tabIndex={0}
-                                  onKeyDown={(event) => {
-                                    if (event.key === "Enter" || event.key === " ") {
-                                      event.preventDefault();
-                                      void openExpenseReportForItem(row.id);
-                                    }
-                                  }}
-                                  title="Bu gider kaleminin detayini Gider Raporu ekraninda ac"
-                                >
-                                  <td>{row.expenseItemName}</td>
-                                  <td>{row.latestSpentAt ? formatDateTr(row.latestSpentAt) : "-"}</td>
-                                  <td className="col-num">{row.expenseCount}</td>
-                                  <td className="col-num">{formatTry(row.totalAmount)}</td>
-                                </tr>
-                              ))
-                            ) : (
+                    <div className="reports-home-focus-grid compact-row-top-gap">
+                      <article className="card table-card reports-home-panel">
+                        <div className="section-head reports-home-panel-head">
+                          <h3>En Yuksek 10 Gider Kalemi</h3>
+                          <span className="small">Gider Raporuna tikla ac</span>
+                        </div>
+                        <div className="table-wrap compact-row-top-gap">
+                          <table className="apartment-list-table report-compact-table reports-home-table">
+                            <thead>
                               <tr>
-                                <td colSpan={4} className="empty">
-                                  Gider kaydi bulunmuyor
+                                <th>Gider Kalemi</th>
+                                <th>Son Gider Tarihi</th>
+                                <th className="col-num">Islem Adedi</th>
+                                <th className="col-num">Toplam Tutar</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {reportsSummary.topExpenses.length > 0 ? (
+                                reportsSummary.topExpenses.map((row) => (
+                                  <tr
+                                    key={row.id}
+                                    className="report-row-clickable"
+                                    onClick={() => void openExpenseReportForItem(row.id)}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        void openExpenseReportForItem(row.id);
+                                      }
+                                    }}
+                                    title="Bu gider kaleminin detayini Gider Raporu ekraninda ac"
+                                  >
+                                    <td>{row.expenseItemName}</td>
+                                    <td>{row.latestSpentAt ? formatDateTr(row.latestSpentAt) : "-"}</td>
+                                    <td className="col-num">{row.expenseCount}</td>
+                                    <td className="col-num">{formatTry(row.totalAmount)}</td>
+                                  </tr>
+                                ))
+                              ) : (
+                                <tr>
+                                  <td colSpan={4} className="empty">
+                                    Gider kaydi bulunmuyor
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </article>
+
+                      <article className="card table-card reports-home-panel">
+                        <div className="section-head reports-home-panel-head">
+                          <h3>Gecikenlerde Ilk 5 Daire</h3>
+                          <span className="small">Ekstre ekranina tikla ac</span>
+                        </div>
+                        <div className="table-wrap compact-row-top-gap">
+                          <table className="apartment-list-table report-compact-table reports-home-table">
+                            <thead>
+                              <tr>
+                                <th>Daire</th>
+                                <th className="col-num">Geciken Borc Adedi</th>
+                                <th className="col-num">Toplam Geciken</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {reportsSummary.topOverdueApartments.length > 0 ? (
+                                reportsSummary.topOverdueApartments.map((row) => (
+                                  <tr
+                                    key={row.apartmentId}
+                                    className="report-row-clickable"
+                                    onClick={() => void openStatementForApartment(row.apartmentId)}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        void openStatementForApartment(row.apartmentId);
+                                      }
+                                    }}
+                                    title="Bu dairenin ekstresini ac"
+                                  >
+                                    <td>{row.apartmentLabel}</td>
+                                    <td className="col-num">{row.overdueChargeCount}</td>
+                                    <td className="col-num">{formatTry(row.remainingTotal)}</td>
+                                  </tr>
+                                ))
+                              ) : (
+                                <tr>
+                                  <td colSpan={3} className="empty">
+                                    Geciken daire kaydi bulunmuyor
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                            <tfoot>
+                              <tr className="report-summary-total-row">
+                                <td>
+                                  <b>Toplam Geciken</b>
+                                </td>
+                                <td className="col-num">-</td>
+                                <td className="col-num">
+                                  <b>{formatTry(reportsSummary.receivables.overdueRemainingTotal)}</b>
                                 </td>
                               </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </article>
-
-                    <article className="card table-card compact-row-top-gap">
-                      <div className="section-head">
-                        <h3>Gecikenlerde Ilk 5 Daire</h3>
-                      </div>
-                      <div className="table-wrap compact-row-top-gap">
-                        <table className="apartment-list-table report-compact-table">
-                          <thead>
-                            <tr>
-                              <th>Daire</th>
-                              <th className="col-num">Geciken Borc Adedi</th>
-                              <th className="col-num">Toplam Geciken</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {reportsSummary.topOverdueApartments.length > 0 ? (
-                              reportsSummary.topOverdueApartments.map((row) => (
-                                <tr
-                                  key={row.apartmentId}
-                                  className="report-row-clickable"
-                                  onClick={() => void openStatementForApartment(row.apartmentId)}
-                                  role="button"
-                                  tabIndex={0}
-                                  onKeyDown={(event) => {
-                                    if (event.key === "Enter" || event.key === " ") {
-                                      event.preventDefault();
-                                      void openStatementForApartment(row.apartmentId);
-                                    }
-                                  }}
-                                  title="Bu dairenin ekstresini ac"
-                                >
-                                  <td>{row.apartmentLabel}</td>
-                                  <td className="col-num">{row.overdueChargeCount}</td>
-                                  <td className="col-num">{formatTry(row.remainingTotal)}</td>
-                                </tr>
-                              ))
-                            ) : (
-                              <tr>
-                                <td colSpan={3} className="empty">
-                                  Geciken daire kaydi bulunmuyor
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                          <tfoot>
-                            <tr className="report-summary-total-row">
-                              <td>
-                                <b>Toplam Geciken</b>
-                              </td>
-                              <td className="col-num">-</td>
-                              <td className="col-num">
-                                <b>{formatTry(reportsSummary.receivables.overdueRemainingTotal)}</b>
-                              </td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    </article>
-
-                    <article className="card apartment-overview-card compact-row-top-gap">
-                      <div className="apartment-overview-grid">
-                        <span>Toplam Daire Sayisi</span>
-                        <b>{reportsSummary.apartmentOverview.totalApartmentCount}</b>
-
-                        <span>Kucuk Daire</span>
-                        <b>{reportsSummary.apartmentOverview.kucukApartmentCount}</b>
-
-                        <span>Buyuk Daire</span>
-                        <b>{reportsSummary.apartmentOverview.buyukApartmentCount}</b>
-
-                        <span>Dogalgaz Muaf</span>
-                        <div className="apartment-overview-value-with-action">
-                          <b>{reportsSummary.apartmentOverview.dogalgazMuafCount}</b>
-                          <button
-                            type="button"
-                            className="apartment-overview-mini-btn"
-                            onClick={() =>
-                              setMuafDetailPanel({
-                                title: "Dogalgaz Muaf Daireler",
-                                items: reportsSummary.apartmentOverview.dogalgazMuafApartments,
-                              })
-                            }
-                          >
-                            Detay
-                          </button>
+                            </tfoot>
+                          </table>
                         </div>
+                      </article>
+                    </div>
 
-                        <span>Aidat Muaf</span>
-                        <div className="apartment-overview-value-with-action">
-                          <b>{reportsSummary.apartmentOverview.aidatMuafCount}</b>
-                          <button
-                            type="button"
-                            className="apartment-overview-mini-btn"
-                            onClick={() =>
-                              setMuafDetailPanel({
-                                title: "Aidat Muaf Daireler",
-                                items: reportsSummary.apartmentOverview.aidatMuafApartments,
-                              })
-                            }
-                          >
-                            Detay
-                          </button>
+                    <div className="reports-home-bottom-grid compact-row-top-gap">
+                      <article className="card apartment-overview-card reports-home-overview-card">
+                        <div className="section-head reports-home-panel-head">
+                          <h3>Apartman Genel Durum</h3>
+                          <span className="small">Muafiyetler ve gorev dagilimi</span>
                         </div>
+                        <div className="apartment-overview-grid">
+                          <span>Toplam Daire Sayisi</span>
+                          <b>{reportsSummary.apartmentOverview.totalApartmentCount}</b>
 
-                        <span>Yoneticiler</span>
-                        <div className="apartment-overview-list">
-                          {reportsSummary.apartmentOverview.managers.length > 0
-                            ? reportsSummary.apartmentOverview.managers.map((manager) => (
-                                <span key={manager}>{manager}</span>
-                              ))
-                            : "-"}
-                        </div>
+                          <span>Kucuk Daire</span>
+                          <b>{reportsSummary.apartmentOverview.kucukApartmentCount}</b>
 
-                        <span>Apartman Gorevlileri</span>
-                        <div className="apartment-overview-list">
-                          {reportsSummary.apartmentOverview.dutyAssignments.length > 0
-                            ? reportsSummary.apartmentOverview.dutyAssignments.map((item, idx) => (
-                                <span key={`${item.dutyName}-${item.apartment}-${idx}`}>{`${item.dutyName}: ${item.apartment}`}</span>
-                              ))
-                            : "-"}
-                        </div>
-                      </div>
-                      {muafDetailPanel && (
-                        <div className="apartment-overview-detail-panel">
-                          <div className="apartment-overview-detail-head">
-                            <strong>{muafDetailPanel.title}</strong>
+                          <span>Buyuk Daire</span>
+                          <b>{reportsSummary.apartmentOverview.buyukApartmentCount}</b>
+
+                          <span>Dogalgaz Muaf</span>
+                          <div className="apartment-overview-value-with-action">
+                            <b>{reportsSummary.apartmentOverview.dogalgazMuafCount}</b>
                             <button
                               type="button"
-                              className="btn btn-ghost"
-                              onClick={() => setMuafDetailPanel(null)}
+                              className="apartment-overview-mini-btn"
+                              onClick={() =>
+                                setMuafDetailPanel({
+                                  title: "Dogalgaz Muaf Daireler",
+                                  items: reportsSummary.apartmentOverview.dogalgazMuafApartments,
+                                })
+                              }
                             >
-                              Kapat
+                              Detay
                             </button>
                           </div>
+
+                          <span>Aidat Muaf</span>
+                          <div className="apartment-overview-value-with-action">
+                            <b>{reportsSummary.apartmentOverview.aidatMuafCount}</b>
+                            <button
+                              type="button"
+                              className="apartment-overview-mini-btn"
+                              onClick={() =>
+                                setMuafDetailPanel({
+                                  title: "Aidat Muaf Daireler",
+                                  items: reportsSummary.apartmentOverview.aidatMuafApartments,
+                                })
+                              }
+                            >
+                              Detay
+                            </button>
+                          </div>
+
+                          <span>Yoneticiler</span>
                           <div className="apartment-overview-list">
-                            {muafDetailPanel.items.length > 0
-                              ? muafDetailPanel.items.map((item) => <span key={`${muafDetailPanel.title}-${item}`}>{item}</span>)
-                              : "Kayit yok"}
+                            {reportsSummary.apartmentOverview.managers.length > 0
+                              ? reportsSummary.apartmentOverview.managers.map((manager) => (
+                                  <span key={manager}>{manager}</span>
+                                ))
+                              : "-"}
+                          </div>
+
+                          <span>Apartman Gorevlileri</span>
+                          <div className="apartment-overview-list">
+                            {reportsSummary.apartmentOverview.dutyAssignments.length > 0
+                              ? reportsSummary.apartmentOverview.dutyAssignments.map((item, idx) => (
+                                  <span key={`${item.dutyName}-${item.apartment}-${idx}`}>{`${item.dutyName}: ${item.apartment}`}</span>
+                                ))
+                              : "-"}
                           </div>
                         </div>
-                      )}
-                    </article>
+                        {muafDetailPanel && (
+                          <div className="apartment-overview-detail-panel">
+                            <div className="apartment-overview-detail-head">
+                              <strong>{muafDetailPanel.title}</strong>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => setMuafDetailPanel(null)}
+                              >
+                                Kapat
+                              </button>
+                            </div>
+                            <div className="apartment-overview-list">
+                              {muafDetailPanel.items.length > 0
+                                ? muafDetailPanel.items.map((item) => <span key={`${muafDetailPanel.title}-${item}`}>{item}</span>)
+                                : "Kayit yok"}
+                            </div>
+                          </div>
+                        )}
+                      </article>
 
-                    <div className="table-wrap compact-row-top-gap">
-                      <table className="apartment-list-table report-compact-table">
-                        <thead>
-                          <tr>
-                            <th>Son 10 Yukleme</th>
-                            <th>Tip</th>
-                            <th>Tarih</th>
-                            <th className="col-num">Toplam Satir</th>
-                            <th className="col-num">Tahsilat</th>
-                            <th className="col-num">Gider</th>
-                            <th className="col-num">Atlanan</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {reportsSummary.latestUploadBatches.length > 0 ? (
-                            reportsSummary.latestUploadBatches.map((batch) => (
-                              <tr key={batch.id}>
-                                <td>{batch.fileName}</td>
-                                <td>{batch.kind === "BANK_STATEMENT_UPLOAD" ? "Banka Ekstresi Upload" : "Toplu Odeme Upload"}</td>
-                                <td>{formatDateTimeTr(batch.uploadedAt)}</td>
-                                <td className="col-num">{batch.totalRows}</td>
-                                <td className="col-num">{batch.createdPaymentCount}</td>
-                                <td className="col-num">{batch.createdExpenseCount}</td>
-                                <td className="col-num">{batch.skippedCount}</td>
-                              </tr>
-                            ))
+                      <article className="card table-card reports-home-panel reports-home-banklog-card">
+                        <div className="section-head reports-home-panel-head">
+                          <h3>Son 10 Banka Kaydi</h3>
+                          <span className="small">Tarih, tutar ve aciklama</span>
+                        </div>
+                        <div className="reports-home-banklog-list compact-row-top-gap">
+                          {reportsSummary.latestBankMovements.length > 0 ? (
+                            reportsSummary.latestBankMovements.map((row) => (
+                                <div key={row.id} className="reports-home-banklog-item" title={row.description}>
+                                  <span className="reports-home-banklog-date">{formatDateTr(row.occurredAt)}</span>
+                                  <span className="reports-home-banklog-amount">{formatTry(row.amount)}</span>
+                                  <span className="reports-home-banklog-desc">{row.description}</span>
+                                </div>
+                              ))
                           ) : (
-                            <tr>
-                              <td colSpan={7} className="empty">
-                                Yukleme kaydi bulunmuyor
-                              </td>
-                            </tr>
+                            <p className="small reports-home-banklog-empty">Banka hareketi bulunmuyor</p>
                           )}
-                        </tbody>
-                      </table>
+                        </div>
+                      </article>
                     </div>
 
                   </>
@@ -13335,6 +13332,59 @@ function App() {
     user?.role === "RESIDENT"
       ? ((user.apartmentDoorNo ?? "").trim() || "-")
       : "";
+
+  useEffect(() => {
+    const dropdownSelector = "details.filter-dropdown";
+
+    const closeOtherFilterDropdowns = (active?: HTMLDetailsElement): void => {
+      const detailsElements = Array.from(
+        document.querySelectorAll<HTMLDetailsElement>(dropdownSelector)
+      );
+
+      for (const details of detailsElements) {
+        if (details !== active) {
+          details.open = false;
+        }
+      }
+    };
+
+    const onToggle = (event: Event): void => {
+      const target = event.target;
+      if (!(target instanceof HTMLDetailsElement)) {
+        return;
+      }
+
+      if (!target.matches(dropdownSelector) || !target.open) {
+        return;
+      }
+
+      closeOtherFilterDropdowns(target);
+    };
+
+    const onDocumentClick = (event: MouseEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (target instanceof Element) {
+        const clickedDropdown = target.closest(dropdownSelector);
+        if (clickedDropdown) {
+          return;
+        }
+      }
+
+      closeOtherFilterDropdowns();
+    };
+
+    document.addEventListener("toggle", onToggle, true);
+    document.addEventListener("click", onDocumentClick);
+
+    return () => {
+      document.removeEventListener("toggle", onToggle, true);
+      document.removeEventListener("click", onDocumentClick);
+    };
+  }, []);
 
   async function handleLogin(identifier: string, password: string): Promise<void> {
     setAuthLoading(true);

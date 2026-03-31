@@ -29,9 +29,11 @@ type ApartmentFormState = {
   email1: string;
   email2: string;
   email3: string;
+  email4: string;
   phone1: string;
   phone2: string;
   phone3: string;
+  phone4: string;
   landlordFullName: string;
   landlordPhone: string;
   landlordEmail: string;
@@ -55,9 +57,11 @@ const initialFormState: ApartmentFormState = {
   email1: "",
   email2: "",
   email3: "",
+  email4: "",
   phone1: "",
   phone2: "",
   phone3: "",
+  phone4: "",
   landlordFullName: "",
   landlordPhone: "",
   landlordEmail: "",
@@ -196,9 +200,11 @@ export function ApartmentFormPage() {
       email1: apartment.email1 ?? "",
       email2: apartment.email2 ?? "",
       email3: apartment.email3 ?? "",
+      email4: apartment.email4 ?? "",
       phone1: apartment.phone1 ?? "",
       phone2: apartment.phone2 ?? "",
       phone3: apartment.phone3 ?? "",
+      phone4: apartment.phone4 ?? "",
       landlordFullName: apartment.landlordFullName ?? "",
       landlordPhone: apartment.landlordPhone ?? "",
       landlordEmail: apartment.landlordEmail ?? "",
@@ -385,9 +391,11 @@ export function ApartmentFormPage() {
         email1: formState.email1 || undefined,
         email2: formState.email2 || undefined,
         email3: formState.email3 || undefined,
+        email4: formState.email4 || undefined,
         phone1: formState.phone1 || undefined,
         phone2: formState.phone2 || undefined,
         phone3: formState.phone3 || undefined,
+        phone4: formState.phone4 || undefined,
         landlordFullName: formState.landlordFullName || undefined,
         landlordPhone: formState.landlordPhone || undefined,
         landlordEmail: formState.landlordEmail || undefined,
@@ -460,9 +468,11 @@ export function ApartmentFormPage() {
         email1: "",
         email2: "",
         email3: "",
+        email4: "",
         phone1: "",
         phone2: "",
         phone3: "",
+        phone4: "",
         landlordFullName: "",
         landlordPhone: "",
         landlordEmail: "",
@@ -743,7 +753,7 @@ export function ApartmentFormPage() {
           <h4>📞 Iletisim</h4>
           <p className="small">Birincil ve alternatif iletisim kanallari</p>
         </div>
-        <div className="apartment-form-fields">
+        <div className="apartment-form-fields apartment-form-contact-row">
           <label>
             E-posta 1
             <input type="email" value={formState.email1} onChange={(e) => setFormState((prev) => ({ ...prev, email1: e.target.value }))} placeholder="ornek1@mail.com" />
@@ -756,7 +766,13 @@ export function ApartmentFormPage() {
             E-posta 3
             <input type="email" value={formState.email3} onChange={(e) => setFormState((prev) => ({ ...prev, email3: e.target.value }))} placeholder="ornek3@mail.com" />
           </label>
+          <label>
+            E-posta 4
+            <input type="email" value={formState.email4} onChange={(e) => setFormState((prev) => ({ ...prev, email4: e.target.value }))} placeholder="ornek4@mail.com" />
+          </label>
+        </div>
 
+        <div className="apartment-form-fields apartment-form-contact-row">
           <label>
             Telefon 1
             <input value={formState.phone1} onChange={(e) => setFormState((prev) => ({ ...prev, phone1: e.target.value }))} placeholder="05xx xxx xx xx" />
@@ -768,6 +784,10 @@ export function ApartmentFormPage() {
           <label>
             Telefon 3
             <input value={formState.phone3} onChange={(e) => setFormState((prev) => ({ ...prev, phone3: e.target.value }))} placeholder="05xx xxx xx xx" />
+          </label>
+          <label>
+            Telefon 4
+            <input value={formState.phone4} onChange={(e) => setFormState((prev) => ({ ...prev, phone4: e.target.value }))} placeholder="05xx xxx xx xx" />
           </label>
         </div>
       </section>

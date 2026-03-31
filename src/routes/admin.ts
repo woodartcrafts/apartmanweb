@@ -6878,6 +6878,8 @@ router.get("/reports/summary", async (_req, res) => {
     latestBankExpense,
     latestUploadBatches,
     topExpenseGroups,
+    latestBankTransferPayments,
+    latestBankTransferExpenses,
   ] = await Promise.all([
     prisma.apartment.count(),
     prisma.user.count({ where: { role: UserRole.RESIDENT } }),
@@ -6948,7 +6950,111 @@ router.get("/reports/summary", async (_req, res) => {
       },
       take: 10,
     }),
+    prisma.payment.findMany({
+      where: {
+        method: PaymentMethod.BANK_TRANSFER,
+      },
+      select: {
+        id: true,
+        paidAt: true,
+        totalAmount: true,
+        note: true,
+        createdAt: true,
+      },
+      orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+      take: 25,
+    }),
+    prisma.expense.findMany({
+      where: {
+        paymentMethod: PaymentMethod.BANK_TRANSFER,
+      },
+      select: {
+        id: true,
+        spentAt: true,
+        amount: true,
+        description: true,
+        createdAt: true,
+      },
+      orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
+      take: 25,
+    }),
   ]);
+
+  const latestBankPaymentRows = latestBankTransferPayments
+    .map((row) => {
+      if (row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX)) {
+        return null;
+      }
+
+      const parts = (row.note ?? "")
+        .split(" | ")
+        .map((x) => x.trim())
+        .filter(Boolean);
+
+      let parsedDescription: string | null = null;
+      const freeTextParts: string[] = [];
+      for (const part of parts) {
+        const upper = part.toUpperCase();
+
+        if (upper.startsWith("BANK_DESC:")) {
+          parsedDescription = part.slice(part.indexOf(":") + 1).trim() || null;
+          continue;
+        }
+
+        if (
+          upper.startsWith("BANK_REF:") ||
+          upper.startsWith("REF:") ||
+          upper.startsWith("DOOR:") ||
+          upper.startsWith("PAYMENT_UPLOAD:") ||
+          upper.startsWith("UNAPPLIED:") ||
+          upper.startsWith("CARRY_FORWARD:") ||
+          upper === "RECONCILE_LOCK:MANUAL"
+        ) {
+          continue;
+        }
+
+        freeTextParts.push(part);
+      }
+
+      const description = parsedDescription ?? (freeTextParts.length > 0 ? freeTextParts.join(" | ") : "Banka Tahsilati");
+
+      return {
+        id: row.id,
+        occurredAt: row.paidAt,
+        createdAt: row.createdAt,
+        amount: Number(row.totalAmount.toFixed(2)),
+        description,
+      };
+    })
+    .filter((row): row is { id: string; occurredAt: Date; createdAt: Date; amount: number; description: string } => Boolean(row));
+
+  const latestBankExpenseRows = latestBankTransferExpenses.map((row) => ({
+    id: row.id,
+    occurredAt: row.spentAt,
+    createdAt: row.createdAt,
+    amount: Number(row.amount.toFixed(2)),
+    description: row.description?.trim() || "Banka Gideri",
+  }));
+
+  const latestBankMovements = [...latestBankPaymentRows, ...latestBankExpenseRows]
+    .sort((a, b) => {
+      const occurredDiff = b.occurredAt.getTime() - a.occurredAt.getTime();
+      if (occurredDiff !== 0) {
+        return occurredDiff;
+      }
+      const createdDiff = b.createdAt.getTime() - a.createdAt.getTime();
+      if (createdDiff !== 0) {
+        return createdDiff;
+      }
+      return b.id.localeCompare(a.id);
+    })
+    .slice(0, 10)
+    .map((row) => ({
+      id: row.id,
+      occurredAt: row.occurredAt,
+      amount: row.amount,
+      description: row.description,
+    }));
 
   const topExpenseItemIds = topExpenseGroups.map((item) => item.expenseItemId).filter(Boolean);
   const topExpenseItems =
@@ -7116,6 +7222,7 @@ router.get("/reports/summary", async (_req, res) => {
       managers,
       dutyAssignments,
     },
+    latestBankMovements,
     latestUploadBatches,
     topExpenses: topExpenseGroups.map((item) => ({
       id: item.expenseItemId,

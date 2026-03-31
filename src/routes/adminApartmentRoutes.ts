@@ -28,9 +28,11 @@ type ApartmentSnapshotInput = {
   email1: string | null;
   email2: string | null;
   email3: string | null;
+  email4: string | null;
   phone1: string | null;
   phone2: string | null;
   phone3: string | null;
+  phone4: string | null;
   landlordFullName: string | null;
   landlordPhone: string | null;
   landlordEmail: string | null;
@@ -60,9 +62,11 @@ type ApartmentSnapshot = {
   email1: string | null;
   email2: string | null;
   email3: string | null;
+  email4: string | null;
   phone1: string | null;
   phone2: string | null;
   phone3: string | null;
+  phone4: string | null;
   landlordFullName: string | null;
   landlordPhone: string | null;
   landlordEmail: string | null;
@@ -91,9 +95,11 @@ function createApartmentSnapshot(apartment: ApartmentSnapshotInput): ApartmentSn
     email1: apartment.email1,
     email2: apartment.email2,
     email3: apartment.email3,
+    email4: apartment.email4,
     phone1: apartment.phone1,
     phone2: apartment.phone2,
     phone3: apartment.phone3,
+    phone4: apartment.phone4,
     landlordFullName: apartment.landlordFullName,
     landlordPhone: apartment.landlordPhone,
     landlordEmail: apartment.landlordEmail,
@@ -175,9 +181,11 @@ async function findApartmentDuplicateWarnings(input: {
   phone1: string | null;
   phone2: string | null;
   phone3: string | null;
+  phone4: string | null;
   email1: string | null;
   email2: string | null;
   email3: string | null;
+  email4: string | null;
   landlordFullName: string | null;
   landlordPhone: string | null;
   landlordEmail: string | null;
@@ -186,9 +194,11 @@ async function findApartmentDuplicateWarnings(input: {
     input.phone1,
     input.phone2,
     input.phone3,
+    input.phone4,
     input.email1,
     input.email2,
     input.email3,
+    input.email4,
     input.landlordPhone,
     input.landlordEmail,
   ].filter(Boolean) as string[];
@@ -200,9 +210,11 @@ async function findApartmentDuplicateWarnings(input: {
       { phone1: c },
       { phone2: c },
       { phone3: c },
+      { phone4: c },
       { email1: c },
       { email2: c },
       { email3: c },
+      { email4: c },
       { landlordPhone: c },
       { landlordEmail: c },
     ]),
@@ -239,9 +251,11 @@ async function findApartmentDuplicateWarnings(input: {
       apt.phone1,
       apt.phone2,
       apt.phone3,
+      apt.phone4,
       apt.email1,
       apt.email2,
       apt.email3,
+      apt.email4,
       apt.landlordPhone,
       apt.landlordEmail,
     ].filter(Boolean) as string[];
@@ -278,9 +292,11 @@ const apartmentCreateSchema = z.object({
   email1: z.string().email().optional().or(z.literal("")),
   email2: z.string().email().optional().or(z.literal("")),
   email3: z.string().email().optional().or(z.literal("")),
+  email4: z.string().email().optional().or(z.literal("")),
   phone1: z.string().optional(),
   phone2: z.string().optional(),
   phone3: z.string().optional(),
+  phone4: z.string().optional(),
   landlordFullName: z.string().optional(),
   landlordPhone: z.string().optional(),
   landlordEmail: z.string().email().optional().or(z.literal("")),
@@ -304,9 +320,11 @@ const apartmentUpdateSchema = z.object({
   email1: z.string().email().optional().or(z.literal("")),
   email2: z.string().email().optional().or(z.literal("")),
   email3: z.string().email().optional().or(z.literal("")),
+  email4: z.string().email().optional().or(z.literal("")),
   phone1: z.string().optional(),
   phone2: z.string().optional(),
   phone3: z.string().optional(),
+  phone4: z.string().optional(),
   landlordFullName: z.string().optional(),
   landlordPhone: z.string().optional(),
   landlordEmail: z.string().email().optional().or(z.literal("")),
@@ -573,9 +591,11 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         email1: apartment.email1,
         email2: apartment.email2,
         email3: apartment.email3,
+        email4: apartment.email4,
         phone1: apartment.phone1,
         phone2: apartment.phone2,
         phone3: apartment.phone3,
+        phone4: apartment.phone4,
         landlordFullName: apartment.landlordFullName,
         landlordPhone: apartment.landlordPhone,
         landlordEmail: apartment.landlordEmail,
@@ -749,9 +769,11 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
       email1,
       email2,
       email3,
+      email4,
       phone1,
       phone2,
       phone3,
+      phone4,
       landlordFullName,
       landlordPhone,
       landlordEmail,
@@ -763,9 +785,11 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
     const normalizedPhone1 = normalizeApartmentText(phone1);
     const normalizedPhone2 = normalizeApartmentText(phone2);
     const normalizedPhone3 = normalizeApartmentText(phone3);
+    const normalizedPhone4 = normalizeApartmentText(phone4);
     const normalizedEmail1 = normalizeApartmentText(email1);
     const normalizedEmail2 = normalizeApartmentText(email2);
     const normalizedEmail3 = normalizeApartmentText(email3);
+    const normalizedEmail4 = normalizeApartmentText(email4);
     const normalizedLandlordFullName = normalizeApartmentText(landlordFullName);
     const normalizedLandlordPhone = normalizeApartmentText(landlordPhone);
     const normalizedLandlordEmail = normalizeApartmentText(landlordEmail);
@@ -809,9 +833,11 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
       phone1: normalizedPhone1,
       phone2: normalizedPhone2,
       phone3: normalizedPhone3,
+      phone4: normalizedPhone4,
       email1: normalizedEmail1,
       email2: normalizedEmail2,
       email3: normalizedEmail3,
+      email4: normalizedEmail4,
       landlordFullName: normalizedLandlordFullName,
       landlordPhone: normalizedLandlordPhone,
       landlordEmail: normalizedLandlordEmail,
@@ -842,9 +868,11 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         email1: normalizedEmail1,
         email2: normalizedEmail2,
         email3: normalizedEmail3,
+        email4: normalizedEmail4,
         phone1: normalizedPhone1,
         phone2: normalizedPhone2,
         phone3: normalizedPhone3,
+        phone4: normalizedPhone4,
         landlordFullName: normalizedLandlordFullName,
         landlordPhone: normalizedLandlordPhone,
         landlordEmail: normalizedLandlordEmail,
@@ -900,9 +928,11 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
       const normalizedPhone1 = normalizeApartmentText(parsed.data.phone1);
       const normalizedPhone2 = normalizeApartmentText(parsed.data.phone2);
       const normalizedPhone3 = normalizeApartmentText(parsed.data.phone3);
+      const normalizedPhone4 = normalizeApartmentText(parsed.data.phone4);
       const normalizedEmail1 = normalizeApartmentText(parsed.data.email1);
       const normalizedEmail2 = normalizeApartmentText(parsed.data.email2);
       const normalizedEmail3 = normalizeApartmentText(parsed.data.email3);
+      const normalizedEmail4 = normalizeApartmentText(parsed.data.email4);
       const normalizedLandlordFullName = normalizeApartmentText(parsed.data.landlordFullName);
       const normalizedLandlordPhone = normalizeApartmentText(parsed.data.landlordPhone);
       const normalizedLandlordEmail = normalizeApartmentText(parsed.data.landlordEmail);
@@ -946,9 +976,11 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         phone1: normalizedPhone1,
         phone2: normalizedPhone2,
         phone3: normalizedPhone3,
+        phone4: normalizedPhone4,
         email1: normalizedEmail1,
         email2: normalizedEmail2,
         email3: normalizedEmail3,
+        email4: normalizedEmail4,
         landlordFullName: normalizedLandlordFullName,
         landlordPhone: normalizedLandlordPhone,
         landlordEmail: normalizedLandlordEmail,
@@ -980,9 +1012,11 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
           email1: normalizedEmail1,
           email2: normalizedEmail2,
           email3: normalizedEmail3,
+          email4: normalizedEmail4,
           phone1: normalizedPhone1,
           phone2: normalizedPhone2,
           phone3: normalizedPhone3,
+          phone4: normalizedPhone4,
           landlordFullName: normalizedLandlordFullName,
           landlordPhone: normalizedLandlordPhone,
           landlordEmail: normalizedLandlordEmail,

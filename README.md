@@ -15,6 +15,15 @@ ApartmanWeb su ihtiyaclari tek panelde toplar:
 - Operasyonel raporlar ve kontrol ekranlari
 - Audit log + geri alma (undo)
 
+## 1.1 Guncel Davranis Notlari (2026-03)
+
+- Banka ekstresi importunda `NO_EXACT_MATCH` ile manuel incelemeye dusen odeme, artik ilgili daireye on dagitilir ve yine manuel inceleme etiketiyle isaretlenir.
+- Bu odemeler notta `RECONCILE_LOCK:MANUAL` ile kilitlenir; toplu yeniden eslestirme akisi tarafindan otomatik bozulmaz.
+- "Manuel Inceleme Gereken Eslesmeler" raporu bu satirlari gostermeye devam eder.
+- "Manuel Kapama Yonetimi" ekrani sadece tahakkuga baglanmis odeme satirlarini listeler. Henuz baglanmamis odemeler once "Tahsilat Raporu" ekranindan duzeltilip daireye baglanmalidir.
+- Import bilgi notlarinda sadece dikkat gerektiren durumlar tutulur; normal basarili otomatik eslestirme satirlari bilgi listesine eklenmez.
+- "Yukleme Kayitlari" ekraninda dosya silme akisi tek fazli hale getirildi; "siliniyor/tamamlandi" mesajlari arasindaki tutarsiz gecisler giderildi.
+
 ## 2. Teknoloji Yigini
 
 - Backend: `Node.js`, `TypeScript`, `Express`, `Prisma`, `Zod`
