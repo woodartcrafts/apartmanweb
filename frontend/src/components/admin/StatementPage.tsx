@@ -108,7 +108,7 @@ export function StatementPage({
     <>
       <div className="card admin-tools">
         <h3>Admin Ekstre Sorgu</h3>
-        <div className="admin-row">
+        <div className="admin-row statement-query-row">
           <select
             title="Ekstre icin daire secimi"
             value={activeApartmentId}
@@ -122,12 +122,14 @@ export function StatementPage({
               </option>
             ))}
           </select>
-          <button className="btn btn-primary statement-fetch-btn" onClick={() => void fetchStatement()} disabled={loading}>
-            Ekstre Getir
-          </button>
-          <button className="btn btn-ghost" onClick={() => void reconcileSelectedApartment()} disabled={loading}>
-            Secilen Daireyi Yeniden Eslestir
-          </button>
+          <div className="statement-query-actions">
+            <button className="btn btn-primary statement-fetch-btn" onClick={() => void fetchStatement()} disabled={loading}>
+              Ekstre Getir
+            </button>
+            <button className="btn btn-ghost" onClick={() => void reconcileSelectedApartment()} disabled={loading}>
+              Secilen Daireyi Yeniden Eslestir
+            </button>
+          </div>
         </div>
       </div>
 

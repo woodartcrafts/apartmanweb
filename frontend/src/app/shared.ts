@@ -1141,10 +1141,12 @@ export function mapSkippedErrors(errors: string[]): SkippedRowInfo[] {
 export function explainInfoMessage(raw: string): string {
   const text = raw.toLocaleLowerCase("tr");
 
-  const parseManualReviewContext = (): { doorNo: string | null; amountText: string | null } => {
+  const parseInfoContext = (): { doorNo: string | null; amountText: string | null } => {
     const bracketDoorMatch = raw.match(/\[\s*DAIRE\s*:\s*([^\]|]+)\s*\|/i);
     const fallbackDoorMatch = raw.match(/manuel incelemeye birakildi\s*\(([^)]+)\)/i);
+    const genericDoorMatch = raw.match(/\(([^)]+)\)(?!.*\([^)]+\))/);
     const amountMatch = raw.match(/\|\s*TUTAR\s*:\s*([0-9]+(?:\.[0-9]{1,2})?)\s*\]/i);
+    const overpaymentAmountMatch = raw.match(/,\s*([0-9]+(?:\.[0-9]{1,2})?)\s+tutar\s+dagitimsiz\s+birakildi/i);
 
     const normalize = (value: string | undefined): string | null => {
       if (!value) {
@@ -1158,50 +1160,51 @@ export function explainInfoMessage(raw: string): string {
     };
 
     return {
-      doorNo: normalize(bracketDoorMatch?.[1] ?? fallbackDoorMatch?.[1]),
-      amountText: normalize(amountMatch?.[1]),
+      doorNo: normalize(bracketDoorMatch?.[1] ?? fallbackDoorMatch?.[1] ?? genericDoorMatch?.[1]),
+      amountText: normalize(amountMatch?.[1] ?? overpaymentAmountMatch?.[1]),
     };
   };
 
-  const manualContext = parseManualReviewContext();
+  const infoContext = parseInfoContext();
   const details = [
-    manualContext.doorNo ? `Daire: ${manualContext.doorNo}` : null,
-    manualContext.amountText ? `Tutar: ${manualContext.amountText}` : null,
+    infoContext.doorNo ? `Daire: ${infoContext.doorNo}` : null,
+    infoContext.amountText ? `Tutar: ${infoContext.amountText}` : null,
   ]
     .filter(Boolean)
     .join(" | ");
   const detailsSuffix = details ? ` (${details})` : "";
+  const withDetails = (message: string): string => `${message}${detailsSuffix}`;
 
   if (text.includes("manuel incelemeye birakildi") && text.includes("exact eslesme yok")) {
-    return `Birden fazla acik borc oldugu halde tekil exact eslesme bulunamadi; odeme otomatik kapatilmayip manuel incelemeye alindi.${detailsSuffix}`;
+    return withDetails("Birden fazla acik borc oldugu halde tekil exact eslesme bulunamadi; odeme otomatik kapatilmayip manuel incelemeye alindi.");
   }
   if (text.includes("manuel incelemeye birakildi") && text.includes("birden fazla exact")) {
-    return `Birden fazla exact eslesme oldugu icin yanlis tahakkuk kapanmasi engellendi; manuel secim gerekli.${detailsSuffix}`;
+    return withDetails("Birden fazla exact eslesme oldugu icin yanlis tahakkuk kapanmasi engellendi; manuel secim gerekli.");
   }
   if (text.includes("manual_review")) {
-    return `Sistem bu odemeyi riskli buldugu icin otomatik dagitmadan manuel incelemeye birakti.${detailsSuffix}`;
+    return withDetails("Sistem bu odemeyi riskli buldugu icin otomatik dagitmadan manuel incelemeye birakti.");
   }
   if (text.includes("birden fazla exact eslesmede en eski tahakkuk secildi")) {
-    return "Birden fazla birebir eslesme oldugu icin sistem en eski acik borcu secerek otomatik dagitim yapti.";
+    return withDetails("Birden fazla birebir eslesme oldugu icin sistem en eski acik borcu secerek otomatik dagitim yapti.");
   }
 
   if (text.includes("acik borc yoktu") && text.includes("dagitimsiz kaydedildi")) {
-    return "Odeme kaydi olusturuldu ancak acik borc olmadigi icin herhangi bir tahakkuga dagitilmadi.";
+    return withDetails("Odeme kaydi olusturuldu ancak acik borc olmadigi icin herhangi bir tahakkuga dagitilmadi.");
   }
   if (text.includes("odeme acik borcu asti") && text.includes("dagitimsiz birakildi")) {
-    return "Odeme mevcut acik borclara dagitildi; borcu asan kalan tutar dagitimsiz kaydedildi.";
+    return withDetails("Odeme mevcut acik borclara dagitildi; borcu asan kalan tutar dagitimsiz kaydedildi.");
   }
   if (text.includes("acik borcun tamamini karsiladi") && text.includes("tahakkuklar kapatildi")) {
-    return "Odeme, dairenin tum acik tahakkuklarini otomatik kapatti.";
+    return withDetails("Odeme, dairenin tum acik tahakkuklarini otomatik kapatti.");
   }
   if (text.includes("ayni dosya referansi kabul edildi")) {
-    return "Ayni dosyada tekrar eden referans, banka masrafi istisnasi nedeniyle kaydedildi.";
+    return withDetails("Ayni dosyada tekrar eden referans, banka masrafi istisnasi nedeniyle kaydedildi.");
   }
   if (text.includes("mevcut gider referansi tekrarina izin verildi")) {
-    return "Bu satir banka masrafi istisnasi ile tekrar referansla kaydedildi.";
+    return withDetails("Bu satir banka masrafi istisnasi ile tekrar referansla kaydedildi.");
   }
 
-  return "Bilgi notu: satir kaydedildi ancak dikkat gerektiren bir durum var.";
+  return withDetails("Bilgi notu: satir kaydedildi ancak dikkat gerektiren bir durum var.");
 }
 
 export function mapImportInfos(infos: string[]): ImportInfoNote[] {

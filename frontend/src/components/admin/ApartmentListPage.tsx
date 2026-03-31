@@ -2,14 +2,12 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import {
   apiBase,
-  formatDateTimeTr,
   type ApartmentClassDefinition,
   type ApartmentDutyDefinition,
   type ApartmentOption,
   type ApartmentType,
   type BlockDefinition,
   type OccupancyType,
-  type ResidentPasswordHistoryRow,
 } from "../../app/shared";
 
 type ApartmentListSortKey =
@@ -68,13 +66,6 @@ export function ApartmentListPage({
     occupancyTypes: [] as OccupancyType[],
     ownerKeyword: "",
   });
-  const [passwordDraftByUserId, setPasswordDraftByUserId] = useState<Record<string, string>>({});
-  const [passwordSavingUserId, setPasswordSavingUserId] = useState<string | null>(null);
-  const [passwordHistoryByApartmentId, setPasswordHistoryByApartmentId] = useState<
-    Record<string, ResidentPasswordHistoryRow[]>
-  >({});
-  const [passwordHistoryLoadingApartmentId, setPasswordHistoryLoadingApartmentId] = useState<string | null>(null);
-  const [passwordHistoryErrorByApartmentId, setPasswordHistoryErrorByApartmentId] = useState<Record<string, string>>({});
 
   const getContactText = (row: ApartmentOption): string =>
     [row.phone1, row.phone2, row.phone3, row.email1, row.email2, row.email3].filter(Boolean).join(" | ");
@@ -270,14 +261,6 @@ export function ApartmentListPage({
       });
 
       setRows(initialSorted);
-      setPasswordDraftByUserId(
-        initialSorted.reduce<Record<string, string>>((acc, apartment) => {
-          for (const resident of apartment.residentUsers) {
-            acc[resident.id] = "";
-          }
-          return acc;
-        }, {})
-      );
       setHasRun(true);
     } catch (err) {
       console.error(err);
@@ -409,69 +392,6 @@ export function ApartmentListPage({
     await onDeleteApartment(apartment);
     if (hasRun) {
       await runQuery();
-    }
-  }
-
-  async function setResidentPassword(apartmentId: string, userId: string): Promise<void> {
-    const password = (passwordDraftByUserId[userId] ?? "").trim();
-    if (!password) {
-      setError("Sifre bos olamaz");
-      return;
-    }
-
-    setPasswordSavingUserId(userId);
-    setError("");
-    try {
-      await adminRequest(`/api/admin/apartments/${apartmentId}/resident-password`, {
-        method: "POST",
-        payload: {
-          userId,
-          password,
-        },
-      });
-
-      if (hasRun) {
-        await runQuery();
-      }
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : "Resident sifresi guncellenemedi");
-    } finally {
-      setPasswordSavingUserId(null);
-    }
-  }
-
-  async function togglePasswordHistory(apartmentId: string): Promise<void> {
-    if (passwordHistoryByApartmentId[apartmentId]) {
-      setPasswordHistoryByApartmentId((prev) => {
-        const next = { ...prev };
-        delete next[apartmentId];
-        return next;
-      });
-      return;
-    }
-
-    setPasswordHistoryLoadingApartmentId(apartmentId);
-    setPasswordHistoryErrorByApartmentId((prev) => ({
-      ...prev,
-      [apartmentId]: "",
-    }));
-    try {
-      const historyRows = await adminRequest<ResidentPasswordHistoryRow[]>(
-        `/api/admin/apartments/${apartmentId}/resident-password-history`
-      );
-      setPasswordHistoryByApartmentId((prev) => ({
-        ...prev,
-        [apartmentId]: historyRows,
-      }));
-    } catch (err) {
-      console.error(err);
-      setPasswordHistoryErrorByApartmentId((prev) => ({
-        ...prev,
-        [apartmentId]: err instanceof Error ? err.message : "Sifre gecmisi alinamadi",
-      }));
-    } finally {
-      setPasswordHistoryLoadingApartmentId(null);
     }
   }
 
@@ -895,7 +815,6 @@ export function ApartmentListPage({
             </thead>
             <tbody>
               {sortedRows.map((apartment) => {
-                const historyRows = passwordHistoryByApartmentId[apartment.id] ?? null;
                 return (
                   <Fragment key={apartment.id}>
                     <tr>
@@ -920,59 +839,6 @@ export function ApartmentListPage({
                         </button>
                       </td>
                     </tr>
-                    {historyRows && (
-                      <tr key={`${apartment.id}-history`}>
-                        <td colSpan={14}>
-                          <div className="table-wrap">
-                            <table>
-                              <thead>
-                                <tr>
-                                  <th>Tarih</th>
-                                  <th>Resident</th>
-                                  <th>Sifre</th>
-                                  <th>Sebep</th>
-                                  <th>Degistiren</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {historyRows.map((row) => (
-                                  <tr key={row.id}>
-                                    <td>{formatDateTimeTr(row.changedAt)}</td>
-                                    <td>
-                                      {row.userFullName} ({row.userEmail})
-                                    </td>
-                                    <td>Gizli</td>
-                                    <td>{row.reason}</td>
-                                    <td>{row.changedByName ? `${row.changedByName} (${row.changedByEmail ?? "-"})` : "Sistem"}</td>
-                                  </tr>
-                                ))}
-                                {historyRows.length === 0 && (
-                                  <tr>
-                                    <td colSpan={5} className="empty">
-                                      Sifre gecmisi yok
-                                    </td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    {passwordHistoryLoadingApartmentId === apartment.id && (
-                      <tr key={`${apartment.id}-history-loading`}>
-                        <td colSpan={14} className="small">
-                          Sifre gecmisi yukleniyor...
-                        </td>
-                      </tr>
-                    )}
-                    {passwordHistoryErrorByApartmentId[apartment.id] && (
-                      <tr key={`${apartment.id}-history-error`}>
-                        <td colSpan={14} className="small">
-                          {passwordHistoryErrorByApartmentId[apartment.id]}
-                        </td>
-                      </tr>
-                    )}
                   </Fragment>
                 );
               })}

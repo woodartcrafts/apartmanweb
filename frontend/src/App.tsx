@@ -120,6 +120,11 @@ const ApartmentFormPage = lazy(() =>
     default: module.ApartmentFormPage,
   }))
 );
+const ApartmentPasswordManagementPage = lazy(() =>
+  import("./components/admin/ApartmentPasswordManagementPage").then((module) => ({
+    default: module.ApartmentPasswordManagementPage,
+  }))
+);
 const ApartmentListPage = lazy(() =>
   import("./components/admin/ApartmentListPage").then((module) => ({
     default: module.ApartmentListPage,
@@ -5024,7 +5029,6 @@ function AdminPage() {
       return;
     }
 
-    setLoading(true);
     setDeletingUploadBatchId(row.id);
     setDeletingUploadBatchFileName(row.fileName);
     const previousRows = uploadBatchRows;
@@ -5044,6 +5048,8 @@ function AdminPage() {
         fetchExpenseReport(expenseReportFilter),
       ]);
 
+      setDeletingUploadBatchId(null);
+      setDeletingUploadBatchFileName("");
       setToastMessage("Silme tamamlandi: Yukleme kaydi silindi");
       setMessage(
         `Silme tamamlandi. Tahsilat: ${result.deletedPayments}, Gider: ${result.deletedExpenses}, Etkilenen Borc: ${result.affectedCharges}`
@@ -5053,7 +5059,6 @@ function AdminPage() {
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Yukleme kaydi silinemedi");
     } finally {
-      setLoading(false);
       setDeletingUploadBatchId(null);
       setDeletingUploadBatchFileName("");
     }
@@ -6265,7 +6270,13 @@ function AdminPage() {
       ),
     ].flatMap((match) => parseDoorNosFromFreeText(match[1] ?? ""));
 
-    const merged = [...new Set([...explicitPrefixedDoorNos, ...groupedByKeyword])];
+    // Support compact formats seen in bank descriptions like D57VE93, D57/93, 57VE93.
+    const compactPairs = [
+      ...text.matchAll(/\bd\s*0*(\d{1,4})\s*(?:ve|veya|\/|&|-)\s*0*(\d{1,4})\b/g),
+      ...text.matchAll(/\b0*(\d{1,4})\s*(?:ve|veya|\/|&)\s*0*(\d{1,4})\b/g),
+    ].flatMap((match) => [match[1], match[2]]);
+
+    const merged = [...new Set([...explicitPrefixedDoorNos, ...groupedByKeyword, ...compactPairs])];
     if (merged.length >= 2) {
       return merged;
     }
@@ -6456,6 +6467,9 @@ function AdminPage() {
     dueDateByMonth: Record<string, string>;
     description?: string;
     apartmentType?: ApartmentType;
+    apartmentClassId?: string;
+    apartmentDutyId?: string;
+    occupancyType?: OccupancyType;
     amount?: number;
     amountByType?: { KUCUK: number; BUYUK: number };
     skipIfExists: boolean;
@@ -7576,11 +7590,11 @@ function AdminPage() {
         </div>
       )}
       {!deletingUploadBatchId && reportLoadingOverlayVisible && (
-        <div className="blocking-modal" role="status" aria-live="polite" aria-busy="true">
-          <div className="blocking-modal-card report-loading-modal-card">
-            <div className="report-loading-hourglass" aria-hidden="true">
-              ⌛
-            </div>
+        <div className="card report-loading-banner" role="status" aria-live="polite" aria-busy="true">
+          <div className="report-loading-hourglass" aria-hidden="true">
+            ⌛
+          </div>
+          <div>
             <h3>Rapor Hazirlaniyor</h3>
             <p className="small">Lutfen bekleyin, rapor verileri hesaplaniyor...</p>
           </div>
@@ -7590,7 +7604,7 @@ function AdminPage() {
       <div className="card admin-subnav" ref={adminSubnavRef}>
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon">DR</span>
+            <span className="admin-subnav-icon" aria-hidden="true">🏠</span>
             Daire
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -7606,6 +7620,9 @@ function AdminPage() {
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/apartments/edit">
               Daire Degistir
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/apartments/passwords">
+              Daire Sifre Degistir
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/apartments/upload">
               Daire Excel Yukle
@@ -7636,7 +7653,7 @@ function AdminPage() {
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon">TH</span>
+            <span className="admin-subnav-icon" aria-hidden="true">🧾</span>
             Tahakkuk
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -7660,7 +7677,7 @@ function AdminPage() {
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon">OD</span>
+            <span className="admin-subnav-icon" aria-hidden="true">💳</span>
             Tahsilat
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -7678,7 +7695,7 @@ function AdminPage() {
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon">EK</span>
+            <span className="admin-subnav-icon" aria-hidden="true">📄</span>
             Ekstre
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -7696,7 +7713,7 @@ function AdminPage() {
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon">GD</span>
+            <span className="admin-subnav-icon" aria-hidden="true">💸</span>
             Gider
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -7714,7 +7731,7 @@ function AdminPage() {
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon">RP</span>
+            <span className="admin-subnav-icon" aria-hidden="true">📊</span>
             Raporlar
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -7753,7 +7770,7 @@ function AdminPage() {
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon">BN</span>
+            <span className="admin-subnav-icon" aria-hidden="true">🏦</span>
             Bankalar
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -7780,7 +7797,7 @@ function AdminPage() {
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon">KT</span>
+            <span className="admin-subnav-icon" aria-hidden="true">✅</span>
             Kontrol
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -7801,7 +7818,7 @@ function AdminPage() {
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon">SD</span>
+            <span className="admin-subnav-icon" aria-hidden="true">🛠️</span>
             Sistem ve Duzeltme
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -7831,7 +7848,7 @@ function AdminPage() {
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon">TP</span>
+            <span className="admin-subnav-icon" aria-hidden="true">🗂️</span>
             Toplanti
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -9911,39 +9928,41 @@ function AdminPage() {
             <section className="dashboard compact-management-page">
               <form className="card admin-form" onSubmit={onSubmitChargeType}>
                 <h3>{editingChargeTypeId ? "Tahakkuk Tipi Degistir" : "Tahakkuk Tipi Ekle"}</h3>
-                <label>
-                  Kod
-                  <input
-                    value={chargeTypeForm.code}
-                    onChange={(e) => setChargeTypeForm((prev) => ({ ...prev, code: e.target.value }))}
-                    placeholder="AIDAT"
-                    required
-                  />
-                </label>
-                <label>
-                  Ad
-                  <input
-                    value={chargeTypeForm.name}
-                    onChange={(e) => setChargeTypeForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="Aidat"
-                    required
-                  />
-                </label>
-                <label>
-                  Odemeyi Kim Yapacak?
-                  <select
-                    value={chargeTypeForm.payerTarget}
-                    onChange={(e) =>
-                      setChargeTypeForm((prev) => ({
-                        ...prev,
-                        payerTarget: e.target.value as "OWNER" | "TENANT",
-                      }))
-                    }
-                  >
-                    <option value="OWNER">Ev Sahibi</option>
-                    <option value="TENANT">Kiraci</option>
-                  </select>
-                </label>
+                <div className="charge-type-form-inline">
+                  <label>
+                    Kod
+                    <input
+                      value={chargeTypeForm.code}
+                      onChange={(e) => setChargeTypeForm((prev) => ({ ...prev, code: e.target.value }))}
+                      placeholder="AIDAT"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Ad
+                    <input
+                      value={chargeTypeForm.name}
+                      onChange={(e) => setChargeTypeForm((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder="Aidat"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Odemeyi Kim Yapacak?
+                    <select
+                      value={chargeTypeForm.payerTarget}
+                      onChange={(e) =>
+                        setChargeTypeForm((prev) => ({
+                          ...prev,
+                          payerTarget: e.target.value as "OWNER" | "TENANT",
+                        }))
+                      }
+                    >
+                      <option value="OWNER">Ev Sahibi</option>
+                      <option value="TENANT">Kiraci</option>
+                    </select>
+                  </label>
+                </div>
                 <label className="checkbox-row">
                   <input
                     type="checkbox"
@@ -10027,23 +10046,32 @@ function AdminPage() {
           path="/charges/bulk"
           element={
             <Suspense fallback={<LazyAdminPageFallback />}>
-              <ChargeBulkPage loading={loading} chargeTypeOptions={chargeTypeOptions} onCreateBulkCharge={onCreateBulkCharge} />
+              <ChargeBulkPage
+                loading={loading}
+                chargeTypeOptions={chargeTypeOptions}
+                apartmentClassOptions={apartmentClassOptions}
+                apartmentDutyOptions={apartmentDutyOptions}
+                onCreateBulkCharge={onCreateBulkCharge}
+              />
             </Suspense>
           }
         />
         <Route
           path="/charges/gas-calculator"
           element={
-            <section className="dashboard">
-              <div className="card admin-form">
+            <section className="dashboard expense-dist-page">
+              <div className="card admin-form expense-dist-form-surface">
                 <h3>Gider Dagitimi ve Tahakkuk</h3>
                 <p className="small">
                   Gider tipini, daire secimini, katsayilari ve yuvarlama kuralini belirleyin. Hesaplama sonucunu
                   kontrol ettikten sonra Ekle ile veritabanina kaydedin.
                 </p>
 
-                <h4 className="sheet-section-title">Fatura Bilgileri</h4>
-                <div className="compact-row">
+                <div className="expense-dist-section-head">
+                  <h4 className="sheet-section-title">🧾 Fatura Bilgileri</h4>
+                  <p className="small">Fatura temel bilgileri, donem araligi ve tutar bilgilerini girin.</p>
+                </div>
+                <div className="compact-row expense-dist-bill-row-1">
                   <label>
                     Gider Tipi
                     <select
@@ -10087,7 +10115,7 @@ function AdminPage() {
                   </label>
                 </div>
 
-                <div className="compact-row">
+                <div className="compact-row expense-dist-bill-row-2">
                   <label>
                     Ay
                     <input
@@ -10151,8 +10179,11 @@ function AdminPage() {
                   </label>
                 </div>
 
-                <h4 className="sheet-section-title">Katsayi Dagitim Secimi</h4>
-                <div className="compact-row">
+                <div className="expense-dist-section-head">
+                  <h4 className="sheet-section-title">⚖️ Katsayi Dagitim Secimi</h4>
+                  <p className="small">Daire filtrelerini ve katsayi bazini secerek dagitim modelini olusturun.</p>
+                </div>
+                <div className="compact-row expense-dist-coeff-row">
                   <div className="filter-dropdown-field">
                     <span>Daire Filtreleri ve Secimi</span>
                     <details className="filter-dropdown">
@@ -10411,7 +10442,10 @@ function AdminPage() {
                   </div>
                 )}
 
-                <h4 className="sheet-section-title">Yuvarlama</h4>
+                <div className="expense-dist-section-head">
+                  <h4 className="sheet-section-title">🔧 Yuvarlama</h4>
+                  <p className="small">Yuvarlama yonu ve adimini belirleyerek son dagitim tutarini netlestirin.</p>
+                </div>
                 <div className="compact-row compact-row-top-gap">
                   <label>
                     Yuvarlama Yon
@@ -10568,7 +10602,7 @@ function AdminPage() {
                   Faturalar tek satirda listelenir. Bir satiri sildiginizde o faturaya bagli tum dagitim tahakkuklari silinir.
                 </p>
 
-                <div className="compact-row">
+                <div className="bulk-correct-filter-row">
                   <label>
                     Yil
                     <input
@@ -10594,9 +10628,7 @@ function AdminPage() {
                         ))}
                     </select>
                   </label>
-                </div>
 
-                <div className="compact-row">
                   <label>
                     Tahakkuk Tarihi Baslangic
                     <input
@@ -10614,33 +10646,56 @@ function AdminPage() {
                       onChange={(e) => setBulkCorrectionForm((prev) => ({ ...prev, accrualDateTo: e.target.value }))}
                     />
                   </label>
-                </div>
 
-                <label>
-                  Ay Secimi (bos birakirsan tum aylar)
-                  <div className="month-grid">
-                    {monthOptions.map((month) => {
-                      const checked = bulkCorrectionForm.periodMonths.includes(month);
-                      return (
-                        <label key={month} className="month-chip">
+                  <label className="bulk-correct-month-filter">
+                    Ay Secimi (bos birakirsan tum aylar)
+                    <details className="filter-dropdown apartment-edit-select-dropdown">
+                      <summary>
+                        {bulkCorrectionForm.periodMonths.length === 0
+                          ? "Tum aylar"
+                          : bulkCorrectionForm.periodMonths.length === monthOptions.length
+                            ? "Tum aylar"
+                            : bulkCorrectionForm.periodMonths.join(", ")}
+                      </summary>
+                      <div className="filter-dropdown-panel apartment-edit-select-list charge-bulk-month-panel">
+                        <label className="bulk-filter-option apartment-edit-select-item">
                           <input
                             type="checkbox"
-                            checked={checked}
-                            onChange={(e) => {
-                              setBulkCorrectionForm((prev) => {
-                                const next = e.target.checked
-                                  ? [...prev.periodMonths, month]
-                                  : prev.periodMonths.filter((m) => m !== month);
-                                return { ...prev, periodMonths: [...new Set(next)].sort((a, b) => a - b) };
-                              });
-                            }}
+                            checked={bulkCorrectionForm.periodMonths.length === monthOptions.length}
+                            onChange={(e) =>
+                              setBulkCorrectionForm((prev) => ({
+                                ...prev,
+                                periodMonths: e.target.checked ? [...monthOptions] : [],
+                              }))
+                            }
                           />
-                          {month}
+                          Hepsini Sec
                         </label>
-                      );
-                    })}
-                  </div>
-                </label>
+
+                        {monthOptions.map((month) => {
+                          const checked = bulkCorrectionForm.periodMonths.includes(month);
+                          return (
+                            <label key={month} className="bulk-filter-option apartment-edit-select-item">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  setBulkCorrectionForm((prev) => {
+                                    const next = e.target.checked
+                                      ? [...prev.periodMonths, month]
+                                      : prev.periodMonths.filter((m) => m !== month);
+                                    return { ...prev, periodMonths: [...new Set(next)].sort((a, b) => a - b) };
+                                  });
+                                }}
+                              />
+                              Ay {month}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </details>
+                  </label>
+                </div>
 
                 <div className="compact-row">
                   <button className="btn btn-primary" type="submit" disabled={loading}>
@@ -12035,6 +12090,14 @@ function AdminPage() {
           element={
             <Suspense fallback={<LazyAdminPageFallback />}>
               <ApartmentChangeHistoryPage apartmentOptions={apartmentOptions} />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/apartments/passwords"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <ApartmentPasswordManagementPage />
             </Suspense>
           }
         />

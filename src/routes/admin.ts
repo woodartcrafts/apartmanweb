@@ -2685,9 +2685,9 @@ async function processBankStatementImport(params: {
     }
 
     const monthHints = new Set<number>();
-    for (const token of normalizedDescription.split(" ")) {
-      const monthNo = monthTokenToNumber.get(token);
-      if (monthNo) {
+    for (const [monthToken, monthNo] of monthTokenToNumber.entries()) {
+      const monthPattern = new RegExp(`(?:^|[^a-z])${monthToken}(?=$|[^a-z]|\\d)`, "g");
+      if (monthPattern.test(normalizedDescription)) {
         monthHints.add(monthNo);
       }
     }
@@ -2697,7 +2697,7 @@ async function processBankStatementImport(params: {
       return null;
     }
 
-    const yearMatch = normalizedDescription.match(/\b(20\d{2})\b/);
+    const yearMatch = normalizedDescription.match(/(?:^|[^\d])(20\d{2})(?=$|[^\d])/);
     const yearHint = yearMatch ? Number(yearMatch[1]) : null;
     const typeHints = detectChargeTypeHints(normalizedDescription);
 
@@ -2785,15 +2785,16 @@ async function processBankStatementImport(params: {
           continue;
         }
 
+        const infoDoorNo = detectedDoorNo && detectedDoorNo.trim().length > 0 ? detectedDoorNo.trim() : "-";
+        const infoAmount = Number(row.amount.toFixed(2)).toFixed(2);
+        const infoContextTag = `[DAIRE:${infoDoorNo} | TUTAR:${infoAmount}]`;
+
         if (reference) {
           if (paymentReferenceSet.has(reference)) {
             if (!isSplitPaymentRow) {
               skippedCount += 1;
               errors.push(`Satir ${rowNo}: Ayni dosyada tekrar referans (${reference})`);
               continue;
-            }
-            if (isSplitPaymentRow) {
-              infos.push(`Satir ${rowNo}: Bolunmus tahsilat satirinda ayni referans kabul edildi (${reference})`);
             }
           } else {
             paymentReferenceSet.add(reference);
@@ -2844,7 +2845,7 @@ async function processBankStatementImport(params: {
           });
 
           paymentCreatedCount += 1;
-          infos.push(`Satir ${rowNo}: Dairede acik borc yoktu, odeme dagitimsiz kaydedildi (${detectedDoorNo})`);
+          infos.push(`Satir ${rowNo}: Dairede acik borc yoktu, odeme dagitimsiz kaydedildi (${detectedDoorNo}) ${infoContextTag}`);
           continue;
         }
 
@@ -2861,9 +2862,6 @@ async function processBankStatementImport(params: {
           // Deterministic tie-breaker: close the oldest exact-matching debt first.
           orderedCharges = [exactCharges[0]];
           autoMatchHintReason = "EXACT_OLDEST_MATCH";
-          infos.push(
-            `Satir ${rowNo}: Birden fazla exact eslesmede en eski tahakkuk secildi (${detectedDoorNo})`
-          );
         }
 
         // Safety gate: when debt is multi-target and there is no unique exact match,
@@ -2877,45 +2875,84 @@ async function processBankStatementImport(params: {
             // Apply hinted candidates first but continue with remaining open debts for leftover amount.
             orderedCharges = [...hintedOrdered, ...remainingOrdered];
             autoMatchHintReason = hintedSelection.reason;
-            infos.push(
-              `Satir ${rowNo}: Aciklama ipucuyla otomatik eslestirme uygulandi (${detectedDoorNo}) [${hintedSelection.reason}]`
-            );
           }
 
           if (!hintedSelection) {
-          const method = row.paymentMethod ?? derivePaymentMethod(row.txType);
-          const noteParts = [
-            reference ? `BANK_REF:${reference}` : undefined,
-            row.description ? `BANK_DESC:${row.description}` : undefined,
-            detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
-            `UNAPPLIED:MANUAL_REVIEW:NO_EXACT_MATCH:${openCharges.length}`,
-          ].filter(Boolean) as string[];
+            const method = row.paymentMethod ?? derivePaymentMethod(row.txType);
+            let remainingToAllocate = paymentAmount;
+            const provisionalItems: Array<{ chargeId: string; amount: number }> = [];
+            const provisionalClosedChargeIds: string[] = [];
 
-          await prisma.payment.create({
-            data: {
-              importBatchId: batch.id,
-              paidAt: row.occurredAt,
-              method,
-              note: noteParts.join(" | "),
-              totalAmount: paymentAmount,
-              createdById: uploadedById,
-            },
-          });
+            // Manual-review rows are still pre-allocated to the detected apartment so they are visible in correction flows.
+            for (const charge of openCharges) {
+              if (remainingToAllocate <= 0.0001) {
+                break;
+              }
 
-          paymentCreatedCount += 1;
-          const manualReviewDoor = detectedDoorNo && detectedDoorNo.trim().length > 0 ? detectedDoorNo.trim() : "-";
-          const manualReviewAmount = paymentAmount.toFixed(2);
-          infos.push(
-            `Satir ${rowNo}: Birden fazla acik borc bulundu ve exact eslesme yok, odeme manuel incelemeye birakildi (${manualReviewDoor}) [DAIRE:${manualReviewDoor} | TUTAR:${manualReviewAmount}]`
-          );
-          continue;
+              const allocate = Math.min(remainingToAllocate, charge.remaining);
+              if (allocate > 0.0001) {
+                provisionalItems.push({ chargeId: charge.chargeId, amount: Number(allocate.toFixed(2)) });
+                remainingToAllocate = Number((remainingToAllocate - allocate).toFixed(2));
+                charge.remaining = Number((charge.remaining - allocate).toFixed(2));
+                if (charge.remaining <= 0.0001 && !charge.closedInImport) {
+                  charge.closedInImport = true;
+                  provisionalClosedChargeIds.push(charge.chargeId);
+                }
+              }
+            }
+
+            const noteParts = [
+              reference ? `BANK_REF:${reference}` : undefined,
+              row.description ? `BANK_DESC:${row.description}` : undefined,
+              detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
+              `UNAPPLIED:MANUAL_REVIEW:NO_EXACT_MATCH:${openCharges.length}`,
+              "MANUAL_REVIEW:PREALLOCATED_TO_APARTMENT",
+            ].filter(Boolean) as string[];
+
+            const lockedNote = withManualReconcileLock(noteParts.join(" | "), true);
+
+            await prisma.$transaction(async (tx) => {
+              const payment = await tx.payment.create({
+                data: {
+                  importBatchId: batch.id,
+                  paidAt: row.occurredAt,
+                  method,
+                  note: lockedNote,
+                  totalAmount: paymentAmount,
+                  createdById: uploadedById,
+                },
+              });
+
+              if (provisionalItems.length > 0) {
+                await tx.paymentItem.createMany({
+                  data: provisionalItems.map((item) => ({
+                    paymentId: payment.id,
+                    chargeId: item.chargeId,
+                    amount: item.amount,
+                  })),
+                });
+              }
+
+              if (provisionalClosedChargeIds.length > 0) {
+                await tx.charge.updateMany({
+                  where: {
+                    id: { in: provisionalClosedChargeIds },
+                    status: "OPEN",
+                  },
+                  data: {
+                    status: "CLOSED",
+                    closedAt: new Date(),
+                  },
+                });
+              }
+            });
+
+            paymentCreatedCount += 1;
+            infos.push(
+              `Satir ${rowNo}: Birden fazla acik borc bulundu ve exact eslesme yok, odeme daireye on dagitildi ve manuel incelemeye birakildi (${infoDoorNo}) ${infoContextTag}`
+            );
+            continue;
           }
-        }
-
-        if (openCharges.length > 1 && exactCharges.length === 0 && safelyCoversAllOpenDebt) {
-          infos.push(
-            `Satir ${rowNo}: Odeme acik borcun tamamini karsiladi, tum acik tahakkuklar kapatildi (${detectedDoorNo})`
-          );
         }
 
         let remainingToAllocate = paymentAmount;
@@ -2992,7 +3029,7 @@ async function processBankStatementImport(params: {
         paymentCreatedCount += 1;
         if (remainingToAllocate > 0.01) {
           infos.push(
-            `Satir ${rowNo}: Odeme acik borcu asti, ${remainingToAllocate.toFixed(2)} tutar dagitimsiz birakildi (${detectedDoorNo})`
+            `Satir ${rowNo}: Odeme acik borcu asti, ${remainingToAllocate.toFixed(2)} tutar dagitimsiz birakildi (${detectedDoorNo}) ${infoContextTag}`
           );
         }
         continue;
@@ -3804,6 +3841,9 @@ router.post("/charges/bulk", async (req, res) => {
     dueDateByMonth: z.record(z.string().datetime()).optional(),
     description: z.string().optional(),
     apartmentType: z.nativeEnum(ApartmentType).optional(),
+    apartmentClassId: z.string().min(1).optional(),
+    apartmentDutyId: z.string().min(1).optional(),
+    occupancyType: z.nativeEnum(OccupancyType).optional(),
     apartmentIds: z.array(z.string().min(1)).max(500).optional(),
     amount: z.number().positive().optional(),
     amountByType: z
@@ -3829,6 +3869,9 @@ router.post("/charges/bulk", async (req, res) => {
     dueDateByMonth,
     description,
     apartmentType,
+    apartmentClassId,
+    apartmentDutyId,
+    occupancyType,
     apartmentIds,
     amount,
     amountByType,
@@ -3874,6 +3917,9 @@ router.post("/charges/bulk", async (req, res) => {
 
   const apartmentWhere: Prisma.ApartmentWhereInput = {
     ...(apartmentType ? { type: apartmentType } : {}),
+    ...(apartmentClassId ? { apartmentClassId } : {}),
+    ...(apartmentDutyId ? { apartmentDutyId } : {}),
+    ...(occupancyType ? { occupancyType } : {}),
     ...(apartmentIds?.length ? { id: { in: apartmentIds } } : {}),
   };
 

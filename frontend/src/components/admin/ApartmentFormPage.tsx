@@ -3,14 +3,12 @@ import type { FormEvent } from "react";
 import { useLocation } from "react-router-dom";
 import {
   apiBase,
-  formatDateTimeTr,
   type ApartmentClassDefinition,
   type ApartmentDutyDefinition,
   type ApartmentOption,
   type ApartmentType,
   type BlockDefinition,
   type OccupancyType,
-  type ResidentPasswordHistoryRow,
 } from "../../app/shared";
 
 type ApartmentFormState = {
@@ -83,13 +81,6 @@ export function ApartmentFormPage() {
   const [editingApartmentId, setEditingApartmentId] = useState<string | null>(null);
   const [editingApartmentIds, setEditingApartmentIds] = useState<string[]>([]);
   const [formState, setFormState] = useState<ApartmentFormState>(initialFormState);
-  const [passwordDraftByUserId, setPasswordDraftByUserId] = useState<Record<string, string>>({});
-  const [passwordSavingUserId, setPasswordSavingUserId] = useState<string | null>(null);
-  const [passwordHistoryByApartmentId, setPasswordHistoryByApartmentId] = useState<
-    Record<string, ResidentPasswordHistoryRow[]>
-  >({});
-  const [passwordHistoryLoadingApartmentId, setPasswordHistoryLoadingApartmentId] = useState<string | null>(null);
-  const [passwordHistoryErrorByApartmentId, setPasswordHistoryErrorByApartmentId] = useState<Record<string, string>>({});
 
   const isEditRoute = location.pathname.endsWith("/apartments/edit");
 
@@ -112,16 +103,14 @@ export function ApartmentFormPage() {
       editingApartmentIds
         .map((id) => {
           const apt = apartmentOptions.find((x) => x.id === id);
-          return apt ? `${apt.blockName}/${apt.doorNo}` : null;
+          return apt
+            ? { key: `${apt.blockName}/${apt.doorNo}`, label: `${apt.blockName}/${apt.doorNo}`, name: apt.ownerFullName ?? "Adsiz" }
+            : null;
         })
-        .filter((x): x is string => Boolean(x)),
+        .filter((x): x is { key: string; label: string; name: string } => Boolean(x)),
     [apartmentOptions, editingApartmentIds]
   );
 
-  const selectedApartments = useMemo(
-    () => apartmentOptions.filter((x) => editingApartmentIds.includes(x.id)),
-    [apartmentOptions, editingApartmentIds]
-  );
   const allApartmentsSelected = apartmentOptions.length > 0 && editingApartmentIds.length === apartmentOptions.length;
 
   useEffect(() => {
@@ -218,17 +207,14 @@ export function ApartmentFormPage() {
   }
 
   function resetCreateMode(notify = false): void {
-    const firstActiveClass = apartmentClassOptions.find((x) => x.isActive) ?? apartmentClassOptions[0];
-    const firstActiveDuty = apartmentDutyOptions.find((x) => x.isActive) ?? apartmentDutyOptions[0];
-
     setEditingApartmentId(null);
     setEditingApartmentIds([]);
     setWarnings([]);
     setFormState({
       ...initialFormState,
       blockName: blockOptions[0]?.name ?? "",
-      apartmentClassId: firstActiveClass?.id ?? "",
-      apartmentDutyId: firstActiveDuty?.id ?? "",
+      apartmentClassId: "",
+      apartmentDutyId: "",
     });
 
     if (notify) {
@@ -283,7 +269,6 @@ export function ApartmentFormPage() {
     const sorted = [...data].sort((a, b) => a.name.localeCompare(b.name, "tr"));
     setApartmentClassOptions(sorted);
 
-    const firstActive = sorted.find((x) => x.isActive) ?? sorted[0];
     setFormState((prev) => {
       if (prev.apartmentClassId) {
         const exists = sorted.some((x) => x.id === prev.apartmentClassId);
@@ -294,7 +279,7 @@ export function ApartmentFormPage() {
 
       return {
         ...prev,
-        apartmentClassId: firstActive?.id ?? "",
+        apartmentClassId: "",
       };
     });
   }, [adminRequest]);
@@ -304,7 +289,6 @@ export function ApartmentFormPage() {
     const sorted = [...data].sort((a, b) => a.name.localeCompare(b.name, "tr"));
     setApartmentDutyOptions(sorted);
 
-    const firstActive = sorted.find((x) => x.isActive) ?? sorted[0];
     setFormState((prev) => {
       if (prev.apartmentDutyId) {
         const exists = sorted.some((x) => x.id === prev.apartmentDutyId);
@@ -315,7 +299,7 @@ export function ApartmentFormPage() {
 
       return {
         ...prev,
-        apartmentDutyId: firstActive?.id ?? "",
+        apartmentDutyId: "",
       };
     });
   }, [adminRequest]);
@@ -336,23 +320,6 @@ export function ApartmentFormPage() {
       setLoading(false);
     }
   }, [fetchApartmentClassOptions, fetchApartmentDutyOptions, fetchApartmentOptions, fetchBlockOptions]);
-
-  useEffect(() => {
-    const selectedResidents = selectedApartments.flatMap((apartment) => apartment.residentUsers);
-    if (selectedResidents.length === 0) {
-      return;
-    }
-
-    setPasswordDraftByUserId((prev) => {
-      const next = { ...prev };
-      for (const resident of selectedResidents) {
-        if (!next[resident.id]) {
-          next[resident.id] = "";
-        }
-      }
-      return next;
-    });
-  }, [selectedApartments]);
 
   useEffect(() => {
     void loadAllOptions();
@@ -520,77 +487,17 @@ export function ApartmentFormPage() {
     }
   }
 
-  async function setResidentPassword(apartmentId: string, userId: string): Promise<void> {
-    const password = (passwordDraftByUserId[userId] ?? "").trim();
-    if (!password) {
-      setMessage("Sifre bos olamaz");
-      return;
-    }
-
-    setPasswordSavingUserId(userId);
-    try {
-      await adminRequest(`/api/admin/apartments/${apartmentId}/resident-password`, {
-        method: "POST",
-        payload: {
-          userId,
-          password,
-        },
-      });
-
-      await loadAllOptions();
-      setMessage("Resident sifresi guncellendi");
-    } catch (err) {
-      console.error(err);
-      setMessage(err instanceof Error ? err.message : "Resident sifresi guncellenemedi");
-    } finally {
-      setPasswordSavingUserId(null);
-    }
-  }
-
-  async function togglePasswordHistory(apartmentId: string): Promise<void> {
-    if (passwordHistoryByApartmentId[apartmentId]) {
-      setPasswordHistoryByApartmentId((prev) => {
-        const next = { ...prev };
-        delete next[apartmentId];
-        return next;
-      });
-      return;
-    }
-
-    setPasswordHistoryLoadingApartmentId(apartmentId);
-    setPasswordHistoryErrorByApartmentId((prev) => ({ ...prev, [apartmentId]: "" }));
-    try {
-      const rows = await adminRequest<ResidentPasswordHistoryRow[]>(
-        `/api/admin/apartments/${apartmentId}/resident-password-history`
-      );
-      setPasswordHistoryByApartmentId((prev) => ({
-        ...prev,
-        [apartmentId]: rows,
-      }));
-    } catch (err) {
-      console.error(err);
-      setPasswordHistoryErrorByApartmentId((prev) => ({
-        ...prev,
-        [apartmentId]: err instanceof Error ? err.message : "Sifre gecmisi alinamadi",
-      }));
-    } finally {
-      setPasswordHistoryLoadingApartmentId(null);
-    }
-  }
-
   return (
     <form
       className={`card admin-form apartment-form-grid apartment-form-surface ${isEditRoute ? "apartment-form-edit" : "apartment-form-create"}`}
       onSubmit={onSubmit}
     >
       {saveNotice && (
-        <div className="blocking-modal" role="status" aria-live="polite" aria-busy="false">
-          <div className="blocking-modal-card save-notice-modal-card">
-            <div className="save-notice-icon" aria-hidden="true">
-              ✓
-            </div>
-            <h3>Islem Tamamlandi</h3>
-            <p className="small">{saveNotice}</p>
+        <div className="apt-toast" role="status" aria-live="polite" aria-atomic="true">
+          <div className="apt-toast-icon" aria-hidden="true">✓</div>
+          <div className="apt-toast-body">
+            <strong>Islem Tamamlandi</strong>
+            <span>{saveNotice}</span>
           </div>
         </div>
       )}
@@ -598,6 +505,7 @@ export function ApartmentFormPage() {
       {isEditRoute && (
         <>
           <h3>Daire Degistir</h3>
+          <div className="apartment-edit-header-row">
           <label>
             Duzenlenecek Daire
             <details className="filter-dropdown apartment-edit-select-dropdown">
@@ -678,14 +586,16 @@ export function ApartmentFormPage() {
             <div className="selected-apartments-strip">
               <span className="small">Secili daireler:</span>
               <div className="selected-apartments-chip-row" title={selectedApartmentText}>
-                {selectedApartmentLabels.map((label) => (
-                  <span key={label} className="selected-apartments-chip">
-                    {label}
+                {selectedApartmentLabels.map((item) => (
+                  <span key={item.key} className="selected-apartments-chip">
+                    <span className="selected-apartments-chip-door">{item.label}</span>
+                    <span className="selected-apartments-chip-name">{item.name}</span>
                   </span>
                 ))}
               </div>
             </div>
           )}
+          </div>
           {!editingApartmentId && <p className="small">Kayit degistirmek icin once daire secin.</p>}
         </>
       )}
@@ -720,114 +630,9 @@ export function ApartmentFormPage() {
         </div>
       )}
 
-      {isEditRoute && editingApartmentIds.length > 0 && (
-        <div className="card table-card">
-          <h3>Resident Sifre Karti</h3>
-          {selectedApartments.map((apartment) => {
-            const historyRows = passwordHistoryByApartmentId[apartment.id] ?? null;
-            return (
-              <div key={apartment.id} className="card compact-row-top-gap">
-                {apartment.residentUsers.length === 0 ? (
-                  <p className="small">Bu daireye bagli resident kullanici yok.</p>
-                ) : (
-                  <div className="guide-list compact-row-top-gap resident-password-list">
-                    {apartment.residentUsers.map((resident) => (
-                      <article key={resident.id} className="card resident-password-row">
-                        <p className="small resident-password-apartment">
-                          <b>
-                            {apartment.blockName}/{apartment.doorNo}
-                          </b>
-                        </p>
-                        <div className="resident-password-history-action">
-                          <button className="btn btn-ghost" type="button" onClick={() => void togglePasswordHistory(apartment.id)}>
-                            {historyRows ? "Gecmisi Gizle" : "Sifre Gecmisi"}
-                          </button>
-                        </div>
-                        <p className="small resident-password-user">
-                          <b>{resident.fullName}</b> ({resident.email})
-                        </p>
-                        <input
-                          className="resident-password-input"
-                          type="text"
-                          value={passwordDraftByUserId[resident.id] ?? ""}
-                          onChange={(e) =>
-                            setPasswordDraftByUserId((prev) => ({
-                              ...prev,
-                              [resident.id]: e.target.value,
-                            }))
-                          }
-                          placeholder="Resident sifresi"
-                        />
-                        <div className="admin-row resident-password-action">
-                          <button
-                            type="button"
-                            className="btn btn-primary"
-                            disabled={passwordSavingUserId === resident.id}
-                            onClick={() => void setResidentPassword(apartment.id, resident.id)}
-                          >
-                            {passwordSavingUserId === resident.id ? "Kaydediliyor..." : "Sifreyi Kaydet"}
-                          </button>
-                        </div>
-                        <p className="small resident-password-meta">
-                          Son degisim: {resident.lastPasswordChangedAt ? formatDateTimeTr(resident.lastPasswordChangedAt) : "-"}
-                          {resident.lastPasswordChangedByName ? ` | ${resident.lastPasswordChangedByName}` : ""}
-                        </p>
-                      </article>
-                    ))}
-                  </div>
-                )}
-
-                {passwordHistoryLoadingApartmentId === apartment.id && (
-                  <p className="small">Sifre gecmisi yukleniyor...</p>
-                )}
-                {passwordHistoryErrorByApartmentId[apartment.id] && (
-                  <p className="small">{passwordHistoryErrorByApartmentId[apartment.id]}</p>
-                )}
-
-                {historyRows && (
-                  <div className="table-wrap compact-row-top-gap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Tarih</th>
-                          <th>Resident</th>
-                          <th>Sifre</th>
-                          <th>Sebep</th>
-                          <th>Degistiren</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {historyRows.map((row) => (
-                          <tr key={row.id}>
-                            <td>{formatDateTimeTr(row.changedAt)}</td>
-                            <td>
-                              {row.userFullName} ({row.userEmail})
-                            </td>
-                            <td>Gizli</td>
-                            <td>{row.reason}</td>
-                            <td>{row.changedByName ? `${row.changedByName} (${row.changedByEmail ?? "-"})` : "Sistem"}</td>
-                          </tr>
-                        ))}
-                        {historyRows.length === 0 && (
-                          <tr>
-                            <td colSpan={5} className="empty">
-                              Sifre gecmisi yok
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       <section className="apartment-form-section">
         <div className="apartment-form-section-head">
-          <h4>Temel Bilgiler</h4>
+          <h4>🏢 Temel Bilgiler</h4>
           <p className="small">Dairenin kimlik ve durum bilgileri</p>
         </div>
         <div className="apartment-form-fields">
@@ -935,7 +740,7 @@ export function ApartmentFormPage() {
 
       <section className="apartment-form-section">
         <div className="apartment-form-section-head">
-          <h4>Iletisim</h4>
+          <h4>📞 Iletisim</h4>
           <p className="small">Birincil ve alternatif iletisim kanallari</p>
         </div>
         <div className="apartment-form-fields">
@@ -970,7 +775,7 @@ export function ApartmentFormPage() {
       {formState.occupancyType === "TENANT" && (
         <section className="apartment-form-section apartment-form-tenant-section">
           <div className="apartment-form-section-head">
-            <h4>Ev Sahibi Bilgisi</h4>
+            <h4>🏠 Ev Sahibi Bilgisi</h4>
             <p className="small">Kiraci secildiginde doldurulur</p>
           </div>
           <div className="apartment-form-fields">
@@ -1005,7 +810,7 @@ export function ApartmentFormPage() {
 
       <section className="apartment-form-section apartment-form-feature-section">
         <div className="apartment-form-section-head">
-          <h4>Hizmet ve Islem Ozellikleri</h4>
+          <h4>✅ Hizmet ve Islem Ozellikleri</h4>
           <p className="small">Daireye uygulanacak hareket tiplerini secin</p>
         </div>
         <div className="apartment-feature-grid">

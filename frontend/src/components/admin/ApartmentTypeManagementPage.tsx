@@ -202,14 +202,16 @@ export function ApartmentTypeManagementPage({
         onSubmit={onSubmit}
       >
         <h3>{editingId ? "Daire Tipi Degistir" : "Daire Tipi Ekle"}</h3>
-        <label>
-          Kod
-          <input name="code" defaultValue={formState.code} placeholder="BUYUK" required />
-        </label>
-        <label>
-          Ad
-          <input name="name" defaultValue={formState.name} placeholder="Buyuk Daire" required />
-        </label>
+        <div className="apartment-class-form-inline">
+          <label>
+            Kod
+            <input name="code" defaultValue={formState.code} placeholder="BUYUK" required />
+          </label>
+          <label>
+            Ad
+            <input name="name" defaultValue={formState.name} placeholder="Buyuk Daire" required />
+          </label>
+        </div>
         <label className="checkbox-row">
           <input name="isActive" type="checkbox" defaultChecked={formState.isActive} />
           Aktif

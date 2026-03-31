@@ -38,28 +38,30 @@ export function PaymentMethodManagementPage({
     <section className="dashboard compact-management-page">
       <form className="card admin-form" onSubmit={onSubmitPaymentMethod}>
         <h3>{editingPaymentMethodId ? "Tahsilat Tipi Degistir" : "Tahsilat Tipi Ekle"}</h3>
-        <label>
-          Kod
-          <select
-            value={paymentMethodForm.code}
-            onChange={(e) => setPaymentMethodForm((prev) => ({ ...prev, code: e.target.value as PaymentMethod }))}
-          >
-            {paymentMethodEnumOptions.map((code) => (
-              <option key={code} value={code}>
-                {code}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Ad
-          <input
-            value={paymentMethodForm.name}
-            onChange={(e) => setPaymentMethodForm((prev) => ({ ...prev, name: e.target.value }))}
-            placeholder="Banka Havalesi"
-            required
-          />
-        </label>
+        <div className="apartment-class-form-inline">
+          <label>
+            Kod
+            <select
+              value={paymentMethodForm.code}
+              onChange={(e) => setPaymentMethodForm((prev) => ({ ...prev, code: e.target.value as PaymentMethod }))}
+            >
+              {paymentMethodEnumOptions.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Ad
+            <input
+              value={paymentMethodForm.name}
+              onChange={(e) => setPaymentMethodForm((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder="Banka Havalesi"
+              required
+            />
+          </label>
+        </div>
         <label className="checkbox-row">
           <input
             type="checkbox"

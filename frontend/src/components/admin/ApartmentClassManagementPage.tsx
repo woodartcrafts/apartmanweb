@@ -197,24 +197,26 @@ export function ApartmentClassManagementPage({
 
       <form className="card admin-form" onSubmit={onSubmit}>
         <h3>{editingId ? "Daire Sinifi Degistir" : "Daire Sinifi Ekle"}</h3>
-        <label>
-          Kod
-          <input
-            value={formState.code}
-            onChange={(e) => setFormState((prev) => ({ ...prev, code: e.target.value }))}
-            placeholder="VIP"
-            required
-          />
-        </label>
-        <label>
-          Ad
-          <input
-            value={formState.name}
-            onChange={(e) => setFormState((prev) => ({ ...prev, name: e.target.value }))}
-            placeholder="VIP Daire"
-            required
-          />
-        </label>
+        <div className="apartment-class-form-inline">
+          <label>
+            Kod
+            <input
+              value={formState.code}
+              onChange={(e) => setFormState((prev) => ({ ...prev, code: e.target.value }))}
+              placeholder="VIP"
+              required
+            />
+          </label>
+          <label>
+            Ad
+            <input
+              value={formState.name}
+              onChange={(e) => setFormState((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder="VIP Daire"
+              required
+            />
+          </label>
+        </div>
         <label className="checkbox-row">
           <input
             type="checkbox"

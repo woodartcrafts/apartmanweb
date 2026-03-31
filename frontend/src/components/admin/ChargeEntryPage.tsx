@@ -35,7 +35,7 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
 
   const [chargeEntries, setChargeEntries] = useState<ChargeEntryFormRow[]>([
     {
-      periodMonth: String(new Date().getMonth() + 1),
+      periodMonth: "",
       amount: "",
       dueDate: "",
       description: "",
@@ -47,6 +47,23 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
     apartmentValues.length > 0 && chargeForm.apartmentIds.length === apartmentValues.length;
   const firstActiveChargeTypeId = (chargeTypeOptions.find((x) => x.isActive) ?? chargeTypeOptions[0])?.id ?? "";
   const selectedChargeTypeId = chargeForm.chargeTypeId || firstActiveChargeTypeId;
+
+  function resetForm(): void {
+    setFormError("");
+    setChargeForm({
+      apartmentIds: [],
+      chargeTypeId: "",
+      periodYear: String(new Date().getFullYear()),
+    });
+    setChargeEntries([
+      {
+        periodMonth: "",
+        amount: "",
+        dueDate: "",
+        description: "",
+      },
+    ]);
+  }
 
   function getApartmentSelectionSummary(): string {
     if (chargeForm.apartmentIds.length === 0) {
@@ -62,7 +79,7 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
     setChargeEntries((prev) => [
       ...prev,
       {
-        periodMonth: String(new Date().getMonth() + 1),
+        periodMonth: "",
         amount: "",
         dueDate: "",
         description: "",
@@ -131,7 +148,7 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
 
     setChargeEntries([
       {
-        periodMonth: String(new Date().getMonth() + 1),
+        periodMonth: "",
         amount: "",
         dueDate: "",
         description: "",
@@ -140,153 +157,180 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
   }
 
   return (
-    <form className="card admin-form" onSubmit={(e) => void onSubmit(e)}>
+    <form className="card admin-form charge-entry-form-surface" onSubmit={(e) => void onSubmit(e)}>
       <h3>Tahakkuk Girisi</h3>
-      <div className="filter-dropdown-field charge-entry-apartment-filter">
-        <span>Daire No</span>
-        <details data-testid="charge-apartment-dropdown" className="filter-dropdown apartment-edit-select-dropdown">
-          <summary data-testid="charge-apartment-summary">{getApartmentSelectionSummary()}</summary>
-          <div className="filter-dropdown-panel apartment-edit-select-list">
-            <label className="bulk-filter-option apartment-edit-select-item">
-              <input
-                data-testid="charge-apartment-select-all"
-                type="checkbox"
-                checked={allApartmentsSelected}
-                onChange={(e) =>
-                  setChargeForm((prev) => ({
-                    ...prev,
-                    apartmentIds: e.target.checked ? apartmentValues : [],
-                  }))
-                }
-              />
-              Hepsini Sec
-            </label>
-            {apartmentOptions.map((apt) => {
-              const checked = chargeForm.apartmentIds.includes(apt.id);
-              return (
-                <label key={apt.id} className="bulk-filter-option apartment-edit-select-item">
+
+      <section className="charge-entry-form-section">
+        <div className="charge-entry-form-section-head">
+          <h4>🏢 Tahakkuk Hedefi</h4>
+          <p className="small">Daire secimi, yil ve tahakkuk tipi bilgileri</p>
+        </div>
+
+        <div className="charge-entry-top-row">
+          <div className="filter-dropdown-field charge-entry-apartment-filter">
+            <span>Daire No</span>
+            <details data-testid="charge-apartment-dropdown" className="filter-dropdown apartment-edit-select-dropdown">
+              <summary data-testid="charge-apartment-summary">{getApartmentSelectionSummary()}</summary>
+              <div className="filter-dropdown-panel apartment-edit-select-list">
+                <label className="bulk-filter-option apartment-edit-select-item">
                   <input
-                    data-testid="charge-apartment-option"
+                    data-testid="charge-apartment-select-all"
                     type="checkbox"
-                    checked={checked}
+                    checked={allApartmentsSelected}
                     onChange={(e) =>
                       setChargeForm((prev) => ({
                         ...prev,
-                        apartmentIds: e.target.checked
-                          ? [...prev.apartmentIds, apt.id]
-                          : prev.apartmentIds.filter((x) => x !== apt.id),
+                        apartmentIds: e.target.checked ? apartmentValues : [],
                       }))
                     }
                   />
-                  {apt.blockName} / {apt.doorNo} / {apt.type}
-                  {apt.ownerFullName ? ` / ${apt.ownerFullName}` : ""}
+                  Hepsini Sec
                 </label>
-              );
-            })}
+                {apartmentOptions.map((apt) => {
+                  const checked = chargeForm.apartmentIds.includes(apt.id);
+                  return (
+                    <label key={apt.id} className="bulk-filter-option apartment-edit-select-item">
+                      <input
+                        data-testid="charge-apartment-option"
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) =>
+                          setChargeForm((prev) => ({
+                            ...prev,
+                            apartmentIds: e.target.checked
+                              ? [...prev.apartmentIds, apt.id]
+                              : prev.apartmentIds.filter((x) => x !== apt.id),
+                          }))
+                        }
+                      />
+                      {apt.blockName} / {apt.doorNo} / {apt.type}
+                      {apt.ownerFullName ? ` / ${apt.ownerFullName}` : ""}
+                    </label>
+                  );
+                })}
+              </div>
+            </details>
           </div>
-        </details>
-      </div>
-      <div className="compact-row">
-        <label>
-          Yil
-          <input
-            data-testid="charge-period-year"
-            type="number"
-            value={chargeForm.periodYear}
-            onChange={(e) => setChargeForm((prev) => ({ ...prev, periodYear: e.target.value }))}
-            required
-          />
-        </label>
-      </div>
-      <label>
-        Tip
-        <select
-          data-testid="charge-type-select"
-          value={selectedChargeTypeId}
-          onChange={(e) => setChargeForm((prev) => ({ ...prev, chargeTypeId: e.target.value }))}
-          required
-        >
-          <option value="">Tahakkuk tipi seciniz</option>
-          {chargeTypeOptions
-            .filter((x) => x.isActive)
-            .map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.name} ({x.code})
-              </option>
-            ))}
-        </select>
-      </label>
-      <div className="card charge-entry-panel">
+
+          <label>
+            Yil
+            <input
+              data-testid="charge-period-year"
+              type="number"
+              value={chargeForm.periodYear}
+              onChange={(e) => setChargeForm((prev) => ({ ...prev, periodYear: e.target.value }))}
+              required
+            />
+          </label>
+
+          <label>
+            Tip
+            <select
+              data-testid="charge-type-select"
+              value={selectedChargeTypeId}
+              onChange={(e) => setChargeForm((prev) => ({ ...prev, chargeTypeId: e.target.value }))}
+              required
+            >
+              <option value="">Tahakkuk tipi seciniz</option>
+              {chargeTypeOptions
+                .filter((x) => x.isActive)
+                .map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name} ({x.code})
+                  </option>
+                ))}
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section className="charge-entry-form-section">
         <div className="charge-entry-header">
-          <h4 className="charge-entry-title">Tahakkuk Satirlari</h4>
+          <div>
+            <h4 className="charge-entry-title">🧾 Tahakkuk Satirlari</h4>
+            <p className="small charge-entry-help">Ayni daire icin birden fazla ay, farkli son odeme tarihi ve farkli aciklama girebilirsin.</p>
+          </div>
           <button className="btn btn-ghost" type="button" onClick={addChargeEntry}>
             Satir Ekle
           </button>
         </div>
-        <p className="small charge-entry-help">Ayni daire icin birden fazla ay, farkli son odeme tarihi ve farkli aciklama girebilirsin.</p>
 
-        {chargeEntries.map((entry, index) => (
-          <div key={`${index}-${entry.periodMonth}`} className="card charge-entry-row-card">
-            <div className="charge-entry-row-head">
-              <strong>Satir {index + 1}</strong>
-              <button className="btn btn-danger" type="button" onClick={() => removeChargeEntry(index)} disabled={chargeEntries.length <= 1}>
-                Sil
-              </button>
+        <div className="card charge-entry-panel">
+          {chargeEntries.map((entry, index) => (
+            <div key={`${index}-${entry.periodMonth}`} className="card charge-entry-row-card">
+              <div className="charge-entry-row-fields">
+                <label>
+                  Ay
+                  <select
+                    data-testid={`charge-row-${index}-month`}
+                    value={entry.periodMonth}
+                    onChange={(e) => updateChargeEntry(index, "periodMonth", e.target.value)}
+                    required
+                  >
+                    <option value="">Ay seciniz</option>
+                    {Array.from({ length: 12 }, (_, i) => {
+                      const month = String(i + 1);
+                      return (
+                        <option key={month} value={month}>
+                          {month}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+                <label>
+                  Tutar
+                  <input
+                    data-testid={`charge-row-${index}-amount`}
+                    type="number"
+                    step="0.01"
+                    value={entry.amount}
+                    onChange={(e) => updateChargeEntry(index, "amount", e.target.value)}
+                    required
+                  />
+                </label>
+
+                <label>
+                  Son Odeme Tarihi
+                  <input
+                    data-testid={`charge-row-${index}-due-date`}
+                    type="date"
+                    value={entry.dueDate}
+                    onChange={(e) => updateChargeEntry(index, "dueDate", e.target.value)}
+                    required
+                  />
+                </label>
+
+                <label>
+                  Aciklama
+                  <input
+                    data-testid={`charge-row-${index}-description`}
+                    value={entry.description}
+                    onChange={(e) => updateChargeEntry(index, "description", e.target.value)}
+                    placeholder="Opsiyonel"
+                  />
+                </label>
+
+                <div className="charge-entry-row-delete">
+                  <button className="btn btn-danger" type="button" onClick={() => removeChargeEntry(index)} disabled={chargeEntries.length <= 1}>
+                    Sil
+                  </button>
+                </div>
+              </div>
             </div>
+          ))}
+        </div>
+      </section>
 
-            <div className="compact-row">
-              <label>
-                Ay
-                <input
-                  data-testid={`charge-row-${index}-month`}
-                  type="number"
-                  min={1}
-                  max={12}
-                  value={entry.periodMonth}
-                  onChange={(e) => updateChargeEntry(index, "periodMonth", e.target.value)}
-                  required
-                />
-              </label>
-              <label>
-                Tutar
-                <input
-                  data-testid={`charge-row-${index}-amount`}
-                  type="number"
-                  step="0.01"
-                  value={entry.amount}
-                  onChange={(e) => updateChargeEntry(index, "amount", e.target.value)}
-                  required
-                />
-              </label>
-            </div>
-
-            <label>
-              Son Odeme Tarihi
-              <input
-                data-testid={`charge-row-${index}-due-date`}
-                type="date"
-                value={entry.dueDate}
-                onChange={(e) => updateChargeEntry(index, "dueDate", e.target.value)}
-                required
-              />
-            </label>
-
-            <label>
-              Aciklama
-              <input
-                data-testid={`charge-row-${index}-description`}
-                value={entry.description}
-                onChange={(e) => updateChargeEntry(index, "description", e.target.value)}
-                placeholder="Opsiyonel"
-              />
-            </label>
-          </div>
-        ))}
-      </div>
       {formError ? <p className="small-error">{formError}</p> : null}
-      <button data-testid="charge-submit" className="btn btn-primary" type="submit" disabled={loading}>
-        Tahakkuk Kaydet
-      </button>
+      <div className="admin-row">
+        <button data-testid="charge-submit" className="btn btn-primary" type="submit" disabled={loading}>
+          Tahakkuk Kaydet
+        </button>
+        <button className="btn btn-ghost" type="button" onClick={resetForm} disabled={loading}>
+          Veriyi Temizle
+        </button>
+      </div>
     </form>
   );
 }
