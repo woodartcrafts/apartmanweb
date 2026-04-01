@@ -413,7 +413,7 @@ function AdminPage() {
   const [chargeTypeOptions, setChargeTypeOptions] = useState<ChargeTypeDefinition[]>([]);
   const [expenseItemOptions, setExpenseItemOptions] = useState<ExpenseItemDefinition[]>([]);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState<PaymentMethodDefinition[]>([]);
-  const [welcomeBuildingName, setWelcomeBuildingName] = useState("");
+  const [, setWelcomeBuildingName] = useState("");
   const [editingApartmentId, setEditingApartmentId] = useState<string | null>(null);
   const [editingApartmentIds, setEditingApartmentIds] = useState<string[]>([]);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
@@ -663,7 +663,6 @@ function AdminPage() {
   const [uploadBatchUploaders, setUploadBatchUploaders] = useState<UploadBatchUploader[]>([]);
   const [reportsSummary, setReportsSummary] = useState<ReportsSummaryResponse | null>(null);
   const [reportsSummaryLoading, setReportsSummaryLoading] = useState(false);
-  const [muafDetailPanel, setMuafDetailPanel] = useState<{ title: string; items: string[] } | null>(null);
   const [bankReconciliationFilter, setBankReconciliationFilter] = useState({ from: "", to: "" });
   const [bankReconciliationRows, setBankReconciliationRows] = useState<BankReconciliationRow[]>([]);
   const [bankReconciliationTotals, setBankReconciliationTotals] =
@@ -2831,9 +2830,7 @@ function AdminPage() {
               <button type="button" className="btn btn-ghost" onClick={() => selectAllBulkFilterValues(key)}>
                 Tumunu Sec
               </button>
-              <button type="button" className="btn btn-ghost" onClick={() => clearBulkFilterValues(key)}>
-                Temizle
-              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => clearBulkFilterValues(key)}>Temizle</button>
             </div>
             <div className="bulk-filter-options">
               {options.map((value) => (
@@ -2925,9 +2922,7 @@ function AdminPage() {
               <button type="button" className="btn btn-ghost" onClick={() => selectAllBankPreviewFilterValues(key)}>
                 Tumunu Sec
               </button>
-              <button type="button" className="btn btn-ghost" onClick={() => clearBankPreviewFilterValues(key)}>
-                Temizle
-              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => clearBankPreviewFilterValues(key)}>Temizle</button>
             </div>
             <div className="bulk-filter-options">
               {options.map((value) => (
@@ -3073,6 +3068,11 @@ function AdminPage() {
         setDoorMismatchLoading(false);
       }
     }
+  }
+
+  function clearDoorMismatchReport(): void {
+    setDoorMismatchRows([]);
+    setDoorMismatchTotals(null);
   }
 
   async function reconcileSelectedApartment(): Promise<void> {
@@ -3616,6 +3616,24 @@ function AdminPage() {
     }
   }
 
+  const filteredDescriptionDoorRules = useMemo(() => {
+    const selectedDoorNo = descriptionDoorRuleForm.doorNo.trim();
+    if (!selectedDoorNo) {
+      return descriptionDoorRules;
+    }
+
+    return descriptionDoorRules.filter((rule) => rule.doorNo === selectedDoorNo);
+  }, [descriptionDoorRules, descriptionDoorRuleForm.doorNo]);
+
+  const filteredDescriptionExpenseRules = useMemo(() => {
+    const selectedExpenseItemId = descriptionExpenseRuleForm.expenseItemId.trim();
+    if (!selectedExpenseItemId) {
+      return descriptionExpenseRules;
+    }
+
+    return descriptionExpenseRules.filter((rule) => rule.expenseItemId === selectedExpenseItemId);
+  }, [descriptionExpenseRules, descriptionExpenseRuleForm.expenseItemId]);
+
   function onClickEditDescriptionDoorRule(e: ReactMouseEvent<HTMLButtonElement>, rule: DescriptionDoorRule): void {
     e.preventDefault();
     e.stopPropagation();
@@ -3895,6 +3913,48 @@ function AdminPage() {
     } catch (err) {
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Gider raporu acilamadi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openReportForLatestBankMovement(
+    movement: ReportsSummaryResponse["latestBankMovements"][number]
+  ): Promise<void> {
+    const targetDate = isoToDateInput(movement.occurredAt);
+
+    setLoading(true);
+    try {
+      if (movement.movementType === "PAYMENT") {
+        const nextFilter = {
+          from: targetDate,
+          to: targetDate,
+          source: "BANK_STATEMENT_UPLOAD" as PaymentSourceFilter,
+        };
+
+        setPaymentListFilter(nextFilter);
+        navigate("/admin/payments/list");
+        await fetchPaymentList(nextFilter);
+        setMessage("Secilen banka tahsilati icin tahsilat raporu acildi");
+        return;
+      }
+
+      const nextExpenseFilter = {
+        from: targetDate,
+        to: targetDate,
+        sources: ["BANK_STATEMENT_UPLOAD"] as Array<Exclude<ExpenseSourceFilter, "">>,
+        expenseItemIds: [] as string[],
+      };
+
+      setExpenseReportFilter(nextExpenseFilter);
+      skipNextExpenseReportAutoRefreshRef.current = true;
+      setExpenseReportAutoRefreshEnabled(true);
+      navigate("/admin/expenses/report");
+      await fetchExpenseReport(nextExpenseFilter);
+      setMessage("Secilen banka gideri icin gider raporu acildi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Banka hareketi raporu acilamadi");
     } finally {
       setLoading(false);
     }
@@ -4191,7 +4251,6 @@ function AdminPage() {
     try {
       const data = await authorizedRequest<ReportsSummaryResponse>("/api/admin/reports/summary");
       setReportsSummary(data);
-      setMuafDetailPanel(null);
       if (!silent) {
         setMessage("Rapor ozeti guncellendi");
       }
@@ -5260,9 +5319,11 @@ function AdminPage() {
     setMessage(`Vadeli mevduat duzenleme modu: ${row.bankName}${row.branchName ? ` / ${row.branchName}` : ""}`);
   }
 
-  function cancelEditBankTermDeposit(): void {
-    resetBankTermDepositForm(bankTermDepositForm.bankId);
-    setMessage("Vadeli mevduat duzenleme iptal edildi");
+  function clearBankTermDepositEditor(): void {
+    resetBankTermDepositForm();
+    if (editingBankTermDepositId) {
+      setMessage("Vadeli mevduat duzenleme iptal edildi");
+    }
   }
 
   async function deleteBankTermDeposit(row: BankTermDepositRow): Promise<void> {
@@ -5621,6 +5682,14 @@ function AdminPage() {
     setEditingExpenseItemId(null);
     setExpenseItemForm({ code: "", name: "", isActive: true });
     setMessage("Gider kalemi duzenleme iptal edildi");
+  }
+
+  function clearExpenseItemForm(): void {
+    if (editingExpenseItemId) {
+      cancelEditExpenseItem();
+      return;
+    }
+    setExpenseItemForm({ code: "", name: "", isActive: true });
   }
 
   function startEditPaymentMethod(item: PaymentMethodDefinition): void {
@@ -7498,6 +7567,31 @@ function AdminPage() {
   }, []);
 
   useEffect(() => {
+    const onDocumentClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      const root = adminSubnavRef.current;
+      if (!root) {
+        return;
+      }
+
+      if (root.contains(target)) {
+        return;
+      }
+
+      closeAdminSubnavMenus();
+    };
+
+    document.addEventListener("click", onDocumentClick);
+    return () => {
+      document.removeEventListener("click", onDocumentClick);
+    };
+  }, []);
+
+  useEffect(() => {
     closeAdminSubnavMenus();
   }, [location.pathname, location.search]);
 
@@ -7865,42 +7959,7 @@ function AdminPage() {
       </div>
 
       <Routes>
-        <Route
-          path="/"
-          element={
-            <section className="dashboard">
-              <div className="card admin-welcome-card">
-                <div className="admin-welcome-layout">
-                  <div>
-                    <p className="admin-welcome-kicker">
-                      {welcomeBuildingName
-                        ? `${welcomeBuildingName} Yonetim Ekranina Hosgeldiniz`
-                        : "Apartman Yonetim Ekranina Hosgeldiniz"}
-                    </p>
-                    <h3>Admin Panel</h3>
-                    <p className="small">Bir islem secmek icin yukaridaki butonlardan birine tiklayin.</p>
-                  </div>
-                  <div className="admin-welcome-visual" aria-hidden="true">
-                    <div className="admin-welcome-building admin-welcome-building-main">
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                    </div>
-                    <div className="admin-welcome-building admin-welcome-building-side">
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-          }
-        />
+        <Route path="/" element={<Navigate to="/admin/reports" replace />} />
         <Route
           path="/reports"
           element={
@@ -8142,45 +8201,25 @@ function AdminPage() {
                           <span>Toplam Daire Sayisi</span>
                           <b>{reportsSummary.apartmentOverview.totalApartmentCount}</b>
 
-                          <span>Kucuk Daire</span>
-                          <b>{reportsSummary.apartmentOverview.kucukApartmentCount}</b>
+                          <span>Daire Tipi Dagilimi</span>
+                          <b>
+                            {`${reportsSummary.apartmentOverview.kucukApartmentCount}-Kucuk Daire | ${reportsSummary.apartmentOverview.buyukApartmentCount}-Buyuk Daire`}
+                          </b>
 
-                          <span>Buyuk Daire</span>
-                          <b>{reportsSummary.apartmentOverview.buyukApartmentCount}</b>
+                          <span>Daire Sinif Dagilimi</span>
+                          <b>
+                            {reportsSummary.apartmentOverview.apartmentClassBreakdown.length > 0
+                              ? reportsSummary.apartmentOverview.apartmentClassBreakdown
+                                  .map((item) => `${item.count}-${item.className}`)
+                                  .join(" | ")
+                              : `${reportsSummary.apartmentOverview.apartmentClassCount}-Sinifsiz`}
+                          </b>
 
-                          <span>Dogalgaz Muaf</span>
-                          <div className="apartment-overview-value-with-action">
-                            <b>{reportsSummary.apartmentOverview.dogalgazMuafCount}</b>
-                            <button
-                              type="button"
-                              className="apartment-overview-mini-btn"
-                              onClick={() =>
-                                setMuafDetailPanel({
-                                  title: "Dogalgaz Muaf Daireler",
-                                  items: reportsSummary.apartmentOverview.dogalgazMuafApartments,
-                                })
-                              }
-                            >
-                              Detay
-                            </button>
-                          </div>
+                          <span>Ev Sahibi</span>
+                          <b>{reportsSummary.apartmentOverview.ownerCount}</b>
 
-                          <span>Aidat Muaf</span>
-                          <div className="apartment-overview-value-with-action">
-                            <b>{reportsSummary.apartmentOverview.aidatMuafCount}</b>
-                            <button
-                              type="button"
-                              className="apartment-overview-mini-btn"
-                              onClick={() =>
-                                setMuafDetailPanel({
-                                  title: "Aidat Muaf Daireler",
-                                  items: reportsSummary.apartmentOverview.aidatMuafApartments,
-                                })
-                              }
-                            >
-                              Detay
-                            </button>
-                          </div>
+                          <span>Kiraci</span>
+                          <b>{reportsSummary.apartmentOverview.tenantCount}</b>
 
                           <span>Yoneticiler</span>
                           <div className="apartment-overview-list">
@@ -8200,25 +8239,6 @@ function AdminPage() {
                               : "-"}
                           </div>
                         </div>
-                        {muafDetailPanel && (
-                          <div className="apartment-overview-detail-panel">
-                            <div className="apartment-overview-detail-head">
-                              <strong>{muafDetailPanel.title}</strong>
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                onClick={() => setMuafDetailPanel(null)}
-                              >
-                                Kapat
-                              </button>
-                            </div>
-                            <div className="apartment-overview-list">
-                              {muafDetailPanel.items.length > 0
-                                ? muafDetailPanel.items.map((item) => <span key={`${muafDetailPanel.title}-${item}`}>{item}</span>)
-                                : "Kayit yok"}
-                            </div>
-                          </div>
-                        )}
                       </article>
 
                       <article className="card table-card reports-home-panel reports-home-banklog-card">
@@ -8229,7 +8249,20 @@ function AdminPage() {
                         <div className="reports-home-banklog-list compact-row-top-gap">
                           {reportsSummary.latestBankMovements.length > 0 ? (
                             reportsSummary.latestBankMovements.map((row) => (
-                                <div key={row.id} className="reports-home-banklog-item" title={row.description}>
+                                <div
+                                  key={row.id}
+                                  className="reports-home-banklog-item reports-home-banklog-item-clickable"
+                                  title={`${row.movementType === "PAYMENT" ? "Tahsilat" : "Gider"} - ${row.description}`}
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => void openReportForLatestBankMovement(row)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                      event.preventDefault();
+                                      void openReportForLatestBankMovement(row);
+                                    }
+                                  }}
+                                >
                                   <span className="reports-home-banklog-date">{formatDateTr(row.occurredAt)}</span>
                                   <span className="reports-home-banklog-amount">{formatTry(row.amount)}</span>
                                   <span className="reports-home-banklog-desc">{row.description}</span>
@@ -8698,9 +8731,7 @@ function AdminPage() {
                     >
                       {overduePaymentsLoading ? "Hesaplaniyor..." : "Calistir"}
                     </button>
-                    <button className="btn btn-ghost" type="button" onClick={clearOverduePaymentsFilters}>
-                      Temizle
-                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={clearOverduePaymentsFilters}>Temizle</button>
                   </div>
                 </div>
 
@@ -9020,9 +9051,7 @@ function AdminPage() {
                     >
                       {chargeConsistencyLoading ? "Hesaplaniyor..." : "▶ Calistir"}
                     </button>
-                    <button className="btn btn-ghost" type="button" onClick={clearChargeConsistencyFilters}>
-                      Temizle
-                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={clearChargeConsistencyFilters}>Temizle</button>
                   </div>
                 </div>
 
@@ -9234,9 +9263,7 @@ function AdminPage() {
                         className="btn btn-ghost cc-code-filter-btn"
                         type="button"
                         onClick={() => setChargeConsistencySelectedCodes([])}
-                      >
-                        Filtreyi Temizle
-                      </button>
+                      >Temizle</button>
                     </div>
                   </div>
                   <div className="cc-code-badges">
@@ -9433,9 +9460,7 @@ function AdminPage() {
                     >
                       {apartmentBalanceMatrixLoading ? "Hesaplaniyor..." : "Calistir"}
                     </button>
-                    <button className="btn btn-ghost" type="button" onClick={clearApartmentBalanceMatrixFilters}>
-                      Temizle
-                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={clearApartmentBalanceMatrixFilters}>Temizle</button>
                     <button className="btn btn-ghost" type="button" onClick={printApartmentBalanceMatrixReport}>
                       Yazdir
                     </button>
@@ -9607,9 +9632,7 @@ function AdminPage() {
                     >
                       {referenceSearchLoading ? "Araniyor..." : "Calistir"}
                     </button>
-                    <button className="btn btn-ghost" type="button" onClick={clearReferenceSearchFilters}>
-                      Temizle
-                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={clearReferenceSearchFilters}>Temizle</button>
                   </div>
                 </div>
 
@@ -9924,7 +9947,15 @@ function AdminPage() {
           element={
             <section className="dashboard compact-management-page">
               <form className="card admin-form" onSubmit={onSubmitChargeType}>
-                <h3>{editingChargeTypeId ? "Tahakkuk Tipi Degistir" : "Tahakkuk Tipi Ekle"}</h3>
+                <div className="section-head">
+                  <h3>{editingChargeTypeId ? "Tahakkuk Tipi Degistir" : "Tahakkuk Tipi Ekle"}</h3>
+                  <div className="admin-row">
+                    <button className="btn btn-primary" type="submit" disabled={loading}>
+                      {editingChargeTypeId ? "Degisiklikleri Kaydet" : "Tip Ekle"}
+                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={cancelEditChargeType}>Temizle</button>
+                  </div>
+                </div>
                 <div className="charge-type-form-inline">
                   <label>
                     Kod
@@ -9959,23 +9990,15 @@ function AdminPage() {
                       <option value="TENANT">Kiraci</option>
                     </select>
                   </label>
+                  <label className="checkbox-row charge-type-inline-active">
+                    <input
+                      type="checkbox"
+                      checked={chargeTypeForm.isActive}
+                      onChange={(e) => setChargeTypeForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+                    />
+                    Aktif
+                  </label>
                 </div>
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={chargeTypeForm.isActive}
-                    onChange={(e) => setChargeTypeForm((prev) => ({ ...prev, isActive: e.target.checked }))}
-                  />
-                  Aktif
-                </label>
-                <button className="btn btn-primary" type="submit" disabled={loading}>
-                  {editingChargeTypeId ? "Degisiklikleri Kaydet" : "Tip Ekle"}
-                </button>
-                {editingChargeTypeId && (
-                  <button className="btn btn-ghost" type="button" onClick={cancelEditChargeType}>
-                    Iptal
-                  </button>
-                )}
               </form>
 
               <div className="card table-card">
@@ -10531,9 +10554,7 @@ function AdminPage() {
                       type="button"
                       onClick={clearAllExpenseDistRows}
                       disabled={!expenseDistResult || expenseDistResult.rows.length === 0}
-                    >
-                      Temizle
-                    </button>
+                    >Temizle</button>
                     <button
                       className="btn btn-primary"
                       type="button"
@@ -10594,7 +10615,30 @@ function AdminPage() {
           element={
             <section className="dashboard">
               <form className="card admin-form" onSubmit={onBulkCorrectCharges}>
-                <h3>Toplu Tahakkuk Silme ve Duzeltme</h3>
+                <div className="section-head">
+                  <h3>Toplu Tahakkuk Silme ve Duzeltme</h3>
+                  <div className="admin-row">
+                    <button className="btn btn-primary" type="submit" disabled={loading}>
+                      Faturalari Listele
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      type="button"
+                      onClick={() => {
+                        setBulkCorrectionForm((prev) => ({
+                          ...prev,
+                          periodYear: "",
+                          periodMonths: [],
+                          chargeTypeId: "",
+                          accrualDateFrom: "",
+                          accrualDateTo: "",
+                        }));
+                        setDistributedInvoiceRows([]);
+                        setMessage("Filtreler temizlendi");
+                      }}
+                    >Temizle</button>
+                  </div>
+                </div>
                 <p className="small">
                   Faturalar tek satirda listelenir. Bir satiri sildiginizde o faturaya bagli tum dagitim tahakkuklari silinir.
                 </p>
@@ -10694,29 +10738,6 @@ function AdminPage() {
                   </label>
                 </div>
 
-                <div className="compact-row">
-                  <button className="btn btn-primary" type="submit" disabled={loading}>
-                    Faturalari Listele
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    onClick={() => {
-                      setBulkCorrectionForm((prev) => ({
-                        ...prev,
-                        periodYear: "",
-                        periodMonths: [],
-                        chargeTypeId: "",
-                        accrualDateFrom: "",
-                        accrualDateTo: "",
-                      }));
-                      setDistributedInvoiceRows([]);
-                      setMessage("Filtreler temizlendi");
-                    }}
-                  >
-                    Filtreyi Temizle
-                  </button>
-                </div>
               </form>
 
               <div className="card table-card">
@@ -10983,49 +11004,57 @@ function AdminPage() {
         <Route
           path="/expense-items"
           element={
-            <section className="dashboard compact-management-page">
-              <form className="card admin-form" onSubmit={onSubmitExpenseItem}>
-                <h3>{editingExpenseItemId ? "Gider Kalemi Degistir" : "Gider Kalemi Ekle"}</h3>
-                <label>
-                  Kod
-                  <input
-                    value={expenseItemForm.code}
-                    onChange={(e) => setExpenseItemForm((prev) => ({ ...prev, code: e.target.value }))}
-                    placeholder="MAAS"
-                    required
-                  />
-                </label>
-                <label>
-                  Ad
-                  <input
-                    value={expenseItemForm.name}
-                    onChange={(e) => setExpenseItemForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="Maas"
-                    required
-                  />
-                </label>
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={expenseItemForm.isActive}
-                    onChange={(e) => setExpenseItemForm((prev) => ({ ...prev, isActive: e.target.checked }))}
-                  />
-                  Aktif
-                </label>
-                <button className="btn btn-primary" type="submit" disabled={loading}>
-                  {editingExpenseItemId ? "Degisiklikleri Kaydet" : "Kalem Ekle"}
-                </button>
-                {editingExpenseItemId && (
-                  <button className="btn btn-ghost" type="button" onClick={cancelEditExpenseItem}>
-                    Iptal
-                  </button>
-                )}
+            <section className="dashboard compact-management-page expense-item-page">
+              <form className="card admin-form apartment-form-surface expense-item-form-surface" onSubmit={onSubmitExpenseItem}>
+                <div className="section-head">
+                  <h3>{editingExpenseItemId ? "Gider Kalemi Degistir" : "Gider Kalemi Ekle"}</h3>
+                  <div className="admin-row">
+                    <button className="btn btn-primary" type="submit" disabled={loading}>
+                      {editingExpenseItemId ? "Degisiklikleri Kaydet" : "Kalem Ekle"}
+                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={clearExpenseItemForm}>
+                      Temizle
+                    </button>
+                  </div>
+                </div>
+                <p className="small">Banka importu ve gider raporlari icin standart kalem tanimlarini yonetin.</p>
+                <div className="expense-item-form-row">
+                  <label>
+                    Kod
+                    <input
+                      value={expenseItemForm.code}
+                      onChange={(e) => setExpenseItemForm((prev) => ({ ...prev, code: e.target.value }))}
+                      placeholder="MAAS"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Ad
+                    <input
+                      value={expenseItemForm.name}
+                      onChange={(e) => setExpenseItemForm((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder="Maas"
+                      required
+                    />
+                  </label>
+                  <label className="checkbox-row expense-item-form-active">
+                    <input
+                      type="checkbox"
+                      checked={expenseItemForm.isActive}
+                      onChange={(e) => setExpenseItemForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+                    />
+                    Aktif
+                  </label>
+                </div>
               </form>
 
-              <div className="card table-card">
-                <h3>Gider Kalemi Listesi</h3>
+              <div className="card table-card expense-item-table-card">
+                <div className="section-head">
+                  <h3>Gider Kalemi Listesi</h3>
+                  <p className="small">Toplam {expenseItemOptions.length} kalem</p>
+                </div>
                 <div className="table-wrap">
-                  <table>
+                  <table className="expense-item-table">
                     <thead>
                       <tr>
                         <th>Kod</th>
@@ -11081,57 +11110,68 @@ function AdminPage() {
           path="/description-door-rules"
           element={
             <section className="dashboard compact-management-page">
-              <form ref={descriptionDoorRuleFormRef} className="card admin-form" onSubmit={onSubmitDescriptionDoorRule}>
-                <h3>{editingDescriptionDoorRuleId ? "Esleme Kurali Degistir" : "Aciklama-Daire Esleme Ekle"}</h3>
+              <form
+                ref={descriptionDoorRuleFormRef}
+                className="card admin-form description-door-rule-form"
+                onSubmit={onSubmitDescriptionDoorRule}
+              >
+                <div className="section-head">
+                  <h3>{editingDescriptionDoorRuleId ? "Esleme Kurali Degistir" : "Aciklama-Daire Esleme Ekle"}</h3>
+                  <div className="admin-row">
+                    <button className="btn btn-primary" type="submit" disabled={loading}>
+                      {editingDescriptionDoorRuleId ? "Degisiklikleri Kaydet" : "Kural Ekle"}
+                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={cancelEditDescriptionDoorRule}>Temizle</button>
+                  </div>
+                </div>
                 <p className="small">
                   Aciklamada bu metin varsa ve daire no bulunamazsa secilen daire no kullanilir.
                 </p>
-                <label>
-                  Daire No
-                  <select
-                    value={descriptionDoorRuleForm.doorNo}
-                    onChange={(e) => setDescriptionDoorRuleForm((prev) => ({ ...prev, doorNo: e.target.value }))}
-                    required
-                  >
-                    <option value="">Daire seciniz</option>
-                    {apartmentOptions.map((apt) => (
-                      <option key={apt.id} value={apt.doorNo}>
-                        {apt.blockName} {apt.doorNo} {apt.ownerFullName ? `- ${apt.ownerFullName}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Aciklama Anahtar Metni
-                  <input
-                    value={descriptionDoorRuleForm.keyword}
-                    onChange={(e) => setDescriptionDoorRuleForm((prev) => ({ ...prev, keyword: e.target.value }))}
-                    placeholder="HAKAN OYMAN"
-                    required
-                  />
-                </label>
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={descriptionDoorRuleForm.isActive}
-                    onChange={(e) =>
-                      setDescriptionDoorRuleForm((prev) => ({ ...prev, isActive: e.target.checked }))
-                    }
-                  />
-                  Aktif
-                </label>
-                <button className="btn btn-primary" type="submit" disabled={loading}>
-                  {editingDescriptionDoorRuleId ? "Degisiklikleri Kaydet" : "Kural Ekle"}
-                </button>
-                {editingDescriptionDoorRuleId && (
-                  <button className="btn btn-ghost" type="button" onClick={cancelEditDescriptionDoorRule}>
-                    Iptal
-                  </button>
-                )}
+                <div className="description-door-rule-inline compact-row-top-gap">
+                  <label>
+                    Daire No
+                    <select
+                      value={descriptionDoorRuleForm.doorNo}
+                      onChange={(e) => setDescriptionDoorRuleForm((prev) => ({ ...prev, doorNo: e.target.value }))}
+                      required
+                    >
+                      <option value="">Daire seciniz</option>
+                      {apartmentOptions.map((apt) => (
+                        <option key={apt.id} value={apt.doorNo}>
+                          {apt.blockName} {apt.doorNo} {apt.ownerFullName ? `- ${apt.ownerFullName}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Aciklama Anahtar Metni
+                    <input
+                      value={descriptionDoorRuleForm.keyword}
+                      onChange={(e) => setDescriptionDoorRuleForm((prev) => ({ ...prev, keyword: e.target.value }))}
+                      placeholder="HAKAN OYMAN"
+                      required
+                    />
+                  </label>
+                  <label className="checkbox-row description-door-rule-active">
+                    <input
+                      type="checkbox"
+                      checked={descriptionDoorRuleForm.isActive}
+                      onChange={(e) =>
+                        setDescriptionDoorRuleForm((prev) => ({ ...prev, isActive: e.target.checked }))
+                      }
+                    />
+                    Aktif
+                  </label>
+                </div>
               </form>
 
-              <div className="card table-card">
+              <div className="card table-card description-door-rule-list-card">
                 <h3>Aciklama-Daire Esleme Listesi</h3>
+                {descriptionDoorRuleForm.doorNo && (
+                  <p className="small">
+                    Filtre: {descriptionDoorRuleForm.doorNo} numarali daire kurallari gosteriliyor.
+                  </p>
+                )}
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -11143,7 +11183,7 @@ function AdminPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {[...descriptionDoorRules]
+                      {[...filteredDescriptionDoorRules]
                         .sort((a, b) => a.doorNo.localeCompare(b.doorNo, "tr", { numeric: true }))
                         .map((rule) => (
                         <tr key={rule.id}>
@@ -11168,10 +11208,10 @@ function AdminPage() {
                           </td>
                         </tr>
                       ))}
-                      {descriptionDoorRules.length === 0 && (
+                      {filteredDescriptionDoorRules.length === 0 && (
                         <tr>
                           <td colSpan={4} className="empty">
-                            Esleme kurali yok
+                            {descriptionDoorRuleForm.doorNo ? "Secilen daire icin esleme kurali yok" : "Esleme kurali yok"}
                           </td>
                         </tr>
                       )}
@@ -11191,7 +11231,15 @@ function AdminPage() {
                 className="card admin-form"
                 onSubmit={onSubmitDescriptionExpenseRule}
               >
-                <h3>{editingDescriptionExpenseRuleId ? "Gider Esleme Kurali Degistir" : "Aciklama-Gider Esleme Ekle"}</h3>
+                <div className="section-head">
+                  <h3>{editingDescriptionExpenseRuleId ? "Gider Esleme Kurali Degistir" : "Aciklama-Gider Esleme Ekle"}</h3>
+                  <div className="admin-row">
+                    <button className="btn btn-primary" type="submit" disabled={loading}>
+                      {editingDescriptionExpenseRuleId ? "Degisiklikleri Kaydet" : "Kural Ekle"}
+                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={cancelEditDescriptionExpenseRule}>Temizle</button>
+                  </div>
+                </div>
                 <p className="small">Aciklamada bu metin varsa gider kalemi otomatik secilir.</p>
                 <label>
                   Aciklama Anahtar Metni
@@ -11232,18 +11280,15 @@ function AdminPage() {
                   />
                   Aktif
                 </label>
-                <button className="btn btn-primary" type="submit" disabled={loading}>
-                  {editingDescriptionExpenseRuleId ? "Degisiklikleri Kaydet" : "Kural Ekle"}
-                </button>
-                {editingDescriptionExpenseRuleId && (
-                  <button className="btn btn-ghost" type="button" onClick={cancelEditDescriptionExpenseRule}>
-                    Iptal
-                  </button>
-                )}
               </form>
 
               <div className="card table-card">
                 <h3>Aciklama-Gider Esleme Listesi</h3>
+                {descriptionExpenseRuleForm.expenseItemId && (
+                  <p className="small">
+                    Filtre: secilen gider kalemine ait kurallar gosteriliyor.
+                  </p>
+                )}
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -11255,7 +11300,7 @@ function AdminPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {descriptionExpenseRules.map((rule) => (
+                      {filteredDescriptionExpenseRules.map((rule) => (
                         <tr key={rule.id}>
                           <td>{rule.keyword}</td>
                           <td>
@@ -11281,10 +11326,12 @@ function AdminPage() {
                           </td>
                         </tr>
                       ))}
-                      {descriptionExpenseRules.length === 0 && (
+                      {filteredDescriptionExpenseRules.length === 0 && (
                         <tr>
                           <td colSpan={4} className="empty">
-                            Gider esleme kurali yok
+                            {descriptionExpenseRuleForm.expenseItemId
+                              ? "Secilen gider kalemi icin esleme kurali yok"
+                              : "Gider esleme kurali yok"}
                           </td>
                         </tr>
                       )}
@@ -11533,9 +11580,7 @@ function AdminPage() {
                     type="button"
                     disabled={loading}
                     onClick={clearBankStatementScreenState}
-                  >
-                    Temizle
-                  </button>
+                  >Temizle</button>
                 </div>
               </form>
 
@@ -11732,9 +11777,7 @@ function AdminPage() {
                       type="button"
                       disabled={loading}
                       onClick={clearBankStatementScreenState}
-                    >
-                      Onizlemeyi Temizle
-                    </button>
+                    >Temizle</button>
                   </div>
                   {hasBankPreviewMissingRows && (
                     <p className="small small-error">
@@ -11963,9 +12006,7 @@ function AdminPage() {
                     >
                       {fractionalClosureLoading ? "Hazirlaniyor..." : "Calistir"}
                     </button>
-                    <button className="btn btn-ghost" type="button" onClick={clearFractionalClosureReport}>
-                      Temizle
-                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={clearFractionalClosureReport}>Temizle</button>
                   </div>
                 </div>
 
@@ -12176,10 +12217,35 @@ function AdminPage() {
         <Route
           path="/banks/term-deposits"
           element={
-            <section className="dashboard">
-              <form className="card admin-form" onSubmit={onSubmitBankTermDeposit}>
-                <h3>{editingBankTermDepositId ? "Vadeli Mevduat Degistir" : "Vadeli Mevduat Ekle"}</h3>
-                <div className="compact-row">
+            <section className="dashboard bank-term-deposit-page">
+              <form className="card admin-form bank-term-deposit-form-surface" onSubmit={onSubmitBankTermDeposit}>
+                <div className="section-head">
+                  <h3>{editingBankTermDepositId ? "Vadeli Mevduat Degistir" : "Vadeli Mevduat Ekle"}</h3>
+                  <div className="admin-row">
+                    <button className="btn btn-primary" type="submit" disabled={loading}>
+                      {editingBankTermDepositId ? "Degisiklikleri Kaydet" : "Vadeli Mevduat Ekle"}
+                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={clearBankTermDepositEditor} disabled={loading}>
+                      Temizle
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      type="button"
+                      onClick={() => void fetchBankTermDeposits()}
+                      disabled={bankTermDepositLoading || loading}
+                    >
+                      {bankTermDepositLoading ? "Yukleniyor..." : "Yenile"}
+                    </button>
+                  </div>
+                </div>
+
+                <section className="bank-term-deposit-form-section">
+                  <div className="bank-term-deposit-form-section-head">
+                    <h4>🏦 Banka ve Sube</h4>
+                    <p className="small">Kaydin bagli oldugu banka ve sube secimi</p>
+                  </div>
+
+                  <div className="compact-row">
                   <label>
                     Banka
                     <select
@@ -12216,9 +12282,16 @@ function AdminPage() {
                       ))}
                     </select>
                   </label>
-                </div>
+                  </div>
+                </section>
 
-                <div className="compact-row">
+                <section className="bank-term-deposit-form-section">
+                  <div className="bank-term-deposit-form-section-head">
+                    <h4>💰 Tutar ve Oranlar</h4>
+                    <p className="small">Ana para ve faiz/stopaj oranlarini girin</p>
+                  </div>
+
+                  <div className="compact-row">
                   <label>
                     Ana Para
                     <input
@@ -12253,9 +12326,16 @@ function AdminPage() {
                       required
                     />
                   </label>
-                </div>
+                  </div>
+                </section>
 
-                <div className="compact-row">
+                <section className="bank-term-deposit-form-section">
+                  <div className="bank-term-deposit-form-section-head">
+                    <h4>📅 Vade Bilgisi</h4>
+                    <p className="small">Baslangic, bitis tarihi ve durum bilgisi</p>
+                  </div>
+
+                  <div className="compact-row">
                   <label>
                     Baslangic Tarihi
                     <input
@@ -12282,35 +12362,24 @@ function AdminPage() {
                     />
                     Aktif
                   </label>
-                </div>
+                  </div>
+                </section>
 
-                <label>
-                  Not
-                  <textarea
-                    rows={2}
-                    value={bankTermDepositForm.notes}
-                    onChange={(e) => setBankTermDepositForm((prev) => ({ ...prev, notes: e.target.value }))}
-                  />
-                </label>
+                <section className="bank-term-deposit-form-section">
+                  <div className="bank-term-deposit-form-section-head">
+                    <h4>📝 Not</h4>
+                    <p className="small">Opsiyonel aciklama alani</p>
+                  </div>
 
-                <div className="admin-row">
-                  <button className="btn btn-primary" type="submit" disabled={loading}>
-                    {editingBankTermDepositId ? "Degisiklikleri Kaydet" : "Vadeli Mevduat Ekle"}
-                  </button>
-                  {editingBankTermDepositId && (
-                    <button className="btn btn-ghost" type="button" onClick={cancelEditBankTermDeposit}>
-                      Iptal
-                    </button>
-                  )}
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    onClick={() => void fetchBankTermDeposits()}
-                    disabled={bankTermDepositLoading || loading}
-                  >
-                    {bankTermDepositLoading ? "Yukleniyor..." : "Yenile"}
-                  </button>
-                </div>
+                  <label>
+                    Not
+                    <textarea
+                      rows={2}
+                      value={bankTermDepositForm.notes}
+                      onChange={(e) => setBankTermDepositForm((prev) => ({ ...prev, notes: e.target.value }))}
+                    />
+                  </label>
+                </section>
               </form>
 
               <div className="card table-card">
@@ -12527,6 +12596,7 @@ function AdminPage() {
             <Suspense fallback={<LazyAdminPageFallback />}>
               <DoorMismatchReportPage
                 fetchDoorMismatchReport={fetchDoorMismatchReport}
+                clearDoorMismatchReport={clearDoorMismatchReport}
                 doorMismatchLoading={doorMismatchLoading}
                 onGoToReconcile={() => navigate("/admin/statement/reconcile")}
                 doorMismatchTotals={doorMismatchTotals}
@@ -13326,7 +13396,7 @@ function App() {
   });
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("Lutfen giris yapin");
-  const defaultAuthenticatedPath = user?.role === "ADMIN" ? "/admin" : "/resident";
+  const defaultAuthenticatedPath = user?.role === "ADMIN" ? "/admin/reports" : "/resident";
   const isAdmin = user?.role === "ADMIN";
   const residentDoorNo =
     user?.role === "RESIDENT"
@@ -13420,7 +13490,7 @@ function App() {
       setUser(data.user);
       localStorage.setItem(userStorageKey, JSON.stringify(data.user));
       setAuthMessage(`Hos geldin ${data.user.fullName}`);
-      navigate(data.user.role === "ADMIN" ? "/admin" : "/resident");
+      navigate(data.user.role === "ADMIN" ? "/admin/reports" : "/resident");
     } catch (err) {
       console.error(err);
       setAuthMessage("Giris basarisiz. Telefon/e-posta veya sifreyi kontrol et.");
@@ -13458,42 +13528,35 @@ function App() {
           ApartmanWeb MVP
           <span className="hero-title-suffix"> | Tahakkuk ve Ekstre Paneli</span>
         </h1>
-        {isAdmin && (
+        {user && (
           <div className="hero-actions">
-            <NavLink className="btn btn-ghost" to="/admin/guide/manual">
-              Kullanim Kilavuzu
+            {user.role === "ADMIN" && (
+              <NavLink className="btn btn-ghost" to="/admin/reports">
+                Admin Panel
+              </NavLink>
+            )}
+            <NavLink className="btn btn-ghost" to="/resident">
+              Resident Panel
             </NavLink>
+            {isAdmin && (
+              <NavLink className="btn btn-ghost" to="/admin/guide/manual">
+                Kullanim Kilavuzu
+              </NavLink>
+            )}
             <button className="btn btn-ghost" type="button" onClick={openCurrentScreenInNewTab}>
               Yeni Ekran Ac
+            </button>
+            <span className={user.role === "RESIDENT" ? "resident-user-line" : "small"}>
+              {user.role === "RESIDENT" ? `Sn. ${user.fullName} + Daire No: ${residentDoorNo}` : user.fullName}
+            </span>
+            <button className="btn btn-danger" onClick={logout}>
+              Cikis
             </button>
           </div>
         )}
       </header>
 
       <div className="app-shell">
-        {user && (
-          <nav className="card top-nav">
-            <div className="nav-links">
-              {user.role === "ADMIN" && (
-                <NavLink className="btn btn-ghost" to="/admin">
-                  Admin Panel
-                </NavLink>
-              )}
-              <NavLink className="btn btn-ghost" to="/resident">
-                Resident Panel
-              </NavLink>
-            </div>
-            <div className="nav-user">
-              <span className={user.role === "RESIDENT" ? "resident-user-line" : "small"}>
-                {user.role === "RESIDENT" ? `Sn. ${user.fullName} + Daire No: ${residentDoorNo}` : user.fullName}
-              </span>
-              <button className="btn btn-danger" onClick={logout}>
-                Cikis
-              </button>
-            </div>
-          </nav>
-        )}
-
         <main className="workspace">
           <Routes>
             <Route path="/" element={<Navigate to={user ? defaultAuthenticatedPath : "/login"} replace />} />

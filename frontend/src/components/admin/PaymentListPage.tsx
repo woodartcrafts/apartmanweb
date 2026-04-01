@@ -167,9 +167,7 @@ export function PaymentListPage({
             <button className="btn btn-primary btn-run" type="button" onClick={() => void runPaymentListQuery()}>
               Calistir
             </button>
-            <button className="btn btn-ghost" type="button" onClick={() => void clearPaymentListFilters()}>
-              Temizle
-            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => void clearPaymentListFilters()}>Temizle</button>
           </div>
         </div>
         <div className="payment-list-filter-row compact-row-top-gap">
@@ -289,9 +287,7 @@ export function PaymentListPage({
               <button className="btn btn-primary" type="submit" disabled={loading}>
                 Kaydet
               </button>
-              <button className="btn btn-ghost" type="button" onClick={cancelEditPaymentListRow}>
-                Iptal
-              </button>
+              <button className="btn btn-ghost" type="button" onClick={cancelEditPaymentListRow}>Temizle</button>
             </div>
           </form>
         )}

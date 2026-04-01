@@ -201,8 +201,16 @@ export function ApartmentTypeManagementPage({
         className="card admin-form"
         onSubmit={onSubmit}
       >
-        <h3>{editingId ? "Daire Tipi Degistir" : "Daire Tipi Ekle"}</h3>
-        <div className="apartment-class-form-inline">
+        <div className="section-head">
+          <h3>{editingId ? "Daire Tipi Degistir" : "Daire Tipi Ekle"}</h3>
+          <div className="admin-row">
+            <button className="btn btn-primary" type="submit" disabled={loading}>
+              {editingId ? "Degisiklikleri Kaydet" : "Tip Ekle"}
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={cancelEdit}>Temizle</button>
+          </div>
+        </div>
+        <div className="apartment-class-form-inline apartment-type-form-inline">
           <label>
             Kod
             <input name="code" defaultValue={formState.code} placeholder="BUYUK" required />
@@ -211,19 +219,11 @@ export function ApartmentTypeManagementPage({
             Ad
             <input name="name" defaultValue={formState.name} placeholder="Buyuk Daire" required />
           </label>
+          <label className="checkbox-row apartment-type-inline-active">
+            <input name="isActive" type="checkbox" defaultChecked={formState.isActive} />
+            Aktif
+          </label>
         </div>
-        <label className="checkbox-row">
-          <input name="isActive" type="checkbox" defaultChecked={formState.isActive} />
-          Aktif
-        </label>
-        <button className="btn btn-primary" type="submit" disabled={loading}>
-          {editingId ? "Degisiklikleri Kaydet" : "Tip Ekle"}
-        </button>
-        {editingId && (
-          <button className="btn btn-ghost" type="button" onClick={cancelEdit}>
-            Iptal
-          </button>
-        )}
         {message && <p className="small">{message}</p>}
       </form>
 

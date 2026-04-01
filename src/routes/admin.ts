@@ -6885,11 +6885,14 @@ router.get("/reports/summary", async (_req, res) => {
     prisma.user.count({ where: { role: UserRole.RESIDENT } }),
     prisma.apartment.findMany({
       select: {
+        apartmentClassId: true,
+        apartmentClass: {
+          select: { name: true },
+        },
         doorNo: true,
         ownerFullName: true,
+        occupancyType: true,
         type: true,
-        hasAidat: true,
-        hasDogalgaz: true,
         apartmentDuty: {
           select: { code: true, name: true },
         },
@@ -7022,16 +7025,21 @@ router.get("/reports/summary", async (_req, res) => {
         id: row.id,
         occurredAt: row.paidAt,
         createdAt: row.createdAt,
+        movementType: "PAYMENT" as const,
         amount: Number(row.totalAmount.toFixed(2)),
         description,
       };
     })
-    .filter((row): row is { id: string; occurredAt: Date; createdAt: Date; amount: number; description: string } => Boolean(row));
+    .filter(
+      (row): row is { id: string; occurredAt: Date; createdAt: Date; movementType: "PAYMENT"; amount: number; description: string } =>
+        Boolean(row)
+    );
 
   const latestBankExpenseRows = latestBankTransferExpenses.map((row) => ({
     id: row.id,
     occurredAt: row.spentAt,
     createdAt: row.createdAt,
+    movementType: "EXPENSE" as const,
     amount: Number(row.amount.toFixed(2)),
     description: row.description?.trim() || "Banka Gideri",
   }));
@@ -7052,6 +7060,7 @@ router.get("/reports/summary", async (_req, res) => {
     .map((row) => ({
       id: row.id,
       occurredAt: row.occurredAt,
+      movementType: row.movementType,
       amount: row.amount,
       description: row.description,
     }));
@@ -7125,14 +7134,17 @@ router.get("/reports/summary", async (_req, res) => {
 
   const kucukApartmentCount = apartmentsForOverview.filter((x) => x.type === ApartmentType.KUCUK).length;
   const buyukApartmentCount = apartmentsForOverview.filter((x) => x.type === ApartmentType.BUYUK).length;
-  const aidatMuafCount = apartmentsForOverview.filter((x) => !x.hasAidat).length;
-  const dogalgazMuafCount = apartmentsForOverview.filter((x) => !x.hasDogalgaz).length;
-  const aidatMuafApartments = apartmentsForOverview
-    .filter((x) => !x.hasAidat)
-    .map((x) => `${x.doorNo}-${x.ownerFullName?.trim() || "Adsiz"}`);
-  const dogalgazMuafApartments = apartmentsForOverview
-    .filter((x) => !x.hasDogalgaz)
-    .map((x) => `${x.doorNo}-${x.ownerFullName?.trim() || "Adsiz"}`);
+  const apartmentClassCount = new Set(apartmentsForOverview.map((x) => x.apartmentClassId).filter(Boolean)).size;
+  const apartmentClassBreakdownMap = new Map<string, number>();
+  for (const apartment of apartmentsForOverview) {
+    const className = apartment.apartmentClass?.name?.trim() || "Sinifsiz";
+    apartmentClassBreakdownMap.set(className, (apartmentClassBreakdownMap.get(className) ?? 0) + 1);
+  }
+  const apartmentClassBreakdown = [...apartmentClassBreakdownMap.entries()]
+    .map(([className, count]) => ({ className, count }))
+    .sort((a, b) => a.className.localeCompare(b.className, "tr"));
+  const ownerCount = apartmentsForOverview.filter((x) => x.occupancyType === OccupancyType.OWNER).length;
+  const tenantCount = apartmentsForOverview.filter((x) => x.occupancyType === OccupancyType.TENANT).length;
   const managers = apartmentsForOverview
     .filter((x) => x.apartmentDuty?.code === "YONETICI")
     .map((x) => `${x.doorNo}-${x.ownerFullName?.trim() || "Adsiz"}`);
@@ -7215,10 +7227,10 @@ router.get("/reports/summary", async (_req, res) => {
       totalApartmentCount: apartmentCount,
       kucukApartmentCount,
       buyukApartmentCount,
-      aidatMuafCount,
-      dogalgazMuafCount,
-      aidatMuafApartments,
-      dogalgazMuafApartments,
+      apartmentClassCount,
+      apartmentClassBreakdown,
+      ownerCount,
+      tenantCount,
       managers,
       dutyAssignments,
     },

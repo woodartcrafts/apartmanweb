@@ -89,10 +89,35 @@ export function CorrectionsPage({
       maximumFractionDigits: 2,
     }).format(Number.isFinite(value) ? value : 0);
 
+  function clearPage(): void {
+    setCorrectionApartmentId("");
+    setChargeCorrectionRows([]);
+    setPaymentCorrectionRows([]);
+    setSelectedChargeCorrectionIds([]);
+    setSelectedPaymentCorrectionIds([]);
+    setChargeAmountDrafts({});
+    setPaymentAmountDrafts({});
+  }
+
   return (
     <section className="dashboard corrections-page">
       <div className="card admin-form corrections-form-card">
-        <h3>Tahakkuk/Odeme Duzeltme ve Manuel Kapama</h3>
+        <div className="section-head">
+          <h3>Tahakkuk/Odeme Duzeltme ve Manuel Kapama</h3>
+          <div className="admin-row">
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => void loadCorrections(correctionApartmentId, true)}
+              disabled={loading || !correctionApartmentId}
+            >
+              Duzeltmeleri Yukle
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={clearPage} disabled={loading}>
+              Temizle
+            </button>
+          </div>
+        </div>
         <p className="small">
           Odeme satirinda <strong>Manuel Kilit</strong> aciksa, yeniden eslestirme calistiginda bu odeme dagilimi korunur.
         </p>
@@ -116,7 +141,7 @@ export function CorrectionsPage({
         </label>
       </div>
 
-      <div className="card table-card">
+      <div className="card table-card corrections-list-card">
         <div className="compact-row">
           <h3>Tahakkuklar</h3>
           <div className="admin-row">
@@ -306,7 +331,7 @@ export function CorrectionsPage({
         </div>
       </div>
 
-      <div className="card table-card">
+      <div className="card table-card corrections-list-card">
         <div className="compact-row">
           <h3>Odeme Kayitlari</h3>
           <div className="admin-row">

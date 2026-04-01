@@ -59,9 +59,7 @@ export function ManualReviewMatchesPage({
             <button className="btn btn-primary btn-run" type="button" onClick={() => void runQuery()} disabled={loading || reportLoading}>
               {reportLoading ? "Yukleniyor..." : "Calistir"}
             </button>
-            <button className="btn btn-ghost" type="button" onClick={clearFilters}>
-              Temizle
-            </button>
+            <button className="btn btn-ghost" type="button" onClick={clearFilters}>Temizle</button>
           </div>
         </div>
 

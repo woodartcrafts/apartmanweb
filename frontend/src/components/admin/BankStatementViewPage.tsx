@@ -75,7 +75,7 @@ export function BankStatementViewPage({
               Listele
             </button>
             <button className="btn btn-ghost" type="button" onClick={() => void resetToCurrentMonth()} disabled={loading}>
-              Bu Aya Don
+              Temizle
             </button>
           </div>
         </div>

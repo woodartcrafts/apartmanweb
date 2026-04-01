@@ -539,10 +539,13 @@ export type ReportsSummaryResponse = {
     totalApartmentCount: number;
     kucukApartmentCount: number;
     buyukApartmentCount: number;
-    aidatMuafCount: number;
-    dogalgazMuafCount: number;
-    aidatMuafApartments: string[];
-    dogalgazMuafApartments: string[];
+    apartmentClassCount: number;
+    apartmentClassBreakdown: Array<{
+      className: string;
+      count: number;
+    }>;
+    ownerCount: number;
+    tenantCount: number;
     managers: string[];
     dutyAssignments: Array<{
       dutyName: string;
@@ -552,6 +555,7 @@ export type ReportsSummaryResponse = {
   latestBankMovements: Array<{
     id: string;
     occurredAt: string;
+    movementType: "PAYMENT" | "EXPENSE";
     amount: number;
     description: string;
   }>;

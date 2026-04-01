@@ -404,9 +404,7 @@ export function ApartmentListPage({
             <button className="btn btn-primary btn-run" type="button" onClick={() => void runQuery()} disabled={loading}>
               {loading ? "Yukleniyor..." : "Calistir"}
             </button>
-            <button className="btn btn-ghost" type="button" onClick={clearFilters} disabled={loading}>
-              Temizle
-            </button>
+            <button className="btn btn-ghost" type="button" onClick={clearFilters} disabled={loading}>Temizle</button>
             <button className="btn btn-ghost" type="button" onClick={handlePrint} disabled={loading || sortedRows.length === 0}>
               Print Al
             </button>
@@ -700,9 +698,7 @@ export function ApartmentListPage({
                   placeholder="Ad, telefon veya e-posta"
                 />
                 <div className="bulk-filter-actions">
-                  <button type="button" className="btn btn-ghost" onClick={() => setFilter((prev) => ({ ...prev, ownerKeyword: "" }))}>
-                    Temizle
-                  </button>
+                  <button type="button" className="btn btn-ghost" onClick={() => setFilter((prev) => ({ ...prev, ownerKeyword: "" }))}>Temizle</button>
                 </div>
               </div>
             </details>

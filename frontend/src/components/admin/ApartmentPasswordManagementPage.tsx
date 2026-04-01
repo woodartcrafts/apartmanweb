@@ -123,6 +123,49 @@ export function ApartmentPasswordManagementPage() {
     }
   }
 
+  async function saveDraftPasswordsForSelectedApartment(): Promise<void> {
+    if (!selectedApartment) {
+      setMessage("Once daire secin");
+      return;
+    }
+
+    const draftRows = selectedApartment.residentUsers
+      .map((resident) => ({ userId: resident.id, password: (passwordDraftByUserId[resident.id] ?? "").trim() }))
+      .filter((row) => row.password.length > 0);
+
+    if (draftRows.length === 0) {
+      setMessage("Kaydedilecek sifre taslagi yok");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      for (const row of draftRows) {
+        await adminRequest(`/api/admin/apartments/${selectedApartment.id}/resident-password`, {
+          method: "POST",
+          payload: {
+            userId: row.userId,
+            password: row.password,
+          },
+        });
+      }
+
+      await fetchApartmentOptions();
+      setPasswordDraftByUserId((prev) => {
+        const next = { ...prev };
+        for (const row of draftRows) {
+          next[row.userId] = "";
+        }
+        return next;
+      });
+      setMessage(`${draftRows.length} resident sifresi guncellendi`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Resident sifreleri guncellenemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function togglePasswordHistory(apartmentId: string): Promise<void> {
     if (passwordHistoryByApartmentId[apartmentId]) {
       setPasswordHistoryByApartmentId((prev) => {
@@ -155,12 +198,35 @@ export function ApartmentPasswordManagementPage() {
   }
 
   const historyRows = selectedApartment ? passwordHistoryByApartmentId[selectedApartment.id] ?? null : null;
+  const draftPasswordCount = selectedApartment
+    ? selectedApartment.residentUsers.filter((resident) => (passwordDraftByUserId[resident.id] ?? "").trim().length > 0).length
+    : 0;
+
+  function clearSelection(): void {
+    setSelectedApartmentId("");
+    setMessage("");
+  }
 
   return (
     <section className="dashboard">
       <div className="card admin-form apartment-password-page-card">
-        <h3>Daire Sifre Degistir</h3>
-        <div className="admin-row apartment-password-filter-row">
+        <div className="section-head">
+          <h3>Daire Sifre Degistir</h3>
+          <div className="admin-row">
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => void saveDraftPasswordsForSelectedApartment()}
+              disabled={loading || !selectedApartment || draftPasswordCount === 0}
+            >
+              Taslak Sifreleri Kaydet ({draftPasswordCount})
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={clearSelection} disabled={loading}>
+              Temizle
+            </button>
+          </div>
+        </div>
+        <div className="apartment-password-filter-row">
           <label>
             Daire
             <select
@@ -227,7 +293,7 @@ export function ApartmentPasswordManagementPage() {
                   <div className="admin-row resident-password-action">
                     <button
                       type="button"
-                      className="btn btn-primary"
+                      className="btn btn-ghost"
                       disabled={passwordSavingUserId === resident.id}
                       onClick={() => void setResidentPassword(selectedApartment.id, resident.id)}
                     >

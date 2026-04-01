@@ -62,6 +62,37 @@ export function BankManagementPage({
   startEditBankBranch,
   deleteBankBranch,
 }: BankManagementPageProps) {
+  function clearBankForm(): void {
+    if (editingBankId) {
+      cancelEditBank();
+      return;
+    }
+    setBankForm({ name: "", isActive: true });
+  }
+
+  function clearBankBranchForm(): void {
+    if (editingBankBranchId) {
+      cancelEditBankBranch();
+      return;
+    }
+    setBankBranchForm({
+      bankId: "",
+      name: "",
+      branchCode: "",
+      accountName: "",
+      accountNumber: "",
+      iban: "",
+      phone: "",
+      email: "",
+      address: "",
+      representativeName: "",
+      representativePhone: "",
+      representativeEmail: "",
+      notes: "",
+      isActive: true,
+    });
+  }
+
   const bankBranches = bankOptions
     .flatMap((bank) => bank.branches)
     .sort((a, b) => {
@@ -73,38 +104,46 @@ export function BankManagementPage({
     });
 
   return (
-    <section className="dashboard compact-management-page">
-      <form className="card admin-form" onSubmit={onSubmitBank}>
-        <h3>{editingBankId ? "Banka Degistir" : "Banka Ekle"}</h3>
-        <label>
-          Banka Adi
-          <input
-            value={bankForm.name}
-            onChange={(e) => setBankForm((prev) => ({ ...prev, name: e.target.value }))}
-            placeholder="Ornek: Ziraat"
-            required
-          />
-        </label>
-        <label className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={bankForm.isActive}
-            onChange={(e) => setBankForm((prev) => ({ ...prev, isActive: e.target.checked }))}
-          />
-          Aktif
-        </label>
-        <button className="btn btn-primary" type="submit" disabled={loading}>
-          {editingBankId ? "Degisiklikleri Kaydet" : "Banka Ekle"}
-        </button>
-        {editingBankId && (
-          <button className="btn btn-ghost" type="button" onClick={cancelEditBank}>
-            Iptal
-          </button>
-        )}
+    <section className="dashboard compact-management-page bank-management-page">
+      <form className="card admin-form apartment-form-surface bank-form-surface" onSubmit={onSubmitBank}>
+        <div className="section-head">
+          <h3>{editingBankId ? "Banka Degistir" : "Banka Ekle"}</h3>
+          <div className="admin-row">
+            <button className="btn btn-primary" type="submit" disabled={loading}>
+              {editingBankId ? "Degisiklikleri Kaydet" : "Banka Ekle"}
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={clearBankForm}>
+              Temizle
+            </button>
+          </div>
+        </div>
+        <p className="small">Banka kartini olusturun, sonrasinda bu bankaya sube ekleyin.</p>
+        <div className="bank-form-row">
+          <label>
+            Banka Adi
+            <input
+              value={bankForm.name}
+              onChange={(e) => setBankForm((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder="Ornek: Ziraat"
+              required
+            />
+          </label>
+          <label className="checkbox-row bank-form-active">
+            <input
+              type="checkbox"
+              checked={bankForm.isActive}
+              onChange={(e) => setBankForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+            />
+            Aktif
+          </label>
+        </div>
       </form>
 
-      <div className="card table-card">
-        <h3>Banka Listesi</h3>
+      <div className="card table-card bank-table-card">
+        <div className="section-head">
+          <h3>Banka Listesi</h3>
+          <p className="small">Toplam {bankOptions.length} banka</p>
+        </div>
         <div className="table-wrap">
           <table className="filter-table">
             <thead>
@@ -145,112 +184,158 @@ export function BankManagementPage({
         </div>
       </div>
 
-      <form className="card admin-form" onSubmit={onSubmitBankBranch}>
-        <h3>{editingBankBranchId ? "Sube Degistir" : "Sube Ekle"}</h3>
-        <label>
-          Banka
-          <select
-            value={bankBranchForm.bankId}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, bankId: e.target.value }))}
-            required
-          >
-            <option value="">Banka seciniz</option>
-            {bankOptions.map((bank) => (
-              <option key={bank.id} value={bank.id}>
-                {bank.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Sube Adi
-          <input
-            value={bankBranchForm.name}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, name: e.target.value }))}
-            placeholder="Ornek: Cengelkoy"
-            required
-          />
-        </label>
-        <label>
-          Sube Kodu
-          <input
-            value={bankBranchForm.branchCode}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, branchCode: e.target.value }))}
-            placeholder="0012"
-          />
-        </label>
-        <label>
-          Hesap Adi
-          <input
-            value={bankBranchForm.accountName}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, accountName: e.target.value }))}
-            placeholder="Ornek: Apartman Isletme Hesabi"
-          />
-        </label>
-        <label>
-          Hesap Numarasi
-          <input
-            value={bankBranchForm.accountNumber}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, accountNumber: e.target.value }))}
-            placeholder="12345678"
-          />
-        </label>
-        <label>
-          IBAN
-          <input
-            value={bankBranchForm.iban}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, iban: e.target.value }))}
-            placeholder="TR00 0000 0000 0000 0000 0000 00"
-          />
-        </label>
-        <label>
-          Telefon
-          <input
-            value={bankBranchForm.phone}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, phone: e.target.value }))}
-            placeholder="0212 000 00 00"
-          />
-        </label>
-        <label>
-          E-posta
-          <input
-            value={bankBranchForm.email}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, email: e.target.value }))}
-            placeholder="sube@banka.com"
-          />
-        </label>
-        <label>
-          Musteri Temsilcisi
-          <input
-            value={bankBranchForm.representativeName}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, representativeName: e.target.value }))}
-            placeholder="Ad Soyad"
-          />
-        </label>
-        <label>
-          Temsilci Telefon
-          <input
-            value={bankBranchForm.representativePhone}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, representativePhone: e.target.value }))}
-            placeholder="05xx xxx xx xx"
-          />
-        </label>
-        <label>
-          Temsilci E-posta
-          <input
-            value={bankBranchForm.representativeEmail}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, representativeEmail: e.target.value }))}
-            placeholder="temsilci@banka.com"
-          />
-        </label>
-        <label>
-          Adres
-          <input
-            value={bankBranchForm.address}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, address: e.target.value }))}
-            placeholder="Sube adresi"
-          />
-        </label>
+      <form className="card admin-form apartment-form-surface bank-branch-form-surface" onSubmit={onSubmitBankBranch}>
+        <div className="section-head">
+          <h3>{editingBankBranchId ? "Sube Degistir" : "Sube Ekle"}</h3>
+          <div className="admin-row">
+            <button className="btn btn-primary" type="submit" disabled={loading}>
+              {editingBankBranchId ? "Degisiklikleri Kaydet" : "Sube Ekle"}
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={clearBankBranchForm}>
+              Temizle
+            </button>
+          </div>
+        </div>
+        <p className="small">Sube kartini adim adim doldurun. Sadece gerekli alanlari doldurup kaydedebilirsiniz.</p>
+
+        <div className="bank-branch-grid">
+          <div className="apartment-form-section">
+            <div className="apartment-form-section-head">
+              <h4>Temel Bilgiler</h4>
+            </div>
+            <div className="bank-branch-fields bank-branch-fields-core">
+              <label>
+                Banka
+                <select
+                  value={bankBranchForm.bankId}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, bankId: e.target.value }))}
+                  required
+                >
+                  <option value="">Banka seciniz</option>
+                  {bankOptions.map((bank) => (
+                    <option key={bank.id} value={bank.id}>
+                      {bank.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Sube Adi
+                <input
+                  value={bankBranchForm.name}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="Ornek: Cengelkoy"
+                  required
+                />
+              </label>
+              <label>
+                Sube Kodu
+                <input
+                  value={bankBranchForm.branchCode}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, branchCode: e.target.value }))}
+                  placeholder="0012"
+                />
+              </label>
+              <label className="checkbox-row bank-branch-active">
+                <input
+                  type="checkbox"
+                  checked={bankBranchForm.isActive}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+                />
+                Aktif
+              </label>
+            </div>
+          </div>
+
+          <div className="apartment-form-section">
+            <div className="apartment-form-section-head">
+              <h4>Hesap Bilgileri</h4>
+            </div>
+            <div className="bank-branch-fields bank-branch-fields-account">
+              <label>
+                Hesap Adi
+                <input
+                  value={bankBranchForm.accountName}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, accountName: e.target.value }))}
+                  placeholder="Ornek: Apartman Isletme Hesabi"
+                />
+              </label>
+              <label>
+                Hesap Numarasi
+                <input
+                  value={bankBranchForm.accountNumber}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, accountNumber: e.target.value }))}
+                  placeholder="12345678"
+                />
+              </label>
+              <label>
+                IBAN
+                <input
+                  value={bankBranchForm.iban}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, iban: e.target.value }))}
+                  placeholder="TR00 0000 0000 0000 0000 0000 00"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="apartment-form-section">
+            <div className="apartment-form-section-head">
+              <h4>Iletisim ve Temsilci</h4>
+            </div>
+            <div className="bank-branch-fields bank-branch-fields-contact">
+              <label>
+                Telefon
+                <input
+                  value={bankBranchForm.phone}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  placeholder="0212 000 00 00"
+                />
+              </label>
+              <label>
+                E-posta
+                <input
+                  value={bankBranchForm.email}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="sube@banka.com"
+                />
+              </label>
+              <label>
+                Musteri Temsilcisi
+                <input
+                  value={bankBranchForm.representativeName}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, representativeName: e.target.value }))}
+                  placeholder="Ad Soyad"
+                />
+              </label>
+              <label>
+                Temsilci Telefon
+                <input
+                  value={bankBranchForm.representativePhone}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, representativePhone: e.target.value }))}
+                  placeholder="05xx xxx xx xx"
+                />
+              </label>
+              <label>
+                Temsilci E-posta
+                <input
+                  value={bankBranchForm.representativeEmail}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, representativeEmail: e.target.value }))}
+                  placeholder="temsilci@banka.com"
+                />
+              </label>
+              <label>
+                Adres
+                <input
+                  value={bankBranchForm.address}
+                  onChange={(e) => setBankBranchForm((prev) => ({ ...prev, address: e.target.value }))}
+                  placeholder="Sube adresi"
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+
         <label>
           Not
           <textarea
@@ -260,26 +345,14 @@ export function BankManagementPage({
             placeholder="Ek bilgi"
           />
         </label>
-        <label className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={bankBranchForm.isActive}
-            onChange={(e) => setBankBranchForm((prev) => ({ ...prev, isActive: e.target.checked }))}
-          />
-          Aktif
-        </label>
-        <button className="btn btn-primary" type="submit" disabled={loading}>
-          {editingBankBranchId ? "Degisiklikleri Kaydet" : "Sube Ekle"}
-        </button>
-        {editingBankBranchId && (
-          <button className="btn btn-ghost" type="button" onClick={cancelEditBankBranch}>
-            Iptal
-          </button>
-        )}
+
       </form>
 
-      <div className="card table-card">
-        <h3>Sube Listesi</h3>
+      <div className="card table-card bank-table-card">
+        <div className="section-head">
+          <h3>Sube Listesi</h3>
+          <p className="small">Toplam {bankBranches.length} sube</p>
+        </div>
         <div className="table-wrap">
           <table className="filter-table">
             <thead>

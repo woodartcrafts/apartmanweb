@@ -26,8 +26,32 @@ export function StatementReconcilePage({
   return (
     <section className="dashboard">
       <div className="card admin-tools">
-        <h3>Eslestirme ve Karisik Odeme Islemleri</h3>
-        <div className="admin-row">
+        <div className="section-head">
+          <h3>Eslestirme ve Karisik Odeme Islemleri</h3>
+          <div className="admin-row">
+            <button className="btn btn-ghost" type="button" onClick={() => setActiveApartmentId("")} disabled={loading}>
+              Temizle
+            </button>
+            <button className="btn btn-ghost" onClick={() => void reconcileSelectedApartment()} disabled={loading}>
+              Secilen Daireyi Yeniden Eslestir
+            </button>
+            <button className="btn btn-danger" onClick={() => void reconcileAllApartments()} disabled={loading}>
+              Tum Daireleri Toplu Yeniden Eslestir
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => void fetchMixedPaymentReport({ apartmentId: activeApartmentId || undefined })}
+              disabled={loading}
+            >
+              Karisik Odemeleri Listele (Secili/Tumu)
+            </button>
+            <button className="btn btn-ghost" onClick={() => void fetchMixedPaymentReport()} disabled={loading}>
+              Tum Karisik Odemeleri Listele
+            </button>
+          </div>
+        </div>
+
+        <div className="statement-query-row">
           <select
             title="Eslestirme icin daire secimi"
             value={activeApartmentId}
@@ -41,22 +65,6 @@ export function StatementReconcilePage({
               </option>
             ))}
           </select>
-          <button className="btn btn-ghost" onClick={() => void reconcileSelectedApartment()} disabled={loading}>
-            Secilen Daireyi Yeniden Eslestir
-          </button>
-          <button className="btn btn-danger" onClick={() => void reconcileAllApartments()} disabled={loading}>
-            Tum Daireleri Toplu Yeniden Eslestir
-          </button>
-          <button
-            className="btn btn-ghost"
-            onClick={() => void fetchMixedPaymentReport({ apartmentId: activeApartmentId || undefined })}
-            disabled={loading}
-          >
-            Karisik Odemeleri Listele (Secili/Tumu)
-          </button>
-          <button className="btn btn-ghost" onClick={() => void fetchMixedPaymentReport()} disabled={loading}>
-            Tum Karisik Odemeleri Listele
-          </button>
         </div>
       </div>
 

@@ -37,7 +37,15 @@ export function PaymentMethodManagementPage({
   return (
     <section className="dashboard compact-management-page">
       <form className="card admin-form" onSubmit={onSubmitPaymentMethod}>
-        <h3>{editingPaymentMethodId ? "Tahsilat Tipi Degistir" : "Tahsilat Tipi Ekle"}</h3>
+        <div className="section-head">
+          <h3>{editingPaymentMethodId ? "Tahsilat Tipi Degistir" : "Tahsilat Tipi Ekle"}</h3>
+          <div className="admin-row">
+            <button className="btn btn-primary" type="submit" disabled={loading}>
+              {editingPaymentMethodId ? "Degisiklikleri Kaydet" : "Tip Ekle"}
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={cancelEditPaymentMethod}>Temizle</button>
+          </div>
+        </div>
         <div className="apartment-class-form-inline">
           <label>
             Kod
@@ -70,14 +78,6 @@ export function PaymentMethodManagementPage({
           />
           Aktif
         </label>
-        <button className="btn btn-primary" type="submit" disabled={loading}>
-          {editingPaymentMethodId ? "Degisiklikleri Kaydet" : "Tip Ekle"}
-        </button>
-        {editingPaymentMethodId && (
-          <button className="btn btn-ghost" type="button" onClick={cancelEditPaymentMethod}>
-            Iptal
-          </button>
-        )}
       </form>
 
       <div className="card table-card">

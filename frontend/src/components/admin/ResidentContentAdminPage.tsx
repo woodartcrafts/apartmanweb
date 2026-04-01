@@ -409,10 +409,18 @@ export function ResidentContentAdminPage() {
           className="card admin-form"
           onSubmit={onSubmitResidentAnnouncement}
         >
-          <h3 className="resident-content-form-title">
-            <span className="resident-content-form-icon" aria-hidden="true">DU</span>
-            {editingAnnouncementId ? "Duyuru Duzenle" : "Duyuru Ekle"}
-          </h3>
+          <div className="section-head">
+            <h3 className="resident-content-form-title">
+              <span className="resident-content-form-icon" aria-hidden="true">DU</span>
+              {editingAnnouncementId ? "Duyuru Duzenle" : "Duyuru Ekle"}
+            </h3>
+            <div className="admin-row">
+              <button className="btn btn-primary" type="submit" disabled={loading}>
+                {editingAnnouncementId ? "Guncelle" : "Ekle"}
+              </button>
+              <button className="btn btn-ghost" type="button" onClick={cancelEditResidentAnnouncement}>Temizle</button>
+            </div>
+          </div>
           <label>
             Baslik
             <input name="title" defaultValue={announcementForm.title} required />
@@ -435,16 +443,6 @@ export function ResidentContentAdminPage() {
             <input name="isActive" type="checkbox" defaultChecked={announcementForm.isActive} />
             Aktif
           </label>
-          <div className="admin-row">
-            <button className="btn btn-primary" type="submit" disabled={loading}>
-              {editingAnnouncementId ? "Guncelle" : "Ekle"}
-            </button>
-            {editingAnnouncementId && (
-              <button className="btn btn-ghost" type="button" onClick={cancelEditResidentAnnouncement}>
-                Iptal
-              </button>
-            )}
-          </div>
         </form>
 
         <form
@@ -452,10 +450,18 @@ export function ResidentContentAdminPage() {
           className="card admin-form"
           onSubmit={onSubmitResidentPoll}
         >
-          <h3 className="resident-content-form-title">
-            <span className="resident-content-form-icon" aria-hidden="true">AN</span>
-            {editingPollId ? "Anket Duzenle" : "Anket Ekle"}
-          </h3>
+          <div className="section-head">
+            <h3 className="resident-content-form-title">
+              <span className="resident-content-form-icon" aria-hidden="true">AN</span>
+              {editingPollId ? "Anket Duzenle" : "Anket Ekle"}
+            </h3>
+            <div className="admin-row">
+              <button className="btn btn-primary" type="submit" disabled={loading}>
+                {editingPollId ? "Guncelle" : "Ekle"}
+              </button>
+              <button className="btn btn-ghost" type="button" onClick={cancelEditResidentPoll}>Temizle</button>
+            </div>
+          </div>
           <label>
             Baslik
             <input name="title" defaultValue={pollForm.title} required />
@@ -488,16 +494,6 @@ export function ResidentContentAdminPage() {
               <textarea name="optionsText" rows={4} defaultValue={pollForm.optionsText} required />
             </label>
           )}
-          <div className="admin-row">
-            <button className="btn btn-primary" type="submit" disabled={loading}>
-              {editingPollId ? "Guncelle" : "Ekle"}
-            </button>
-            {editingPollId && (
-              <button className="btn btn-ghost" type="button" onClick={cancelEditResidentPoll}>
-                Iptal
-              </button>
-            )}
-          </div>
         </form>
       </div>
 

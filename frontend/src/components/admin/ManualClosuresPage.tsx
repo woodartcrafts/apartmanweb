@@ -95,10 +95,32 @@ export function ManualClosuresPage({
     return alternative?.id ?? currentChargeId;
   };
 
+  function clearPage(): void {
+    setCorrectionApartmentId("");
+    setPaymentCorrectionRows([]);
+    setPaymentAmountDrafts({});
+    setSplitDrafts({});
+  }
+
   return (
     <section className="dashboard manual-closures-page">
       <div className="card admin-form corrections-form-card">
-        <h3>Manuel Kapama Yonetimi</h3>
+        <div className="section-head">
+          <h3>Manuel Kapama Yonetimi</h3>
+          <div className="admin-row">
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => void loadCorrections(correctionApartmentId, true)}
+              disabled={loading || !correctionApartmentId}
+            >
+              Kapamalari Yukle
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={clearPage} disabled={loading}>
+              Temizle
+            </button>
+          </div>
+        </div>
         <p className="small">
           Her tahakkugun saginda bagli kapama satirlari gorulur. Kapamayi baska tahakkuga tasiyip kaydederek manuel dagitimi
           yonetebilirsiniz.

@@ -125,10 +125,28 @@ export function BuildingInfoPage() {
     }
   }
 
+  function resetForm(): void {
+    setFormState(initialFormState);
+    setMessage("");
+  }
+
   return (
     <section className="dashboard compact-management-page">
       <form className="card admin-form" onSubmit={onSubmit}>
-        <h3>Bina Bilgileri</h3>
+        <div className="section-head">
+          <h3>Bina Bilgileri</h3>
+          <div className="admin-row">
+            <button className="btn btn-primary" type="submit" disabled={loading}>
+              {loading ? "Kaydediliyor..." : "Kaydet"}
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={resetForm} disabled={loading}>
+              Temizle
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => void fetchBuildingProfile()} disabled={loading}>
+              Yenile
+            </button>
+          </div>
+        </div>
         <p className="small">
           Bu ekranda girilen bilgiler toplanti evraklarinda otomatik kullanilir.
         </p>
@@ -175,15 +193,6 @@ export function BuildingInfoPage() {
             placeholder="40"
           />
         </label>
-
-        <div className="admin-row">
-          <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? "Kaydediliyor..." : "Kaydet"}
-          </button>
-          <button className="btn btn-ghost" type="button" onClick={() => void fetchBuildingProfile()} disabled={loading}>
-            Yenile
-          </button>
-        </div>
 
         {updatedAt && <p className="small">Son guncelleme: {formatDateTimeTr(updatedAt)}</p>}
         {message && <p className="small">{message}</p>}

@@ -37,26 +37,36 @@ export function ChargeBulkPage({
   apartmentDutyOptions,
   onCreateBulkCharge,
 }: ChargeBulkPageProps) {
+  function createInitialFormState() {
+    return {
+      periodYear: String(new Date().getFullYear()),
+      periodMonths: [new Date().getMonth() + 1] as number[],
+      chargeTypeId: "",
+      dueDateByMonth: {} as Record<string, string>,
+      description: "",
+      apartmentType: "ALL" as "ALL" | ApartmentType,
+      apartmentClassId: "",
+      apartmentDutyId: "",
+      occupancyType: "ALL" as "ALL" | OccupancyType,
+      pricingMode: "UNIFORM" as BulkPricingMode,
+      amount: "",
+      amountKucuk: "",
+      amountBuyuk: "",
+      skipIfExists: true,
+    };
+  }
+
   const [bulkChargeForm, setBulkChargeForm] = useState({
-    periodYear: String(new Date().getFullYear()),
-    periodMonths: [new Date().getMonth() + 1] as number[],
-    chargeTypeId: "",
-    dueDateByMonth: {} as Record<string, string>,
-    description: "",
-    apartmentType: "ALL" as "ALL" | ApartmentType,
-    apartmentClassId: "",
-    apartmentDutyId: "",
-    occupancyType: "ALL" as "ALL" | OccupancyType,
-    pricingMode: "UNIFORM" as BulkPricingMode,
-    amount: "",
-    amountKucuk: "",
-    amountBuyuk: "",
-    skipIfExists: true,
+    ...createInitialFormState(),
   });
 
   const activeChargeTypes = chargeTypeOptions.filter((x) => x.isActive);
   const filteredChargeTypes = activeChargeTypes.length > 0 ? activeChargeTypes : chargeTypeOptions;
   const selectedChargeTypeId = bulkChargeForm.chargeTypeId || filteredChargeTypes[0]?.id || "";
+
+  function resetForm(): void {
+    setBulkChargeForm(createInitialFormState());
+  }
 
   function getMonthSelectionSummary(): string {
     if (bulkChargeForm.periodMonths.length === 0) {
@@ -123,7 +133,17 @@ export function ChargeBulkPage({
 
   return (
     <form className="card admin-form charge-bulk-form-surface" onSubmit={(e) => void onSubmit(e)}>
-      <h3>Toplu Tahakkuk Olustur</h3>
+      <div className="section-head">
+        <h3>Toplu Tahakkuk Olustur</h3>
+        <div className="admin-row">
+          <button className="btn btn-primary" type="submit" disabled={loading}>
+            Toplu Tahakkuk Baslat
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={resetForm} disabled={loading}>
+            Temizle
+          </button>
+        </div>
+      </div>
 
       <section className="charge-bulk-form-section">
         <div className="charge-bulk-form-section-head">
@@ -373,11 +393,6 @@ export function ChargeBulkPage({
         </label>
       </section>
 
-      <div className="admin-row">
-        <button className="btn btn-primary" type="submit" disabled={loading}>
-          Toplu Tahakkuk Baslat
-        </button>
-      </div>
     </form>
   );
 }

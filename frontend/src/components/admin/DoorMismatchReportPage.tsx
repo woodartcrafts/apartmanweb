@@ -2,6 +2,7 @@ import { formatDateTr, formatTry, type DoorMismatchReportResponse, type DoorMism
 
 type DoorMismatchReportPageProps = {
   fetchDoorMismatchReport: () => Promise<void>;
+  clearDoorMismatchReport: () => void;
   doorMismatchLoading: boolean;
   onGoToReconcile: () => void;
   doorMismatchTotals: DoorMismatchReportResponse["totals"] | null;
@@ -10,6 +11,7 @@ type DoorMismatchReportPageProps = {
 
 export function DoorMismatchReportPage({
   fetchDoorMismatchReport,
+  clearDoorMismatchReport,
   doorMismatchLoading,
   onGoToReconcile,
   doorMismatchTotals,
@@ -18,19 +20,24 @@ export function DoorMismatchReportPage({
   return (
     <section className="dashboard">
       <div className="card admin-tools">
-        <h3>Banka Eslestirme Kontrolu</h3>
-        <div className="admin-row">
-          <button
-            className="btn btn-primary"
-            type="button"
-            onClick={() => void fetchDoorMismatchReport()}
-            disabled={doorMismatchLoading}
-          >
-            {doorMismatchLoading ? "Kontrol Calisiyor..." : "Kontrolu Calistir"}
-          </button>
-          <button className="btn btn-ghost" type="button" onClick={onGoToReconcile}>
-            Eslestirme Ekranina Git
-          </button>
+        <div className="section-head">
+          <h3>Banka Eslestirme Kontrolu</h3>
+          <div className="admin-row">
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => void fetchDoorMismatchReport()}
+              disabled={doorMismatchLoading}
+            >
+              {doorMismatchLoading ? "Kontrol Calisiyor..." : "Kontrolu Calistir"}
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={clearDoorMismatchReport} disabled={doorMismatchLoading}>
+              Temizle
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={onGoToReconcile}>
+              Eslestirme Ekranina Git
+            </button>
+          </div>
         </div>
         <p className="small">DOGRU kapino etiketi (DOOR) ile bagli olmayan banka odemelerini listeler.</p>
       </div>

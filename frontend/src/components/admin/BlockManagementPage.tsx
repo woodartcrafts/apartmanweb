@@ -31,7 +31,15 @@ export function BlockManagementPage({
   return (
     <section className="dashboard compact-management-page">
       <form className="card admin-form" onSubmit={onSubmitBlock}>
-        <h3>{editingBlockId ? "Blok Degistir" : "Blok Ekle"}</h3>
+        <div className="section-head">
+          <h3>{editingBlockId ? "Blok Degistir" : "Blok Ekle"}</h3>
+          <div className="admin-row">
+            <button className="btn btn-primary" type="submit" disabled={loading}>
+              {editingBlockId ? "Degisiklikleri Kaydet" : "Blok Ekle"}
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={cancelEditBlock}>Temizle</button>
+          </div>
+        </div>
         <label>
           Blok Adi
           <input
@@ -41,14 +49,6 @@ export function BlockManagementPage({
             required
           />
         </label>
-        <button className="btn btn-primary" type="submit" disabled={loading}>
-          {editingBlockId ? "Degisiklikleri Kaydet" : "Blok Ekle"}
-        </button>
-        {editingBlockId && (
-          <button className="btn btn-ghost" type="button" onClick={cancelEditBlock}>
-            Iptal
-          </button>
-        )}
       </form>
 
       <div className="card table-card">

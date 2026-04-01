@@ -512,9 +512,20 @@ export function ApartmentFormPage() {
         </div>
       )}
 
+      <div className="section-head">
+        <h3>{isEditRoute ? "Daire Degistir Formu" : editingApartmentId ? "Daire Degistir" : "Daire Ekle"}</h3>
+        <div className="admin-row">
+          <button className="btn btn-primary" type="submit" disabled={loading || (isEditRoute && editingApartmentIds.length === 0)}>
+            {isEditRoute ? "Degisiklikleri Kaydet" : "Daire Ekle"}
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={() => resetCreateMode(false)}>
+            Temizle
+          </button>
+        </div>
+      </div>
+
       {isEditRoute && (
         <>
-          <h3>Daire Degistir</h3>
           <div className="apartment-edit-header-row">
           <label>
             Duzenlenecek Daire
@@ -605,22 +616,10 @@ export function ApartmentFormPage() {
               </div>
             </div>
           )}
+          {!editingApartmentId && <p className="small apartment-edit-inline-note">Kayit degistirmek icin once daire secin.</p>}
           </div>
-          {!editingApartmentId && <p className="small">Kayit degistirmek icin once daire secin.</p>}
         </>
       )}
-
-      <div className="section-head">
-        <h3>{isEditRoute ? "Daire Degistir Formu" : editingApartmentId ? "Daire Degistir" : "Daire Ekle"}</h3>
-        <div className="admin-row">
-          <button className="btn btn-primary" type="submit" disabled={loading || (isEditRoute && editingApartmentIds.length === 0)}>
-            {isEditRoute ? "Degisiklikleri Kaydet" : "Daire Ekle"}
-          </button>
-          <button className="btn btn-ghost" type="button" onClick={() => resetCreateMode(false)}>
-            Veriyi Temizle
-          </button>
-        </div>
-      </div>
 
       {editingApartmentIds.length > 0 && (
         <p className="edit-hint">Duzenleme aktif ({editingApartmentIds.length} daire): Kaydet veya Iptal sec</p>

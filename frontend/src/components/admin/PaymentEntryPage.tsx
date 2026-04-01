@@ -132,6 +132,19 @@ export function PaymentEntryPage({
   const selectedMethod = paymentForm.method || defaultMethod;
   const selectedCarryForwardApartmentId = carryForwardForm.apartmentId || apartmentOptions[0]?.id || "";
 
+  function resetPaymentEntryForm(): void {
+    setPaymentForm({
+      paidAt: "",
+      method: defaultMethod,
+      reference: "",
+      note: "",
+      items: [],
+    });
+    setPaymentApartmentId("");
+    setPaymentChargeOptions([]);
+    setPaymentChargeDrafts({});
+  }
+
   async function handlePaymentApartmentChange(apartmentId: string): Promise<void> {
     setPaymentApartmentId(apartmentId);
 
@@ -208,6 +221,16 @@ export function PaymentEntryPage({
     });
   }
 
+  function resetCarryForwardForm(): void {
+    setCarryForwardForm({
+      apartmentId: "",
+      amount: "",
+      paidAt: "",
+      reference: "",
+      note: "",
+    });
+  }
+
   async function onSubmitUpload(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
     if (!paymentUploadFile) {
@@ -216,278 +239,354 @@ export function PaymentEntryPage({
     await onUploadPayments({ method: selectedMethod, file: paymentUploadFile });
   }
 
+  function resetUploadForm(): void {
+    setPaymentUploadFile(null);
+    setPaymentForm((prev) => ({ ...prev, method: defaultMethod }));
+  }
+
   return (
-    <section className="dashboard">
-      <form data-testid="payment-entry-form" className="card admin-form" onSubmit={(e) => void onSubmitPayment(e)}>
-        <h3>Tahsilat Gir</h3>
-        <label>
-          Daire
-          <select
-            data-testid="payment-apartment-select"
-            value={paymentApartmentId}
-            onChange={(e) => {
-              void handlePaymentApartmentChange(e.target.value);
-            }}
-            required
-          >
-            <option value="">Daire seciniz</option>
-            {apartmentOptions.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.blockName} / {item.doorNo}
-                {item.ownerFullName ? ` / ${item.ownerFullName}` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+    <section className="dashboard payment-entry-page">
+      <form
+        data-testid="payment-entry-form"
+        className="card admin-form apartment-form-surface payment-entry-form-surface"
+        onSubmit={(e) => void onSubmitPayment(e)}
+      >
+        <div className="section-head">
+          <h3>Tahsilat Gir</h3>
+          <div className="admin-row">
+            <button data-testid="payment-submit" className="btn btn-primary" type="submit" disabled={isPaymentSubmitDisabled}>
+              Tahsilati Kaydet
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={resetPaymentEntryForm} disabled={loading}>
+              Temizle
+            </button>
+          </div>
+        </div>
+
+        <section className="payment-entry-form-section">
+          <div className="payment-entry-form-section-head">
+            <h4>🏠 Tahakkuk Secimi</h4>
+            <p className="small">Daire secip acik tahakkuklari odemeye hazirlayin</p>
+          </div>
+
+          <div className="payment-entry-inline-grid payment-entry-inline-grid-top">
+            <label>
+              Daire
+              <select
+                data-testid="payment-apartment-select"
+                value={paymentApartmentId}
+                onChange={(e) => {
+                  void handlePaymentApartmentChange(e.target.value);
+                }}
+                required
+              >
+                <option value="">Daire seciniz</option>
+                {apartmentOptions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.blockName} / {item.doorNo}
+                    {item.ownerFullName ? ` / ${item.ownerFullName}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="small payment-entry-inline-note">
+              Secilen tahakkuk: {paymentForm.items.length} | Toplam tahsilat: <b>{formatTry(selectedPaymentTotal)}</b>
+            </p>
+          </div>
+        </section>
+
         {paymentApartmentId && !paymentChargeLoading && paymentChargeOptions.length === 0 && (
           <p className="small">Bu dairede acik tahakkuk bulunmuyor.</p>
         )}
-        <div className="table-wrap compact-row-top-gap">
-          <table className="report-compact-table">
-            <thead>
-              <tr>
-                <th>Sec</th>
-                <th>Donem</th>
-                <th>Tip</th>
-                <th>Vade</th>
-                <th className="col-num">Kalan</th>
-                <th className="col-num">Odeme</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paymentChargeOptions.length === 0 ? (
+
+        <section className="payment-entry-form-section">
+          <div className="payment-entry-form-section-head">
+            <h4>📋 Acik Tahakkuklar</h4>
+            <p className="small">Tek satirdan secip odeme tutarini guncelleyebilirsiniz</p>
+          </div>
+
+          <div className="table-wrap compact-row-top-gap">
+            <table className="report-compact-table">
+              <thead>
                 <tr>
-                  <td colSpan={6} className="empty">
-                    Acik tahakkuk bulunmuyor
-                  </td>
+                  <th>Sec</th>
+                  <th>Donem</th>
+                  <th>Tip</th>
+                  <th>Vade</th>
+                  <th className="col-num">Kalan</th>
+                  <th className="col-num">Odeme</th>
                 </tr>
-              ) : (
-                paymentChargeOptions.map((item) => {
-                  const selected = paymentForm.items.some((x) => x.chargeId === item.chargeId);
-                  const selectedRow = paymentForm.items.find((x) => x.chargeId === item.chargeId);
-                  return (
-                    <tr key={item.chargeId}>
-                      <td>
-                        <input
-                          data-testid="payment-charge-checkbox"
-                          type="checkbox"
-                          title="Tahakkuku sec"
-                          aria-label={`${String(item.periodMonth).padStart(2, "0")}/${item.periodYear} ${item.chargeTypeName} tahakkugunu sec`}
-                          checked={selected}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            setPaymentForm((prev) => {
-                              if (checked) {
-                                if (prev.items.some((x) => x.chargeId === item.chargeId)) {
-                                  return prev;
+              </thead>
+              <tbody>
+                {paymentChargeOptions.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="empty">
+                      Acik tahakkuk bulunmuyor
+                    </td>
+                  </tr>
+                ) : (
+                  paymentChargeOptions.map((item) => {
+                    const selected = paymentForm.items.some((x) => x.chargeId === item.chargeId);
+                    const selectedRow = paymentForm.items.find((x) => x.chargeId === item.chargeId);
+                    return (
+                      <tr key={item.chargeId}>
+                        <td>
+                          <input
+                            data-testid="payment-charge-checkbox"
+                            type="checkbox"
+                            title="Tahakkuku sec"
+                            aria-label={`${String(item.periodMonth).padStart(2, "0")}/${item.periodYear} ${item.chargeTypeName} tahakkugunu sec`}
+                            checked={selected}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setPaymentForm((prev) => {
+                                if (checked) {
+                                  if (prev.items.some((x) => x.chargeId === item.chargeId)) {
+                                    return prev;
+                                  }
+                                  return {
+                                    ...prev,
+                                    items: [...prev.items, { chargeId: item.chargeId, amount: Number(item.remaining.toFixed(2)) }],
+                                  };
                                 }
+
                                 return {
                                   ...prev,
-                                  items: [...prev.items, { chargeId: item.chargeId, amount: Number(item.remaining.toFixed(2)) }],
+                                  items: prev.items.filter((x) => x.chargeId !== item.chargeId),
                                 };
+                              });
+
+                              if (checked) {
+                                setPaymentChargeDrafts((prev) => ({
+                                  ...prev,
+                                  [item.chargeId]: prev[item.chargeId] ?? formatTrDecimal(item.remaining),
+                                }));
+                              }
+                            }}
+                          />
+                        </td>
+                        <td>{String(item.periodMonth).padStart(2, "0")}/{item.periodYear}</td>
+                        <td>{item.chargeTypeName}</td>
+                        <td>{formatDateTr(item.dueDate)}</td>
+                        <td className="col-num">{formatTry(item.remaining)}</td>
+                        <td className="col-num">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            className="manual-closure-amount-input"
+                            title="Secilen tahakkuk icin odeme tutari"
+                            placeholder="0,00"
+                            disabled={!selected}
+                            value={
+                              paymentChargeDrafts[item.chargeId] ??
+                              (selectedRow ? formatTrDecimal(selectedRow.amount) : "")
+                            }
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setPaymentChargeDrafts((prev) => ({ ...prev, [item.chargeId]: value }));
+                            }}
+                            onBlur={(e) => {
+                              if (!selected) {
+                                return;
                               }
 
-                              return {
-                                ...prev,
-                                items: prev.items.filter((x) => x.chargeId !== item.chargeId),
-                              };
-                            });
+                              const parsed = parseTrDecimal(e.target.value);
+                              if (!Number.isFinite(parsed) || parsed <= 0) {
+                                return;
+                              }
 
-                            if (checked) {
-                              setPaymentChargeDrafts((prev) => ({
+                              const normalized = Number(parsed.toFixed(2));
+                              setPaymentForm((prev) => ({
                                 ...prev,
-                                [item.chargeId]: prev[item.chargeId] ?? formatTrDecimal(item.remaining),
+                                items: prev.items.map((x) => (x.chargeId === item.chargeId ? { ...x, amount: normalized } : x)),
                               }));
-                            }
-                          }}
-                        />
-                      </td>
-                      <td>{String(item.periodMonth).padStart(2, "0")}/{item.periodYear}</td>
-                      <td>{item.chargeTypeName}</td>
-                      <td>{formatDateTr(item.dueDate)}</td>
-                      <td className="col-num">{formatTry(item.remaining)}</td>
-                      <td className="col-num">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          className="manual-closure-amount-input"
-                          title="Secilen tahakkuk icin odeme tutari"
-                          placeholder="0,00"
-                          disabled={!selected}
-                          value={
-                            paymentChargeDrafts[item.chargeId] ??
-                            (selectedRow ? formatTrDecimal(selectedRow.amount) : "")
-                          }
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setPaymentChargeDrafts((prev) => ({ ...prev, [item.chargeId]: value }));
-                          }}
-                          onBlur={(e) => {
-                            if (!selected) {
-                              return;
-                            }
+                              setPaymentChargeDrafts((prev) => ({ ...prev, [item.chargeId]: formatTrDecimal(normalized) }));
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
-                            const parsed = parseTrDecimal(e.target.value);
-                            if (!Number.isFinite(parsed) || parsed <= 0) {
-                              return;
-                            }
+        <section className="payment-entry-form-section">
+          <div className="payment-entry-form-section-head">
+            <h4>💳 Tahsilat Bilgileri</h4>
+            <p className="small">Tarih, yontem ve referans alanlarini tek satirdan yonetin</p>
+          </div>
 
-                            const normalized = Number(parsed.toFixed(2));
-                            setPaymentForm((prev) => ({
-                              ...prev,
-                              items: prev.items.map((x) => (x.chargeId === item.chargeId ? { ...x, amount: normalized } : x)),
-                            }));
-                            setPaymentChargeDrafts((prev) => ({ ...prev, [item.chargeId]: formatTrDecimal(normalized) }));
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+          <div className="payment-entry-inline-grid payment-entry-inline-grid-bottom">
+            <label>
+              Tahsilat Tarihi
+              <input
+                data-testid="payment-paid-at"
+                type="date"
+                value={paymentForm.paidAt}
+                onChange={(e) => setPaymentForm((prev) => ({ ...prev, paidAt: e.target.value }))}
+                required
+              />
+            </label>
+            <label>
+              Yontem
+              <select
+                value={selectedMethod}
+                onChange={(e) => setPaymentForm((prev) => ({ ...prev, method: e.target.value as PaymentMethod }))}
+              >
+                {activeOrAllMethods.map((item) => (
+                  <option key={item.id} value={item.code}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Referans Numarasi
+              <input
+                value={paymentForm.reference}
+                onChange={(e) => setPaymentForm((prev) => ({ ...prev, reference: e.target.value }))}
+                placeholder="Opsiyonel"
+              />
+            </label>
+            <label>
+              Not
+              <input
+                value={paymentForm.note}
+                onChange={(e) => setPaymentForm((prev) => ({ ...prev, note: e.target.value }))}
+                placeholder="Opsiyonel"
+              />
+            </label>
+          </div>
+        </section>
+      </form>
+
+      <form className="card admin-form apartment-form-surface payment-entry-form-surface" onSubmit={(e) => void onSubmitCarryForward(e)}>
+        <div className="section-head">
+          <h3>Devir Alacak Girisi</h3>
+          <div className="admin-row">
+            <button className="btn btn-primary" type="submit" disabled={loading}>
+              Devir Alacak Kaydet
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={resetCarryForwardForm} disabled={loading}>
+              Temizle
+            </button>
+          </div>
         </div>
-        <p className="small">
-          Secilen tahakkuk: {paymentForm.items.length} | Toplam tahsilat: <b>{formatTry(selectedPaymentTotal)}</b>
-        </p>
-        <label>
-          Tahsilat Tarihi
-          <input
-            data-testid="payment-paid-at"
-            type="date"
-            value={paymentForm.paidAt}
-            onChange={(e) => setPaymentForm((prev) => ({ ...prev, paidAt: e.target.value }))}
-            required
-          />
-        </label>
-        <label>
-          Yontem
-          <select
-            value={selectedMethod}
-            onChange={(e) => setPaymentForm((prev) => ({ ...prev, method: e.target.value as PaymentMethod }))}
-          >
-            {activeOrAllMethods.map((item) => (
-              <option key={item.id} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Referans Numarasi
-          <input
-            value={paymentForm.reference}
-            onChange={(e) => setPaymentForm((prev) => ({ ...prev, reference: e.target.value }))}
-            placeholder="Opsiyonel"
-          />
-        </label>
-        <label>
-          Not
-          <input
-            value={paymentForm.note}
-            onChange={(e) => setPaymentForm((prev) => ({ ...prev, note: e.target.value }))}
-            placeholder="Opsiyonel"
-          />
-        </label>
-        <button data-testid="payment-submit" className="btn btn-primary" type="submit" disabled={isPaymentSubmitDisabled}>
-          Tahsilati Kaydet
-        </button>
+
+        <section className="payment-entry-form-section">
+          <div className="payment-entry-form-section-head">
+            <h4>↩ Devir Kaydi</h4>
+            <p className="small">Banka bakiyesini etkilemeden daire bazli devir alacak kaydi olusturur</p>
+          </div>
+
+          <div className="payment-entry-inline-grid payment-entry-inline-grid-bottom payment-entry-inline-grid-carry">
+            <label>
+              Daire
+              <select
+                value={selectedCarryForwardApartmentId}
+                onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, apartmentId: e.target.value }))}
+                required
+              >
+                <option value="">Daire seciniz</option>
+                {apartmentOptions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.blockName} / {item.doorNo}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Devir Alacak Tutari
+              <input
+                type="text"
+                inputMode="decimal"
+                value={carryForwardForm.amount}
+                onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, amount: e.target.value }))}
+                onBlur={(e) => {
+                  const parsed = parseTrDecimal(e.target.value);
+                  if (Number.isFinite(parsed)) {
+                    setCarryForwardForm((prev) => ({ ...prev, amount: formatTrDecimal(parsed) }));
+                  }
+                }}
+                required
+              />
+            </label>
+            <label>
+              Islem Tarihi
+              <input
+                type="date"
+                value={carryForwardForm.paidAt}
+                onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, paidAt: e.target.value }))}
+                required
+              />
+            </label>
+            <label>
+              Referans Numarasi
+              <input
+                value={carryForwardForm.reference}
+                onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, reference: e.target.value }))}
+                placeholder="Opsiyonel"
+              />
+            </label>
+            <label>
+              Aciklama
+              <input
+                value={carryForwardForm.note}
+                onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, note: e.target.value }))}
+                placeholder="Opsiyonel"
+              />
+            </label>
+          </div>
+        </section>
       </form>
 
-      <form className="card admin-form" onSubmit={(e) => void onSubmitCarryForward(e)}>
-        <h3>Devir Alacak Girisi</h3>
-        <p className="small">Banka bakiyesini etkilemez. Daire bazli devir alacak kaydi olusturur.</p>
-        <label>
-          Daire
-          <select
-            value={selectedCarryForwardApartmentId}
-            onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, apartmentId: e.target.value }))}
-            required
-          >
-            <option value="">Daire seciniz</option>
-            {apartmentOptions.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.blockName} / {item.doorNo}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Devir Alacak Tutari
-          <input
-            type="text"
-            inputMode="decimal"
-            value={carryForwardForm.amount}
-            onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, amount: e.target.value }))}
-            onBlur={(e) => {
-              const parsed = parseTrDecimal(e.target.value);
-              if (Number.isFinite(parsed)) {
-                setCarryForwardForm((prev) => ({ ...prev, amount: formatTrDecimal(parsed) }));
-              }
-            }}
-            required
-          />
-        </label>
-        <label>
-          Islem Tarihi
-          <input
-            type="date"
-            value={carryForwardForm.paidAt}
-            onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, paidAt: e.target.value }))}
-            required
-          />
-        </label>
-        <label>
-          Referans Numarasi
-          <input
-            value={carryForwardForm.reference}
-            onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, reference: e.target.value }))}
-            placeholder="Opsiyonel"
-          />
-        </label>
-        <label>
-          Aciklama
-          <input
-            value={carryForwardForm.note}
-            onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, note: e.target.value }))}
-            placeholder="Opsiyonel"
-          />
-        </label>
-        <button className="btn btn-primary" type="submit" disabled={loading}>
-          Devir Alacak Kaydet
-        </button>
-      </form>
+      <form className="card admin-form apartment-form-surface payment-entry-form-surface" onSubmit={(e) => void onSubmitUpload(e)}>
+        <div className="section-head">
+          <h3>Toplu Tahsilat Upload</h3>
+          <div className="admin-row">
+            <button className="btn btn-primary" type="submit" disabled={loading || !paymentUploadFile}>
+              Toplu Tahsilati Yukle
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={resetUploadForm} disabled={loading}>
+              Temizle
+            </button>
+          </div>
+        </div>
 
-      <form className="card admin-form" onSubmit={(e) => void onSubmitUpload(e)}>
-        <h3>Toplu Tahsilat Upload</h3>
-        <p className="small">Desteklenen formatlar: `.xlsx`, `.csv`, `.txt`, `.pdf`.</p>
-        <p className="small">Beklenen kolonlar: `tarih`, `tutar`, `daire no`, `aciklama`, `referans`.</p>
-        <label>
-          Tahsilat Araci
-          <select
-            value={selectedMethod}
-            onChange={(e) => setPaymentForm((prev) => ({ ...prev, method: e.target.value as PaymentMethod }))}
-          >
-            {activeOrAllMethods.map((item) => (
-              <option key={item.id} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Dosya
-          <input
-            type="file"
-            accept=".xlsx,.csv,.txt,.pdf"
-            onChange={(e) => setPaymentUploadFile(e.target.files?.[0] ?? null)}
-            required
-          />
-        </label>
-        <button className="btn btn-primary" type="submit" disabled={loading || !paymentUploadFile}>
-          Toplu Tahsilati Yukle
-        </button>
+        <section className="payment-entry-form-section">
+          <div className="payment-entry-form-section-head">
+            <h4>📤 Toplu Yukleme</h4>
+            <p className="small">Format: .xlsx, .csv, .txt, .pdf | Kolonlar: tarih, tutar, daire no, aciklama, referans</p>
+          </div>
+
+          <div className="payment-entry-inline-grid payment-entry-inline-grid-upload">
+            <label>
+              Tahsilat Araci
+              <select
+                value={selectedMethod}
+                onChange={(e) => setPaymentForm((prev) => ({ ...prev, method: e.target.value as PaymentMethod }))}
+              >
+                {activeOrAllMethods.map((item) => (
+                  <option key={item.id} value={item.code}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Dosya
+              <input
+                type="file"
+                accept=".xlsx,.csv,.txt,.pdf"
+                onChange={(e) => setPaymentUploadFile(e.target.files?.[0] ?? null)}
+                required
+              />
+            </label>
+          </div>
+        </section>
       </form>
 
       {lastImportSummary && (

@@ -123,9 +123,7 @@ export function UploadBatchesPage({
             >
               Sonraki Sayfa
             </button>
-            <button className="btn btn-ghost" type="button" onClick={() => void clearUploadBatchFilters()}>
-              Temizle
-            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => void clearUploadBatchFilters()}>Temizle</button>
           </div>
         </div>
 

@@ -124,9 +124,7 @@ export function ExpenseReportPage({
             >
               Calistir
             </button>
-            <button className="btn btn-ghost" type="button" onClick={() => void clearExpenseReportFilters()}>
-              Temizle
-            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => void clearExpenseReportFilters()}>Temizle</button>
           </div>
         </div>
         <div className="upload-batch-filter-row compact-row-top-gap">
@@ -356,9 +354,7 @@ export function ExpenseReportPage({
               <button className="btn btn-primary" type="submit" disabled={loading}>
                 Kaydet
               </button>
-              <button className="btn btn-ghost" type="button" onClick={cancelEditExpenseReportRow}>
-                Iptal
-              </button>
+              <button className="btn btn-ghost" type="button" onClick={cancelEditExpenseReportRow}>Temizle</button>
             </div>
           </form>
         )}

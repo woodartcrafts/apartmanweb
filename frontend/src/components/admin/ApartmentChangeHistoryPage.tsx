@@ -250,11 +250,29 @@ export function ApartmentChangeHistoryPage({ apartmentOptions }: ApartmentChange
     }
   }
 
+  function clearHistoryFilters(): void {
+    setSelectedApartmentIds([]);
+    setChangedAtFrom("");
+    setChangedAtTo("");
+    setRows([]);
+    setMessage("Daire secip gecmisi getirin");
+  }
+
   return (
     <section className="dashboard">
       <div className="card admin-tools apartment-history-tools">
-        <h3>Daire Degisiklik Gecmisi</h3>
-        <div className="admin-row">
+        <div className="section-head report-toolbar">
+          <h3>Daire Degisiklik Gecmisi</h3>
+          <div className="admin-row">
+            <button className="btn btn-primary" type="button" onClick={() => void fetchHistory()} disabled={loading}>
+              Calistir
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={clearHistoryFilters} disabled={loading}>
+              Temizle
+            </button>
+          </div>
+        </div>
+        <div className="apartment-history-filter-row">
           <label className="filter-dropdown-field">
             Daireler
             <details className="filter-dropdown apartment-edit-select-dropdown">
@@ -297,12 +315,11 @@ export function ApartmentChangeHistoryPage({ apartmentOptions }: ApartmentChange
               <input type="date" value={changedAtTo} onChange={(e) => setChangedAtTo(e.target.value)} />
             </div>
           </label>
-          <button className="btn btn-primary" type="button" onClick={() => void fetchHistory()} disabled={loading}>
-            Calistir
-          </button>
+          <p className="small apartment-history-inline-meta">
+            Secili daireler: {selectedApartmentSummary || "-"}
+          </p>
+          <p className="small apartment-history-inline-meta">{message}</p>
         </div>
-        {selectedApartmentSummary && <p className="small">Secili daireler: {selectedApartmentSummary}</p>}
-        <p className="small">{message}</p>
       </div>
 
       <div className="card table-card">

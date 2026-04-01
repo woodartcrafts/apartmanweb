@@ -117,9 +117,7 @@ export function AuditLogsPage({ actionLogs, fetchActionLogs }: AuditLogsPageProp
             <button className="btn btn-primary btn-run" type="button" onClick={() => void fetchActionLogs()}>
               Yenile
             </button>
-            <button className="btn btn-ghost" type="button" onClick={clearFilters}>
-              Filtreleri Temizle
-            </button>
+            <button className="btn btn-ghost" type="button" onClick={clearFilters}>Temizle</button>
           </div>
         </div>
 

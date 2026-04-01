@@ -196,8 +196,16 @@ export function ApartmentClassManagementPage({
       )}
 
       <form className="card admin-form" onSubmit={onSubmit}>
-        <h3>{editingId ? "Daire Sinifi Degistir" : "Daire Sinifi Ekle"}</h3>
-        <div className="apartment-class-form-inline">
+        <div className="section-head">
+          <h3>{editingId ? "Daire Sinifi Degistir" : "Daire Sinifi Ekle"}</h3>
+          <div className="admin-row">
+            <button className="btn btn-primary" type="submit" disabled={loading}>
+              {editingId ? "Degisiklikleri Kaydet" : "Sinif Ekle"}
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={cancelEdit}>Temizle</button>
+          </div>
+        </div>
+        <div className="apartment-class-form-inline apartment-class-inline-form">
           <label>
             Kod
             <input
@@ -216,23 +224,15 @@ export function ApartmentClassManagementPage({
               required
             />
           </label>
+          <label className="checkbox-row apartment-class-inline-active">
+            <input
+              type="checkbox"
+              checked={formState.isActive}
+              onChange={(e) => setFormState((prev) => ({ ...prev, isActive: e.target.checked }))}
+            />
+            Aktif
+          </label>
         </div>
-        <label className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={formState.isActive}
-            onChange={(e) => setFormState((prev) => ({ ...prev, isActive: e.target.checked }))}
-          />
-          Aktif
-        </label>
-        <button className="btn btn-primary" type="submit" disabled={loading}>
-          {editingId ? "Degisiklikleri Kaydet" : "Sinif Ekle"}
-        </button>
-        {editingId && (
-          <button className="btn btn-ghost" type="button" onClick={cancelEdit}>
-            Iptal
-          </button>
-        )}
         {message && <p className="small">{message}</p>}
       </form>
 

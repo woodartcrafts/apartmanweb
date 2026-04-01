@@ -158,7 +158,17 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
 
   return (
     <form className="card admin-form charge-entry-form-surface" onSubmit={(e) => void onSubmit(e)}>
-      <h3>Tahakkuk Girisi</h3>
+      <div className="section-head">
+        <h3>Tahakkuk Girisi</h3>
+        <div className="admin-row">
+          <button data-testid="charge-submit" className="btn btn-primary" type="submit" disabled={loading}>
+            Tahakkuk Kaydet
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={resetForm} disabled={loading}>
+            Temizle
+          </button>
+        </div>
+      </div>
 
       <section className="charge-entry-form-section">
         <div className="charge-entry-form-section-head">
@@ -323,14 +333,6 @@ export function ChargeEntryPage({ loading, apartmentOptions, chargeTypeOptions, 
       </section>
 
       {formError ? <p className="small-error">{formError}</p> : null}
-      <div className="admin-row">
-        <button data-testid="charge-submit" className="btn btn-primary" type="submit" disabled={loading}>
-          Tahakkuk Kaydet
-        </button>
-        <button className="btn btn-ghost" type="button" onClick={resetForm} disabled={loading}>
-          Veriyi Temizle
-        </button>
-      </div>
     </form>
   );
 }

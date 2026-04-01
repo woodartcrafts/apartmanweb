@@ -163,7 +163,15 @@ export function ApartmentBulkUpdatePage({
       )}
 
       <form className="card admin-form" onSubmit={onSubmit}>
-        <h3>Dairelerde Toplu Sinif / Tip Degisikligi</h3>
+        <div className="section-head">
+          <h3>Dairelerde Toplu Sinif / Tip Degisikligi</h3>
+          <div className="admin-row">
+            <button className="btn btn-primary" type="submit" disabled={loading || !confirmed}>
+              Toplu Guncelle
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={clearForm}>Temizle</button>
+          </div>
+        </div>
         <p className="small">
           Bu ekran iki adimla calisir: once neyi degistireceginizi secersiniz, sonra hangi dairelerde uygulanacagini filtrelersiniz.
         </p>
@@ -287,15 +295,6 @@ export function ApartmentBulkUpdatePage({
           <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
           Yukaridaki toplu degisikligi onayliyorum.
         </label>
-
-        <div className="admin-row compact-row-top-gap">
-          <button className="btn btn-primary" type="submit" disabled={loading || !confirmed}>
-            Toplu Guncelle
-          </button>
-          <button className="btn btn-ghost" type="button" onClick={clearForm}>
-            Temizle
-          </button>
-        </div>
 
         {result && (
           <div className="compact-row-top-gap">

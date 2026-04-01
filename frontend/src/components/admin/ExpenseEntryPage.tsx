@@ -46,6 +46,17 @@ export function ExpenseEntryPage({
   const selectedExpenseItemId = expenseForm.expenseItemId || activeOrAllExpenseItems[0]?.id || "";
   const selectedPaymentMethod = expenseForm.paymentMethod || activeOrAllMethods[0]?.code || "CASH";
 
+  function resetExpenseForm(): void {
+    setExpenseForm({
+      expenseItemId: "",
+      spentAt: "",
+      amount: "",
+      paymentMethod: "CASH",
+      description: "",
+      reference: "",
+    });
+  }
+
   async function onSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
     await onSubmitExpense({
@@ -53,21 +64,25 @@ export function ExpenseEntryPage({
       expenseItemId: selectedExpenseItemId,
       paymentMethod: selectedPaymentMethod,
     });
-    setExpenseForm((prev) => ({
-      ...prev,
-      spentAt: "",
-      amount: "",
-      description: "",
-      reference: "",
-    }));
+    resetExpenseForm();
   }
 
   return (
     <section className="dashboard expense-entry-page">
       <form data-testid="expense-entry-form" className="card admin-form expense-entry-form-surface" onSubmit={(e) => void onSubmit(e)}>
         <div className="section-head expense-entry-hero-head">
-          <h3>Gider Girisi</h3>
-          <span className="small">Kalem secimi, odeme yontemi ve referans takibi</span>
+          <div className="expense-entry-hero-copy">
+            <h3>Gider Girisi</h3>
+            <span className="small">Kalem secimi, odeme yontemi ve referans takibi</span>
+          </div>
+          <div className="admin-row">
+            <button data-testid="expense-submit" className="btn btn-primary" type="submit" disabled={loading}>
+              Gideri Kaydet
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={resetExpenseForm}>
+              Temizle
+            </button>
+          </div>
         </div>
 
         <section className="expense-entry-form-section">
@@ -155,11 +170,6 @@ export function ExpenseEntryPage({
           </div>
         </section>
 
-        <div className="expense-entry-actions">
-          <button data-testid="expense-submit" className="btn btn-primary" type="submit" disabled={loading}>
-            Gideri Kaydet
-          </button>
-        </div>
       </form>
     </section>
   );
