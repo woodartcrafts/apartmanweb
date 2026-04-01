@@ -111,7 +111,7 @@ export function CorrectionsPage({
               onClick={() => void loadCorrections(correctionApartmentId, true)}
               disabled={loading || !correctionApartmentId}
             >
-              Duzeltmeleri Yukle
+              Kaydet
             </button>
             <button className="btn btn-ghost" type="button" onClick={clearPage} disabled={loading}>
               Temizle

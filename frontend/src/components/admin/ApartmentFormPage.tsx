@@ -15,6 +15,7 @@ type ApartmentFormState = {
   blockName: string;
   doorNo: string;
   m2: string;
+  arsaPayi: string;
   type: ApartmentType;
   apartmentClassId: string;
   apartmentDutyId: string;
@@ -43,6 +44,7 @@ const initialFormState: ApartmentFormState = {
   blockName: "",
   doorNo: "",
   m2: "",
+  arsaPayi: "",
   type: "BUYUK",
   apartmentClassId: "",
   apartmentDutyId: "",
@@ -186,6 +188,7 @@ export function ApartmentFormPage() {
       blockName: apartment.blockName,
       doorNo: apartment.doorNo,
       m2: apartment.m2 !== null && Number.isFinite(apartment.m2) ? String(apartment.m2) : "",
+      arsaPayi: apartment.arsaPayi !== null && Number.isFinite(apartment.arsaPayi) ? String(apartment.arsaPayi) : "",
       type: apartment.type,
       apartmentClassId: apartment.apartmentClassId ?? "",
       apartmentDutyId: apartment.apartmentDutyId ?? "",
@@ -377,6 +380,7 @@ export function ApartmentFormPage() {
         blockName: formState.blockName,
         doorNo: formState.doorNo,
         m2: formState.m2.trim() === "" ? undefined : Number(formState.m2),
+        arsaPayi: formState.arsaPayi.trim() === "" ? undefined : Number(formState.arsaPayi),
         type: formState.type,
         apartmentClassId: formState.apartmentClassId || undefined,
         apartmentDutyId: formState.apartmentDutyId || undefined,
@@ -463,6 +467,7 @@ export function ApartmentFormPage() {
         ...prev,
         doorNo: "",
         m2: "",
+        arsaPayi: "",
         ownerFullName: "",
         moveInDate: "",
         email1: "",
@@ -683,6 +688,18 @@ export function ApartmentFormPage() {
               step="0.01"
               value={formState.m2}
               onChange={(e) => setFormState((prev) => ({ ...prev, m2: e.target.value }))}
+              placeholder="120"
+            />
+          </label>
+
+          <label>
+            Arsa Payi
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={formState.arsaPayi}
+              onChange={(e) => setFormState((prev) => ({ ...prev, arsaPayi: e.target.value }))}
               placeholder="120"
             />
           </label>

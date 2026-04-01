@@ -92,6 +92,7 @@ model Apartment {
   apartmentDutyId String?
   doorNo        String
   m2            Float?
+  arsaPayi      Float?
   type          ApartmentType @default(BUYUK)
   hasAidat      Boolean       @default(true)
   hasDogalgaz   Boolean       @default(true)

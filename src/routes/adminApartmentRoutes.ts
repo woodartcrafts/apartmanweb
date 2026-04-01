@@ -14,6 +14,7 @@ type ApartmentSnapshotInput = {
   block: { name: string };
   doorNo: string;
   m2: number | null;
+  arsaPayi: number | null;
   type: ApartmentType;
   apartmentClassId: string | null;
   apartmentDutyId: string | null;
@@ -44,6 +45,7 @@ type ApartmentSnapshot = {
   blockName: string;
   doorNo: string;
   m2: number | null;
+  arsaPayi: number | null;
   type: ApartmentType;
   apartmentClassId: string | null;
   apartmentClassCode: string | null;
@@ -77,6 +79,7 @@ function createApartmentSnapshot(apartment: ApartmentSnapshotInput): ApartmentSn
     blockName: apartment.block.name,
     doorNo: apartment.doorNo,
     m2: apartment.m2,
+    arsaPayi: apartment.arsaPayi,
     type: apartment.type,
     apartmentClassId: apartment.apartmentClassId,
     apartmentClassCode: apartment.apartmentClass?.code ?? null,
@@ -278,6 +281,7 @@ const apartmentCreateSchema = z.object({
   blockName: z.string().min(1),
   doorNo: z.string().min(1),
   m2: z.coerce.number().min(0).optional().nullable(),
+  arsaPayi: z.coerce.number().min(0).optional().nullable(),
   type: z.nativeEnum(ApartmentType).optional(),
   apartmentClassId: z.string().optional().nullable(),
   apartmentDutyId: z.string().optional().nullable(),
@@ -306,6 +310,7 @@ const apartmentUpdateSchema = z.object({
   blockName: z.string().min(1),
   doorNo: z.string().min(1),
   m2: z.coerce.number().min(0).optional().nullable(),
+  arsaPayi: z.coerce.number().min(0).optional().nullable(),
   type: z.nativeEnum(ApartmentType),
   apartmentClassId: z.string().optional().nullable(),
   apartmentDutyId: z.string().optional().nullable(),
@@ -573,6 +578,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         blockName: apartment.block.name,
         doorNo: apartment.doorNo,
         m2: apartment.m2,
+        arsaPayi: apartment.arsaPayi,
         type: apartment.type,
         apartmentClassId: apartment.apartmentClassId,
         apartmentClassCode: apartment.apartmentClass?.code ?? null,
@@ -755,6 +761,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
       blockName,
       doorNo,
       m2,
+      arsaPayi,
       type,
       apartmentClassId,
       apartmentDutyId,
@@ -854,6 +861,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         blockId: block.id,
         doorNo: normalizedDoorNo,
         m2: m2 ?? null,
+        arsaPayi: arsaPayi ?? null,
         type,
         apartmentClassId: normalizedApartmentClassId,
         apartmentDutyId: normalizedApartmentDutyId,
@@ -998,6 +1006,7 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
           blockId: block.id,
           doorNo: normalizedDoorNo,
           m2: parsed.data.m2 ?? null,
+          arsaPayi: parsed.data.arsaPayi ?? null,
           type: parsed.data.type,
           apartmentClassId: normalizedApartmentClassId,
           apartmentDutyId: normalizedApartmentDutyId,

@@ -121,7 +121,7 @@ export function AuditLogsPage({ actionLogs, fetchActionLogs }: AuditLogsPageProp
           </div>
         </div>
 
-        <div className="report-filter-grid compact-row-top-gap">
+        <div className="report-filter-grid compact-row-top-gap audit-log-filter-row">
           <label>
             Arama
             <input

@@ -190,11 +190,6 @@ const AuditLogsPage = lazy(() =>
     default: module.AuditLogsPage,
   }))
 );
-const StatementReconcilePage = lazy(() =>
-  import("./components/admin/StatementReconcilePage").then((module) => ({
-    default: module.StatementReconcilePage,
-  }))
-);
 const ManualReviewMatchesPage = lazy(() =>
   import("./components/admin/ManualReviewMatchesPage").then((module) => ({
     default: module.ManualReviewMatchesPage,
@@ -568,7 +563,7 @@ function AdminPage() {
   } | null>(null);
 
   const [bulkCorrectionForm, setBulkCorrectionForm] = useState({
-    periodYear: "",
+    periodYear: String(new Date().getFullYear()),
     periodMonths: [] as number[],
     chargeTypeId: "",
     accrualDateFrom: "",
@@ -696,13 +691,15 @@ function AdminPage() {
   const [warningPanel, setWarningPanel] = useState<{ title: string; message: string; items: string[] } | null>(null);
   const [initialBalanceReplaceExisting, setInitialBalanceReplaceExisting] = useState(true);
   const [initialBalanceRows, setInitialBalanceRows] = useState<
-    Array<{ bankName: string; branchName: string; openingBalance: string; openingDate: string }>
+    Array<{ id: string; bankName: string; branchName: string; openingBalance: string; openingDate: string; isEditing: boolean }>
   >([
     {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       bankName: "",
       branchName: "",
       openingBalance: "",
       openingDate: new Date().toISOString().slice(0, 10),
+      isEditing: true,
     },
   ]);
   const [overduePaymentsRows, setOverduePaymentsRows] = useState<OverduePaymentsReportRow[]>([]);
@@ -785,7 +782,7 @@ function AdminPage() {
   });
   const [chargeConsistencyForm, setChargeConsistencyForm] = useState({
     periodYear: String(new Date().getFullYear()),
-    periodMonths: [new Date().getMonth() + 1] as number[],
+    periodMonths: [...monthOptions] as number[],
     chargeTypeId: "",
     apartmentType: "ALL" as "ALL" | ApartmentType,
     expectedBuyukAmount: "",
@@ -4319,10 +4316,12 @@ function AdminPage() {
             const branchName = branchExists ? (entry.branchName ?? "") : "";
 
             return {
+              id: `${Date.now()}-${Math.random().toString(36).slice(2)}-${entry.bankName}-${entry.branchName ?? ""}`,
               bankName,
               branchName,
               openingBalance: formatDecimalInput(entry.openingBalance),
               openingDate: isoToDateInput(entry.openingDate),
+              isEditing: false,
             };
           })
         );
@@ -4331,10 +4330,12 @@ function AdminPage() {
         const firstBranch = firstBank?.branches[0];
         setInitialBalanceRows([
           {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
             bankName: firstBank?.name ?? "",
             branchName: firstBranch?.name ?? "",
             openingBalance: "",
             openingDate: isoToDateInput(data.defaultOpeningDate),
+            isEditing: true,
           },
         ]);
       }
@@ -4405,10 +4406,12 @@ function AdminPage() {
     setInitialBalanceRows((prev) => [
       ...prev,
       {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         bankName: firstBank?.name ?? "",
         branchName: firstBranch?.name ?? "",
         openingBalance: "",
         openingDate: new Date().toISOString().slice(0, 10),
+        isEditing: true,
       },
     ]);
   }
@@ -4448,6 +4451,12 @@ function AdminPage() {
 
       return next;
     });
+  }
+
+  function toggleInitialBalanceRowEdit(index: number): void {
+    setInitialBalanceRows((prev) =>
+      prev.map((row, idx) => (idx === index ? { ...row, isEditing: !row.isEditing } : row))
+    );
   }
 
   async function fetchOverduePaymentsReport(options?: { silent?: boolean }): Promise<void> {
@@ -4986,7 +4995,7 @@ function AdminPage() {
   function clearChargeConsistencyFilters(): void {
     setChargeConsistencyForm({
       periodYear: String(new Date().getFullYear()),
-      periodMonths: [new Date().getMonth() + 1],
+      periodMonths: [...monthOptions],
       chargeTypeId: "",
       apartmentType: "ALL",
       expectedBuyukAmount: "",
@@ -7703,7 +7712,7 @@ function AdminPage() {
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon" aria-hidden="true">🏠</span>
-            Daire
+            <span className="admin-subnav-label">Daire</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
             <NavLink
@@ -7752,7 +7761,7 @@ function AdminPage() {
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon" aria-hidden="true">🧾</span>
-            Tahakkuk
+            <span className="admin-subnav-label">Tahakkuk</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
             <NavLink className="btn btn-ghost" to="/admin/charge-types">
@@ -7776,7 +7785,7 @@ function AdminPage() {
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon" aria-hidden="true">💳</span>
-            Tahsilat
+            <span className="admin-subnav-label">Tahsilat</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
             <NavLink className="btn btn-ghost" to="/admin/payment-methods">
@@ -7794,7 +7803,7 @@ function AdminPage() {
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon" aria-hidden="true">📄</span>
-            Ekstre
+            <span className="admin-subnav-label">Ekstre</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
             <NavLink className="btn btn-ghost" to="/admin/statement">
@@ -7803,16 +7812,13 @@ function AdminPage() {
             <NavLink className="btn btn-ghost" to="/admin/statement/all">
               Toplu Ekstre
             </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/statement/reconcile">
-              Eslestirme
-            </NavLink>
           </div>
         </details>
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon" aria-hidden="true">💸</span>
-            Gider
+            <span className="admin-subnav-label">Gider</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
             <NavLink className="btn btn-ghost" to="/admin/expense-items">
@@ -7830,7 +7836,7 @@ function AdminPage() {
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon" aria-hidden="true">📊</span>
-            Raporlar
+            <span className="admin-subnav-label">Raporlar</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
             <NavLink className="btn btn-ghost" to="/admin/reports">
@@ -7869,7 +7875,7 @@ function AdminPage() {
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon" aria-hidden="true">🏦</span>
-            Bankalar
+            <span className="admin-subnav-label">Bankalar</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
             <NavLink className="btn btn-ghost" to="/admin/banks">
@@ -7896,7 +7902,7 @@ function AdminPage() {
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon" aria-hidden="true">✅</span>
-            Kontrol
+            <span className="admin-subnav-label">Kontrol</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
             <NavLink className="btn btn-ghost" to="/admin/reports/charge-consistency">
@@ -7917,7 +7923,7 @@ function AdminPage() {
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon" aria-hidden="true">🛠️</span>
-            Sistem ve Duzeltme
+            <span className="admin-subnav-label">Sistem ve Duzeltme</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
             <NavLink className="btn btn-ghost" to="/admin/description-door-rules">
@@ -7925,9 +7931,6 @@ function AdminPage() {
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/description-expense-rules">
               Aciklama-Gider Esleme
-            </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/statement/reconcile">
-              Tum Eslestirmeleri (Kapamalari) Tekrar Yap
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/resident-content">
               Duyurular ve Anketler
@@ -7947,7 +7950,7 @@ function AdminPage() {
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon" aria-hidden="true">🗂️</span>
-            Toplanti
+            <span className="admin-subnav-label">Toplanti</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
             <NavLink className="btn btn-ghost" to="/admin/meeting">
@@ -9037,10 +9040,10 @@ function AdminPage() {
 
               {/* ─── Filter Card ─────────────────────────────────── */}
               <div className="card report-page-card cc-report-card">
-                <div className="cc-report-header">
-                  <div className="cc-report-header-text">
-                    <h3 className="cc-report-title">Tahakkuk Kontrol Raporu</h3>
-                    <p className="cc-report-subtitle">Secilen donem icin tahakkuk tutarsizliklarini ve eksikliklerini tarar.</p>
+                <div className="section-head report-toolbar">
+                  <div>
+                    <h3>Tahakkuk Kontrol Raporu</h3>
+                    <p className="small">Secilen donem icin tahakkuk tutarsizliklarini ve eksikliklerini tarar.</p>
                   </div>
                   <div className="admin-row">
                     <button
@@ -9060,17 +9063,19 @@ function AdminPage() {
                   <div className="cc-filter-group">
                     <span className="cc-filter-group-label">Donem</span>
                     <div className="cc-filter-period-row">
-                      <label className="cc-inline-label">
-                        <span>Yil</span>
-                        <input
-                          type="number"
-                          className="cc-year-input"
-                          value={chargeConsistencyForm.periodYear}
-                          onChange={(e) => setChargeConsistencyForm((prev) => ({ ...prev, periodYear: e.target.value }))}
-                          required
-                        />
-                      </label>
-                      <div className="cc-month-block">
+                      <div className="cc-period-year-row">
+                        <label className="cc-inline-label">
+                          <span>Yil</span>
+                          <input
+                            type="number"
+                            className="cc-year-input"
+                            value={chargeConsistencyForm.periodYear}
+                            onChange={(e) => setChargeConsistencyForm((prev) => ({ ...prev, periodYear: e.target.value }))}
+                            required
+                          />
+                        </label>
+                      </div>
+                      <div className="cc-month-inline-row">
                         <label className="checkbox-row cc-all-months-label">
                           <input
                             type="checkbox"
@@ -9078,13 +9083,13 @@ function AdminPage() {
                             onChange={(e) => {
                               setChargeConsistencyForm((prev) => ({
                                 ...prev,
-                                periodMonths: e.target.checked ? [...monthOptions] : [new Date().getMonth() + 1],
+                                periodMonths: e.target.checked ? [...monthOptions] : [],
                               }));
                             }}
                           />
                           Tum aylari sec
                         </label>
-                        <div className="month-grid">
+                        <div className="month-grid cc-month-grid-inline">
                           {monthOptions.map((month) => {
                             const checked = chargeConsistencyForm.periodMonths.includes(month);
                             return (
@@ -9114,8 +9119,8 @@ function AdminPage() {
                   <div className="cc-filter-group">
                     <span className="cc-filter-group-label">Filtreler</span>
                     <div className="report-filter-grid cc-filter-grid">
-                      <label>
-                        Tahakkuk Tipi
+                      <label className="cc-inline-field">
+                        <span className="cc-inline-field-label">Tahakkuk Tipi</span>
                         <select
                           value={chargeConsistencyForm.chargeTypeId}
                           onChange={(e) =>
@@ -9134,8 +9139,8 @@ function AdminPage() {
                           ))}
                         </select>
                       </label>
-                      <label>
-                        Daire Tipi
+                      <label className="cc-inline-field">
+                        <span className="cc-inline-field-label">Daire Tipi</span>
                         <select
                           value={chargeConsistencyForm.apartmentType}
                           onChange={(e) =>
@@ -9147,8 +9152,8 @@ function AdminPage() {
                           <option value="KUCUK">Sadece KUCUK</option>
                         </select>
                       </label>
-                      <label>
-                        Beklenen BUYUK Tutar
+                      <label className="cc-inline-field">
+                        <span className="cc-inline-field-label">Beklenen BUYUK Tutar</span>
                         <input
                           type="number"
                           step="0.01"
@@ -9159,8 +9164,8 @@ function AdminPage() {
                           }
                         />
                       </label>
-                      <label>
-                        Beklenen KUCUK Tutar
+                      <label className="cc-inline-field">
+                        <span className="cc-inline-field-label">Beklenen KUCUK Tutar</span>
                         <input
                           type="number"
                           step="0.01"
@@ -10627,7 +10632,7 @@ function AdminPage() {
                       onClick={() => {
                         setBulkCorrectionForm((prev) => ({
                           ...prev,
-                          periodYear: "",
+                          periodYear: String(new Date().getFullYear()),
                           periodMonths: [],
                           chargeTypeId: "",
                           accrualDateFrom: "",
@@ -11228,7 +11233,7 @@ function AdminPage() {
             <section className="dashboard compact-management-page">
               <form
                 ref={descriptionExpenseRuleFormRef}
-                className="card admin-form"
+                className="card admin-form description-expense-rule-form"
                 onSubmit={onSubmitDescriptionExpenseRule}
               >
                 <div className="section-head">
@@ -11475,12 +11480,13 @@ function AdminPage() {
                         const branchOptions = selectedBank?.branches ?? [];
 
                         return (
-                        <tr key={`opening-${index}`}>
+                        <tr key={row.id}>
                           <td>
                             <select
                               title="Banka secimi"
                               value={row.bankName}
                               onChange={(e) => updateInitialBalanceRow(index, "bankName", e.target.value)}
+                              disabled={!row.isEditing}
                             >
                               <option value="">Banka seciniz</option>
                               {bankOptions.map((bank) => (
@@ -11495,7 +11501,7 @@ function AdminPage() {
                               title="Sube secimi"
                               value={row.branchName}
                               onChange={(e) => updateInitialBalanceRow(index, "branchName", e.target.value)}
-                              disabled={!row.bankName}
+                              disabled={!row.bankName || !row.isEditing}
                             >
                               <option value="">Sube seciniz</option>
                               {branchOptions.map((branch) => (
@@ -11519,6 +11525,7 @@ function AdminPage() {
                                 }
                               }}
                               placeholder="0,00"
+                              disabled={!row.isEditing}
                             />
                           </td>
                           <td>
@@ -11527,9 +11534,17 @@ function AdminPage() {
                               title="Acilis tarihi"
                               value={row.openingDate}
                               onChange={(e) => updateInitialBalanceRow(index, "openingDate", e.target.value)}
+                              disabled={!row.isEditing}
                             />
                           </td>
                           <td className="actions-cell">
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => toggleInitialBalanceRowEdit(index)}
+                            >
+                              {row.isEditing ? "Kapat" : "Degistir"}
+                            </button>
                             <button
                               type="button"
                               className="btn btn-danger"
@@ -11945,7 +11960,17 @@ function AdminPage() {
           element={
             <section className="dashboard">
               <form className="card admin-form" onSubmit={onUploadApartments}>
-                <h3>Daire Listesi Excel Yukle</h3>
+                <div className="section-head">
+                  <h3>Daire Listesi Excel Yukle</h3>
+                  <div className="admin-row">
+                    <button className="btn btn-ghost" type="button" onClick={() => void downloadApartmentUploadTemplate()}>
+                      Excel Sablonunu Indir
+                    </button>
+                    <button className="btn btn-primary" type="submit" disabled={loading}>
+                      Daire Listesi Yukle
+                    </button>
+                  </div>
+                </div>
                 <p className="small">Toplu yaratma icin .xlsx dosyasi secin. Bos opsiyonel alanlar kabul edilir.</p>
                 <p className="small">
                   Beklenen kolonlar: blockName/blok, doorNo/daireno ve opsiyonel olarak type, apartmentClassCode,
@@ -11953,9 +11978,6 @@ function AdminPage() {
                   occupancyType, email1, email2, email3, phone1, phone2, phone3, landlordFullName, landlordPhone,
                   landlordEmail. Bos bir hucre mevcut veriyi silmez.
                 </p>
-                <button className="btn btn-ghost" type="button" onClick={() => void downloadApartmentUploadTemplate()}>
-                  Excel Sablonunu Indir
-                </button>
                 <label>
                   Excel Dosyasi
                   <input
@@ -11965,9 +11987,6 @@ function AdminPage() {
                     required
                   />
                 </label>
-                <button className="btn btn-primary" type="submit" disabled={loading}>
-                  Daire Listesi Yukle
-                </button>
               </form>
             </section>
           }
@@ -12245,7 +12264,7 @@ function AdminPage() {
                     <p className="small">Kaydin bagli oldugu banka ve sube secimi</p>
                   </div>
 
-                  <div className="compact-row">
+                  <div className="compact-row bank-term-deposit-bank-row">
                   <label>
                     Banka
                     <select
@@ -12291,7 +12310,7 @@ function AdminPage() {
                     <p className="small">Ana para ve faiz/stopaj oranlarini girin</p>
                   </div>
 
-                  <div className="compact-row">
+                  <div className="compact-row bank-term-deposit-amount-row">
                   <label>
                     Ana Para
                     <input
@@ -12335,7 +12354,7 @@ function AdminPage() {
                     <p className="small">Baslangic, bitis tarihi ve durum bilgisi</p>
                   </div>
 
-                  <div className="compact-row">
+                  <div className="compact-row bank-term-deposit-maturity-row">
                   <label>
                     Baslangic Tarihi
                     <input
@@ -12573,24 +12592,6 @@ function AdminPage() {
           }
         />
         <Route
-          path="/statement/reconcile"
-          element={
-            <Suspense fallback={<LazyAdminPageFallback />}>
-              <StatementReconcilePage
-                loading={loading}
-                activeApartmentId={activeApartmentId}
-                setActiveApartmentId={setActiveApartmentId}
-                apartmentOptions={apartmentOptions}
-                reconcileSelectedApartment={reconcileSelectedApartment}
-                reconcileAllApartments={reconcileAllApartments}
-                fetchMixedPaymentReport={fetchMixedPaymentReport}
-                mixedPaymentTotalCount={mixedPaymentTotalCount}
-                mixedPaymentRows={mixedPaymentRows}
-              />
-            </Suspense>
-          }
-        />
-        <Route
           path="/reconcile/door-mismatch-report"
           element={
             <Suspense fallback={<LazyAdminPageFallback />}>
@@ -12598,7 +12599,6 @@ function AdminPage() {
                 fetchDoorMismatchReport={fetchDoorMismatchReport}
                 clearDoorMismatchReport={clearDoorMismatchReport}
                 doorMismatchLoading={doorMismatchLoading}
-                onGoToReconcile={() => navigate("/admin/statement/reconcile")}
                 doorMismatchTotals={doorMismatchTotals}
                 doorMismatchRows={doorMismatchRows}
               />

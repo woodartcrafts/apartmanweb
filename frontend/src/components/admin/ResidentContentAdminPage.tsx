@@ -369,14 +369,6 @@ export function ResidentContentAdminPage() {
             </p>
             {message && <p className="small resident-content-inline-message">{message}</p>}
           </div>
-          <div className="resident-content-hero-visual" aria-hidden="true">
-            <div className="resident-content-visual-card resident-content-visual-ann">
-              <span className="resident-content-visual-chip">DUYURU</span>
-            </div>
-            <div className="resident-content-visual-card resident-content-visual-poll">
-              <span className="resident-content-visual-chip">ANKET</span>
-            </div>
-          </div>
         </div>
 
         <div className="stats-grid resident-content-stats-grid compact-row-top-gap">

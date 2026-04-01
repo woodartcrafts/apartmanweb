@@ -2033,6 +2033,11 @@ button:active:not(:disabled) {
   justify-content: space-between;
   gap: 4px;
   white-space: nowrap;
+}
+
+.admin-subnav-label {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -2059,6 +2064,7 @@ button:active:not(:disabled) {
   font-size: 1rem;
   line-height: 1;
   color: #557a75;
+  flex: 0 0 auto;
 }
 
 .admin-subnav-dropdown[open] .admin-subnav-title::after {
@@ -2326,6 +2332,42 @@ button:active:not(:disabled) {
   gap: 6px;
 }
 
+.description-expense-rule-form {
+  gap: 8px;
+}
+
+.description-expense-rule-form > label {
+  min-width: 0;
+}
+
+.description-expense-rule-form > .section-head,
+.description-expense-rule-form > .small {
+  grid-column: 1 / -1;
+}
+
+.description-expense-rule-form > label:nth-of-type(1) {
+  grid-column: 1;
+}
+
+.description-expense-rule-form > label:nth-of-type(2) {
+  grid-column: 2;
+}
+
+.description-expense-rule-form > label.checkbox-row {
+  grid-column: 3;
+  align-self: end;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+}
+
+@media (min-width: 900px) {
+  .description-expense-rule-form {
+    grid-template-columns: minmax(280px, 1.1fr) minmax(260px, 1fr) minmax(120px, auto);
+    align-items: end;
+  }
+}
+
 .bank-management-page {
   gap: 12px;
 }
@@ -2431,12 +2473,34 @@ button:active:not(:disabled) {
 }
 
 .bank-term-deposit-form-surface .checkbox-row {
-  justify-content: center;
+  justify-content: flex-start;
+  align-self: end;
+  min-height: 38px;
+}
+
+.bank-term-deposit-form-surface .bank-term-deposit-bank-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bank-term-deposit-form-surface .bank-term-deposit-amount-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.bank-term-deposit-form-surface .bank-term-deposit-maturity-row {
+  grid-template-columns: 1fr 1fr auto;
+}
+
+.bank-term-deposit-form-surface .bank-term-deposit-maturity-row > .checkbox-row {
+  white-space: nowrap;
 }
 
 @media (max-width: 980px) {
   .bank-term-deposit-form-surface .compact-row {
     grid-template-columns: 1fr;
+  }
+
+  .bank-term-deposit-form-surface .bank-term-deposit-maturity-row > .checkbox-row {
+    white-space: normal;
   }
 }
 
@@ -3145,8 +3209,8 @@ button:active:not(:disabled) {
   display: flex;
   align-items: flex-end;
   gap: 16px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 
 .apartment-edit-header-row > label {
@@ -3334,8 +3398,8 @@ button:active:not(:disabled) {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 
 .apartment-history-tools .filter-dropdown-field {
@@ -3364,7 +3428,7 @@ button:active:not(:disabled) {
 }
 
 .apartment-history-tools .filter-dropdown-field > .filter-dropdown {
-  width: 260px;
+  width: 340px;
 }
 
 .apartment-history-tools .apartment-history-date-grid {
@@ -3384,7 +3448,7 @@ button:active:not(:disabled) {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  z-index: 35;
+  z-index: 60;
   background: #ffffff;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -3398,6 +3462,12 @@ button:active:not(:disabled) {
 
 .apartment-edit-select-item {
   font-size: 0.82rem;
+}
+
+.apartment-edit-header-row .apartment-edit-select-dropdown > .filter-dropdown-panel {
+  top: calc(100% + 6px);
+  bottom: auto;
+  z-index: 60;
 }
 
 .filter-dropdown-section {
@@ -3444,6 +3514,10 @@ button:active:not(:disabled) {
 }
 
 .statement-stats-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.door-mismatch-stats-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
@@ -3848,6 +3922,7 @@ button:active:not(:disabled) {
   color: #315d84;
   border-radius: 999px;
   padding: 3px 8px;
+  margin-left: 14px;
   font-weight: 700;
 }
 
@@ -4676,8 +4751,9 @@ td {
 
 .monthly-balance-report-page .monthly-balance-meta {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
+  overflow-x: auto;
 }
 
 .monthly-balance-meta-chip {
@@ -4687,6 +4763,7 @@ td {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
 }
 
 .monthly-balance-meta-chip-key {
@@ -4843,6 +4920,18 @@ td {
 
 .audit-log-stats-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.audit-log-filter-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.audit-log-filter-row > label {
+  min-width: 0;
+}
+
+.audit-log-filter-row > label:nth-child(1) {
+  grid-column: span 2;
 }
 
 .audit-log-table {
@@ -5097,10 +5186,8 @@ td {
 }
 
 .cc-filter-period-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 18px;
-  flex-wrap: wrap;
+  display: grid;
+  gap: 8px;
 }
 
 .cc-inline-label {
@@ -5121,13 +5208,67 @@ td {
   gap: 4px;
 }
 
+.cc-period-year-row {
+  display: flex;
+  align-items: center;
+}
+
+.cc-month-inline-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.cc-month-grid-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.cc-month-grid-inline .month-chip {
+  flex: 0 0 auto;
+}
+
 .cc-all-months-label {
   font-size: 0.78rem;
 }
 
 .cc-filter-grid {
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  display: flex;
+  align-items: stretch;
+  flex-wrap: nowrap;
   gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.cc-filter-grid > label {
+  flex: 0 0 320px;
+  min-width: 320px;
+}
+
+.cc-filter-grid > label.cc-inline-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cc-inline-field-label {
+  flex: 0 0 auto;
+  font-weight: 600;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.cc-filter-grid > label.cc-inline-field select,
+.cc-filter-grid > label.cc-inline-field input {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .cc-options-row {
@@ -6718,7 +6859,7 @@ td.empty {
 
 .resident-content-hero-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(220px, 300px);
+  grid-template-columns: minmax(260px, 1fr);
   gap: 14px;
   align-items: stretch;
 }

@@ -239,9 +239,6 @@ export function ApartmentClassManagementPage({
       <div className="card table-card">
         <div className="section-head report-toolbar">
           <h3>Daire Sinifi Listesi</h3>
-          <button className="btn btn-ghost" type="button" onClick={() => void fetchRows()} disabled={loading}>
-            Yenile
-          </button>
         </div>
         <div className="table-wrap">
           <table className="filter-table">

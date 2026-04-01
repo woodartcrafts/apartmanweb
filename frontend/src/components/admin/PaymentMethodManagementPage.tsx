@@ -46,7 +46,7 @@ export function PaymentMethodManagementPage({
             <button className="btn btn-ghost" type="button" onClick={cancelEditPaymentMethod}>Temizle</button>
           </div>
         </div>
-        <div className="apartment-class-form-inline">
+        <div className="apartment-class-form-inline apartment-class-inline-form">
           <label>
             Kod
             <select
@@ -69,15 +69,15 @@ export function PaymentMethodManagementPage({
               required
             />
           </label>
+          <label className="checkbox-row apartment-class-inline-active">
+            <input
+              type="checkbox"
+              checked={paymentMethodForm.isActive}
+              onChange={(e) => setPaymentMethodForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+            />
+            Aktif
+          </label>
         </div>
-        <label className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={paymentMethodForm.isActive}
-            onChange={(e) => setPaymentMethodForm((prev) => ({ ...prev, isActive: e.target.checked }))}
-          />
-          Aktif
-        </label>
       </form>
 
       <div className="card table-card">

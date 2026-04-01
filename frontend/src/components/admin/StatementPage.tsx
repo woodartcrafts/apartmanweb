@@ -57,6 +57,15 @@ export function StatementPage({
   accountingStatementCount,
   formatAccountingStatementDescription,
 }: StatementPageProps) {
+  async function handleFetchStatement(): Promise<void> {
+    if (!activeApartmentId.trim()) {
+      window.alert("Lutfen bir daire seciniz");
+      return;
+    }
+
+    await fetchStatement();
+  }
+
   function formatPaymentDayDiff(
     dueDate: string,
     paidAt: string | null | undefined,
@@ -110,7 +119,7 @@ export function StatementPage({
         <div className="section-head">
           <h3>Admin Ekstre Sorgu</h3>
           <div className="admin-row">
-            <button className="btn btn-primary statement-fetch-btn" onClick={() => void fetchStatement()} disabled={loading}>
+            <button className="btn btn-primary statement-fetch-btn" onClick={() => void handleFetchStatement()} disabled={loading}>
               Ekstre Getir
             </button>
             <button className="btn btn-ghost" type="button" onClick={() => setActiveApartmentId("")} disabled={loading}>

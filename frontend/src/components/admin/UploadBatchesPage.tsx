@@ -171,25 +171,6 @@ export function UploadBatchesPage({
               <option value="PAYMENT_UPLOAD">Toplu Odeme Upload</option>
             </select>
           </label>
-          <label>
-            Limit
-            <input
-              type="number"
-              min={1}
-              max={1000}
-              value={uploadBatchFilter.limit}
-              onChange={(e) => setUploadBatchFilter((prev) => ({ ...prev, limit: e.target.value }))}
-            />
-          </label>
-          <label>
-            Offset
-            <input
-              type="number"
-              min={0}
-              value={uploadBatchFilter.offset}
-              onChange={(e) => setUploadBatchFilter((prev) => ({ ...prev, offset: e.target.value }))}
-            />
-          </label>
         </div>
 
         <div className="table-wrap">

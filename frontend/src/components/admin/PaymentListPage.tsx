@@ -80,6 +80,12 @@ function resolveOccupantName(row: PaymentListRow, apartmentOptions: ApartmentOpt
   return apartment.ownerFullName?.trim() || "-";
 }
 
+function buildSortedUniqueOptions(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))].sort((a, b) =>
+    a.localeCompare(b, "tr", { numeric: true, sensitivity: "base" })
+  );
+}
+
 type PaymentListPageProps = {
   loading: boolean;
   apartmentOptions: ApartmentOption[];
@@ -124,6 +130,30 @@ export function PaymentListPage({
   deletePaymentListRow,
 }: PaymentListPageProps) {
   const [headerFilters, setHeaderFilters] = useState<PaymentListHeaderFilterState>(initialHeaderFilters);
+
+  const headerFilterOptions = useMemo(() => {
+    const paidAtOptions = buildSortedUniqueOptions(paymentListRows.map((row) => formatDateTr(row.paidAt)));
+    const doorNoOptions = buildSortedUniqueOptions(
+      paymentListRows.map((row) => (row.apartments.length > 0 ? row.apartments.join(", ") : "-"))
+    );
+    const occupantOptions = buildSortedUniqueOptions(
+      paymentListRows.map((row) => resolveOccupantName(row, apartmentOptions))
+    );
+    const descriptionOptions = buildSortedUniqueOptions(paymentListRows.map((row) => row.description ?? "-"));
+    const referenceOptions = buildSortedUniqueOptions(paymentListRows.map((row) => row.reference ?? "-"));
+    const createdByOptions = buildSortedUniqueOptions(paymentListRows.map((row) => row.createdByName ?? "-"));
+    const createdAtOptions = buildSortedUniqueOptions(paymentListRows.map((row) => formatDateTimeTr(row.createdAt)));
+
+    return {
+      paidAt: paidAtOptions,
+      doorNo: doorNoOptions,
+      occupant: occupantOptions,
+      description: descriptionOptions,
+      reference: referenceOptions,
+      createdBy: createdByOptions,
+      createdAt: createdAtOptions,
+    };
+  }, [apartmentOptions, paymentListRows]);
 
   const filteredRows = useMemo(() => {
     return paymentListRows.filter((row) => {
@@ -309,25 +339,49 @@ export function PaymentListPage({
               </tr>
               <tr>
                 <th>
-                  <input
+                  <select
                     value={headerFilters.paidAt}
                     onChange={(e) => setHeaderFilters((prev) => ({ ...prev, paidAt: e.target.value }))}
-                    placeholder="Filtre"
-                  />
+                    aria-label="Tahsilat tarihi filtresi"
+                    title="Tahsilat tarihi filtresi"
+                  >
+                    <option value="">Hepsi</option>
+                    {headerFilterOptions.paidAt.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
                 </th>
                 <th>
-                  <input
+                  <select
                     value={headerFilters.doorNo}
                     onChange={(e) => setHeaderFilters((prev) => ({ ...prev, doorNo: e.target.value }))}
-                    placeholder="Filtre"
-                  />
+                    aria-label="Daire numarasi filtresi"
+                    title="Daire numarasi filtresi"
+                  >
+                    <option value="">Hepsi</option>
+                    {headerFilterOptions.doorNo.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
                 </th>
                 <th>
-                  <input
+                  <select
                     value={headerFilters.occupant}
                     onChange={(e) => setHeaderFilters((prev) => ({ ...prev, occupant: e.target.value }))}
-                    placeholder="Filtre"
-                  />
+                    aria-label="Oturan kisi filtresi"
+                    title="Oturan kisi filtresi"
+                  >
+                    <option value="">Hepsi</option>
+                    {headerFilterOptions.occupant.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
                 </th>
                 <th>
                   <select
@@ -351,18 +405,34 @@ export function PaymentListPage({
                   <span className="small">-</span>
                 </th>
                 <th>
-                  <input
+                  <select
                     value={headerFilters.description}
                     onChange={(e) => setHeaderFilters((prev) => ({ ...prev, description: e.target.value }))}
-                    placeholder="Filtre"
-                  />
+                    aria-label="Aciklama filtresi"
+                    title="Aciklama filtresi"
+                  >
+                    <option value="">Hepsi</option>
+                    {headerFilterOptions.description.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
                 </th>
                 <th>
-                  <input
+                  <select
                     value={headerFilters.reference}
                     onChange={(e) => setHeaderFilters((prev) => ({ ...prev, reference: e.target.value }))}
-                    placeholder="Filtre"
-                  />
+                    aria-label="Referans filtresi"
+                    title="Referans filtresi"
+                  >
+                    <option value="">Hepsi</option>
+                    {headerFilterOptions.reference.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
                 </th>
                 <th>
                   <select
@@ -378,18 +448,34 @@ export function PaymentListPage({
                   </select>
                 </th>
                 <th>
-                  <input
+                  <select
                     value={headerFilters.createdBy}
                     onChange={(e) => setHeaderFilters((prev) => ({ ...prev, createdBy: e.target.value }))}
-                    placeholder="Filtre"
-                  />
+                    aria-label="Kim girdi filtresi"
+                    title="Kim girdi filtresi"
+                  >
+                    <option value="">Hepsi</option>
+                    {headerFilterOptions.createdBy.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
                 </th>
                 <th>
-                  <input
+                  <select
                     value={headerFilters.createdAt}
                     onChange={(e) => setHeaderFilters((prev) => ({ ...prev, createdAt: e.target.value }))}
-                    placeholder="Filtre"
-                  />
+                    aria-label="Giris zamani filtresi"
+                    title="Giris zamani filtresi"
+                  >
+                    <option value="">Hepsi</option>
+                    {headerFilterOptions.createdAt.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
                 </th>
                 <th>
                   <button

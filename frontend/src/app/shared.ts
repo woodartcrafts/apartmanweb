@@ -170,6 +170,7 @@ export type ApartmentOption = {
   blockName: string;
   doorNo: string;
   m2: number | null;
+  arsaPayi: number | null;
   type: ApartmentType;
   apartmentClassId: string | null;
   apartmentClassCode: string | null;

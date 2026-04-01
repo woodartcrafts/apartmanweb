@@ -4,7 +4,6 @@ type DoorMismatchReportPageProps = {
   fetchDoorMismatchReport: () => Promise<void>;
   clearDoorMismatchReport: () => void;
   doorMismatchLoading: boolean;
-  onGoToReconcile: () => void;
   doorMismatchTotals: DoorMismatchReportResponse["totals"] | null;
   doorMismatchRows: DoorMismatchReportRow[];
 };
@@ -13,7 +12,6 @@ export function DoorMismatchReportPage({
   fetchDoorMismatchReport,
   clearDoorMismatchReport,
   doorMismatchLoading,
-  onGoToReconcile,
   doorMismatchTotals,
   doorMismatchRows,
 }: DoorMismatchReportPageProps) {
@@ -34,15 +32,12 @@ export function DoorMismatchReportPage({
             <button className="btn btn-ghost" type="button" onClick={clearDoorMismatchReport} disabled={doorMismatchLoading}>
               Temizle
             </button>
-            <button className="btn btn-ghost" type="button" onClick={onGoToReconcile}>
-              Eslestirme Ekranina Git
-            </button>
           </div>
         </div>
         <p className="small">DOGRU kapino etiketi (DOOR) ile bagli olmayan banka odemelerini listeler.</p>
       </div>
 
-      <div className="stats-grid">
+      <div className="stats-grid door-mismatch-stats-grid">
         <article className="card stat">
           <h4>Banka Odeme Linki</h4>
           <p>{doorMismatchTotals ? doorMismatchTotals.bankStatementPaymentItemCount : "-"}</p>
