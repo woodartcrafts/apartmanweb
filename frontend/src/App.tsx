@@ -70,7 +70,6 @@ import {
   type PaymentMethodDefinition,
   type PaymentSourceFilter,
   type ReconcileApartmentResponse,
-  type ReconcileAllResponse,
   type ResidentAnnouncementItem,
   type ResidentExpenseReportResponse,
   type ResidentEngagementResponse,
@@ -377,8 +376,8 @@ function AdminPage() {
   const [accountingStatement, setAccountingStatement] = useState<AccountingStatementItem[]>([]);
   const [statementViewMode, setStatementViewMode] = useState<StatementViewMode>("CLASSIC");
   const [bulkStatement, setBulkStatement] = useState<BulkStatementItem[]>([]);
-  const [mixedPaymentRows, setMixedPaymentRows] = useState<MixedPaymentReportRow[]>([]);
-  const [mixedPaymentTotalCount, setMixedPaymentTotalCount] = useState(0);
+  const [, setMixedPaymentRows] = useState<MixedPaymentReportRow[]>([]);
+  const [, setMixedPaymentTotalCount] = useState(0);
   const [doorMismatchRows, setDoorMismatchRows] = useState<DoorMismatchReportRow[]>([]);
   const [doorMismatchTotals, setDoorMismatchTotals] = useState<DoorMismatchReportResponse["totals"] | null>(null);
   const [doorMismatchLoading, setDoorMismatchLoading] = useState(false);
@@ -872,6 +871,33 @@ function AdminPage() {
   const [actionLogs, setActionLogs] = useState<AdminActionLogRow[]>([]);
   const adminSubnavRef = useRef<HTMLDivElement | null>(null);
   const skipNextExpenseReportAutoRefreshRef = useRef(false);
+  const sortedLatestBankMovements = useMemo(() => {
+    if (!reportsSummary) {
+      return [];
+    }
+
+    return [...reportsSummary.latestBankMovements].sort((a, b) => {
+      const aTime = new Date(a.occurredAt).getTime();
+      const bTime = new Date(b.occurredAt).getTime();
+
+      if (Number.isFinite(aTime) && Number.isFinite(bTime)) {
+        const aDate = new Date(aTime);
+        const bDate = new Date(bTime);
+        const aDay = new Date(aDate.getFullYear(), aDate.getMonth(), aDate.getDate()).getTime();
+        const bDay = new Date(bDate.getFullYear(), bDate.getMonth(), bDate.getDate()).getTime();
+
+        if (bDay !== aDay) {
+          return bDay - aDay;
+        }
+
+        if (bTime !== aTime) {
+          return bTime - aTime;
+        }
+      }
+
+      return b.description.localeCompare(a.description, "tr");
+    });
+  }, [reportsSummary]);
 
   function closeAdminSubnavMenus(): void {
     const root = adminSubnavRef.current;
@@ -3096,38 +3122,6 @@ function AdminPage() {
     } catch (err) {
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Yeniden eslestirme basarisiz");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function reconcileAllApartments(): Promise<void> {
-    const ok = window.confirm(
-      "Tum daireler icin yeniden eslestirme calissin mi? Bu islem mevcut odeme dagitimlarini yeniden hesaplar."
-    );
-    if (!ok) {
-      return;
-    }
-
-    setLoading(true);
-    setMessage("Tum daireler icin toplu yeniden eslestirme calisiyor...");
-
-    try {
-      const result = await authorizedRequest<ReconcileAllResponse>("/api/admin/reconcile/all", { method: "POST" });
-
-      setMessage(
-        `Toplu eslestirme tamamlandi. Daire: ${result.apartmentCount}, islenen odeme: ${result.totals.processedPaymentCount}, yeni eslesme satiri: ${result.totals.createdPaymentItemCount}`
-      );
-
-      if (activeApartmentId) {
-        await fetchStatement(activeApartmentId);
-        await fetchMixedPaymentReport({ apartmentId: activeApartmentId, silent: true });
-      } else {
-        await fetchMixedPaymentReport({ silent: true });
-      }
-    } catch (err) {
-      console.error(err);
-      setMessage(err instanceof Error ? err.message : "Toplu yeniden eslestirme basarisiz");
     } finally {
       setLoading(false);
     }
@@ -8250,8 +8244,8 @@ function AdminPage() {
                           <span className="small">Tarih, tutar ve aciklama</span>
                         </div>
                         <div className="reports-home-banklog-list compact-row-top-gap">
-                          {reportsSummary.latestBankMovements.length > 0 ? (
-                            reportsSummary.latestBankMovements.map((row) => (
+                          {sortedLatestBankMovements.length > 0 ? (
+                            sortedLatestBankMovements.map((row) => (
                                 <div
                                   key={row.id}
                                   className="reports-home-banklog-item reports-home-banklog-item-clickable"
