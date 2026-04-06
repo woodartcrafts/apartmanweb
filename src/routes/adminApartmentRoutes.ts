@@ -538,39 +538,65 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
 
     await deps.ensureApartmentClassDefinitions();
     await deps.ensureApartmentDutyDefinitions();
-    const apartments = await prisma.apartment.findMany({
-      include: {
-        block: true,
-        apartmentClass: true,
-        apartmentDuty: true,
-        users: {
-          where: { role: UserRole.RESIDENT },
-          orderBy: [{ createdAt: "asc" }],
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            phone: true,
-            passwordHistoryAsSubject: {
-              orderBy: [{ changedAt: "desc" }],
-              take: 1,
-              include: {
-                changedBy: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    email: true,
+
+    let apartments: Array<any> = [];
+    try {
+      apartments = await prisma.apartment.findMany({
+        include: {
+          block: true,
+          apartmentClass: true,
+          apartmentDuty: true,
+          users: {
+            where: { role: UserRole.RESIDENT },
+            orderBy: [{ createdAt: "asc" }],
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              phone: true,
+              passwordHistoryAsSubject: {
+                orderBy: [{ changedAt: "desc" }],
+                take: 1,
+                include: {
+                  changedBy: {
+                    select: {
+                      id: true,
+                      fullName: true,
+                      email: true,
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-      orderBy: [{ block: { name: "asc" } }, { doorNo: "asc" }],
-      take: limit,
-      skip: offset,
-    });
+        orderBy: [{ block: { name: "asc" } }, { doorNo: "asc" }],
+        take: limit,
+        skip: offset,
+      });
+    } catch (err) {
+      console.error("/api/admin/apartments primary query failed, falling back without password history", err);
+      apartments = await prisma.apartment.findMany({
+        include: {
+          block: true,
+          apartmentClass: true,
+          apartmentDuty: true,
+          users: {
+            where: { role: UserRole.RESIDENT },
+            orderBy: [{ createdAt: "asc" }],
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+        orderBy: [{ block: { name: "asc" } }, { doorNo: "asc" }],
+        take: limit,
+        skip: offset,
+      });
+    }
 
     return res.json(
       apartments.map((apartment) => ({
@@ -605,8 +631,10 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
         landlordFullName: apartment.landlordFullName,
         landlordPhone: apartment.landlordPhone,
         landlordEmail: apartment.landlordEmail,
-        residentUsers: apartment.users.map((user) => {
-          const latestPasswordChange = user.passwordHistoryAsSubject[0];
+        residentUsers: apartment.users.map((user: any) => {
+          const latestPasswordChange = Array.isArray(user.passwordHistoryAsSubject)
+            ? user.passwordHistoryAsSubject[0]
+            : null;
           return {
             id: user.id,
             fullName: user.fullName,

@@ -613,6 +613,39 @@ export type OverduePaymentsReportResponse = {
   rows: OverduePaymentsReportRow[];
 };
 
+export type StaffOpenAidatReportRow = {
+  chargeId: string;
+  apartmentId: string;
+  blockName: string;
+  apartmentDoorNo: string;
+  apartmentOwnerName: string | null;
+  periodYear: number;
+  periodMonth: number;
+  dueDate: string;
+  amount: number;
+  paidTotal: number;
+  remaining: number;
+  overdueDays: number;
+  description: string | null;
+};
+
+export type StaffOpenAidatReportResponse = {
+  snapshotAt: string;
+  apartment: {
+    apartmentId: string;
+    blockName: string;
+    apartmentDoorNo: string;
+    apartmentOwnerName: string | null;
+  };
+  totals: {
+    rowCount: number;
+    totalAmount: number;
+    totalPaid: number;
+    totalRemaining: number;
+  };
+  rows: StaffOpenAidatReportRow[];
+};
+
 export type FractionalClosureReportRow = {
   chargeId: string;
   apartmentId: string;

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   formatDateTr,
   formatTry,
@@ -11,6 +12,7 @@ type StatementPageProps = {
   activeApartmentId: string;
   setActiveApartmentId: (value: string) => void;
   apartmentOptions: ApartmentOption[];
+  fetchApartmentOptions: () => Promise<void>;
   fetchStatement: () => Promise<void>;
   reconcileSelectedApartment: () => Promise<void>;
   loading: boolean;
@@ -42,6 +44,7 @@ export function StatementPage({
   activeApartmentId,
   setActiveApartmentId,
   apartmentOptions,
+  fetchApartmentOptions,
   fetchStatement,
   reconcileSelectedApartment,
   loading,
@@ -57,6 +60,12 @@ export function StatementPage({
   accountingStatementCount,
   formatAccountingStatementDescription,
 }: StatementPageProps) {
+  useEffect(() => {
+    if (apartmentOptions.length === 0 && !loading) {
+      void fetchApartmentOptions();
+    }
+  }, [apartmentOptions.length, fetchApartmentOptions, loading]);
+
   async function handleFetchStatement(): Promise<void> {
     if (!activeApartmentId.trim()) {
       window.alert("Lutfen bir daire seciniz");
@@ -128,6 +137,9 @@ export function StatementPage({
             <button className="btn btn-ghost" onClick={() => void reconcileSelectedApartment()} disabled={loading}>
               Secilen Daireyi Yeniden Eslestir
             </button>
+            <button className="btn btn-ghost" type="button" onClick={() => void fetchApartmentOptions()} disabled={loading}>
+              Daireleri Yenile
+            </button>
           </div>
         </div>
         <div className="statement-query-row">
@@ -145,6 +157,7 @@ export function StatementPage({
             ))}
           </select>
         </div>
+        <p className="small">Yuklenen daire sayisi: {apartmentOptions.length}</p>
       </div>
 
       <div className="stats-grid statement-stats-grid">

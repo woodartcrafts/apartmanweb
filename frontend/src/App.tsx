@@ -79,6 +79,8 @@ import {
   type StatementItem,
   type StatementResponse,
   type StatementViewMode,
+  type StaffOpenAidatReportResponse,
+  type StaffOpenAidatReportRow,
   type UploadBatchKind,
   type UploadBatchDetailsResponse,
   type UploadBatchRow,
@@ -227,6 +229,11 @@ const BankStatementViewPage = lazy(() =>
 const MonthlyLedgerPrintPage = lazy(() =>
   import("./components/admin/MonthlyLedgerPrintPage").then((module) => ({
     default: module.MonthlyLedgerPrintPage,
+  }))
+);
+const StaffOpenAidatReportPage = lazy(() =>
+  import("./components/admin/StaffOpenAidatReportPage").then((module) => ({
+    default: module.StaffOpenAidatReportPage,
   }))
 );
 const MeetingGuidePage = lazy(() =>
@@ -704,6 +711,13 @@ function AdminPage() {
   const [overduePaymentsRows, setOverduePaymentsRows] = useState<OverduePaymentsReportRow[]>([]);
   const [overduePaymentsTotals, setOverduePaymentsTotals] = useState<OverduePaymentsReportResponse["totals"] | null>(null);
   const [overduePaymentsLoading, setOverduePaymentsLoading] = useState(false);
+  const [staffOpenAidatSelectedApartmentId, setStaffOpenAidatSelectedApartmentId] = useState("");
+  const [staffOpenAidatRows, setStaffOpenAidatRows] = useState<StaffOpenAidatReportRow[]>([]);
+  const [staffOpenAidatTotals, setStaffOpenAidatTotals] =
+    useState<StaffOpenAidatReportResponse["totals"] | null>(null);
+  const [staffOpenAidatApartment, setStaffOpenAidatApartment] =
+    useState<StaffOpenAidatReportResponse["apartment"] | null>(null);
+  const [staffOpenAidatLoading, setStaffOpenAidatLoading] = useState(false);
   const [manualReviewMatchesRows, setManualReviewMatchesRows] = useState<ManualReviewMatchRow[]>([]);
   const [manualReviewMatchesTotalCount, setManualReviewMatchesTotalCount] = useState(0);
   const [manualReviewMatchesLoading, setManualReviewMatchesLoading] = useState(false);
@@ -4581,6 +4595,62 @@ function AdminPage() {
     setMessage("Gecikmis odeme filtreleri temizlendi. Listelemek icin Calistir butonuna basin");
   }
 
+  async function fetchStaffOpenAidatReport(
+    apartmentIdParam?: string,
+    options?: { silent?: boolean }
+  ): Promise<void> {
+    const silent = options?.silent ?? false;
+    const apartmentId = (apartmentIdParam ?? staffOpenAidatSelectedApartmentId).trim();
+
+    if (!apartmentId) {
+      if (!silent) {
+        setMessage("Lutfen daire secin");
+      }
+      return;
+    }
+
+    setStaffOpenAidatLoading(true);
+    if (!silent) {
+      setMessage("Gorevli mobil aidat raporu hazirlaniyor...");
+    }
+
+    try {
+      const params = new URLSearchParams();
+      params.set("apartmentId", apartmentId);
+      const endpoint = `/api/admin/reports/staff-open-aidat?${params.toString()}`;
+      const data = await authorizedRequest<StaffOpenAidatReportResponse>(endpoint);
+      setStaffOpenAidatRows(data.rows);
+      setStaffOpenAidatTotals(data.totals);
+      setStaffOpenAidatApartment(data.apartment);
+      if (!silent) {
+        setMessage(`Gorevli raporu hazir: ${data.totals.rowCount} acik aidat`);
+      }
+    } catch (err) {
+      console.error(err);
+      const text = err instanceof Error ? err.message : "Gorevli mobil aidat raporu alinamadi";
+      if (!silent) {
+        setMessage(text);
+      }
+    } finally {
+      setStaffOpenAidatLoading(false);
+    }
+  }
+
+  async function runStaffOpenAidatQuery(
+    apartmentId: string,
+    options?: { silent?: boolean }
+  ): Promise<void> {
+    await fetchStaffOpenAidatReport(apartmentId, options);
+  }
+
+  function clearStaffOpenAidatFilters(): void {
+    setStaffOpenAidatSelectedApartmentId("");
+    setStaffOpenAidatRows([]);
+    setStaffOpenAidatTotals(null);
+    setStaffOpenAidatApartment(null);
+    setMessage("Gorevli mobil aidat filtresi temizlendi. Listelemek icin daire secin");
+  }
+
   async function fetchFractionalClosureReport(options?: { silent?: boolean }): Promise<void> {
     const silent = options?.silent ?? false;
     setFractionalClosureLoading(true);
@@ -7391,6 +7461,11 @@ function AdminPage() {
       return;
     }
 
+    if (path === "/admin/reports/staff-open-aidat") {
+      // Manual-run page: user triggers with button.
+      return;
+    }
+
     if (path === "/admin/banks/term-deposits") {
       if (bankOptions.length === 0) {
         void fetchBankOptions();
@@ -7847,6 +7922,9 @@ function AdminPage() {
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/overdue-payments">
               Gecikmis Odemeler
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/reports/staff-open-aidat">
+              Gorevli Mobil Acik Aidat
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/monthly-balance-matrix">
               Aylik Bakiye Matrisi
@@ -9421,6 +9499,25 @@ function AdminPage() {
               </div>
 
             </section>
+          }
+        />
+        <Route
+          path="/reports/staff-open-aidat"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <StaffOpenAidatReportPage
+                loading={loading}
+                apartmentOptions={apartmentOptions}
+                selectedApartmentId={staffOpenAidatSelectedApartmentId}
+                setSelectedApartmentId={setStaffOpenAidatSelectedApartmentId}
+                rows={staffOpenAidatRows}
+                totals={staffOpenAidatTotals}
+                apartmentSummary={staffOpenAidatApartment}
+                reportLoading={staffOpenAidatLoading}
+                runQuery={runStaffOpenAidatQuery}
+                clearFilters={clearStaffOpenAidatFilters}
+              />
+            </Suspense>
           }
         />
         <Route
@@ -12532,6 +12629,7 @@ function AdminPage() {
                 activeApartmentId={activeApartmentId}
                 setActiveApartmentId={setActiveApartmentId}
                 apartmentOptions={apartmentOptions}
+                fetchApartmentOptions={fetchApartmentOptions}
                 fetchStatement={fetchStatement}
                 reconcileSelectedApartment={reconcileSelectedApartment}
                 loading={loading}
@@ -13509,11 +13607,35 @@ function App() {
 
   function openCurrentScreenInNewTab(): void {
     const targetPath = `${location.pathname}${location.search}${location.hash}`;
+    const width = Math.max(1100, window.screen.availWidth);
+    const height = Math.max(760, window.screen.availHeight);
+    const left = 0;
+    const top = 0;
+
+    const features = [
+      "popup=yes",
+      "noopener=yes",
+      "noreferrer=yes",
+      `width=${width}`,
+      `height=${height}`,
+      `left=${left}`,
+      `top=${top}`,
+    ].join(",");
+
+    const opened = window.open(targetPath, "_blank", features);
+    if (opened) {
+      opened.focus();
+      return;
+    }
+
+    // Fallback: if popup is blocked, continue with a normal new tab.
     window.open(targetPath, "_blank", "noopener,noreferrer");
   }
 
+  const isStaffOpenAidatRoute = location.pathname === "/admin/reports/staff-open-aidat";
+
   return (
-    <div className="page">
+    <div className={`page${isStaffOpenAidatRoute ? " page-mobile-staff-open-aidat" : ""}`}>
       <div className="ambient ambient-one" />
       <div className="ambient ambient-two" />
 

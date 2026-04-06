@@ -2744,6 +2744,110 @@ async function processBankStatementImport(params: {
     return null;
   }
 
+  function pickUniqueSubsetSumCharges(
+    openCharges: Array<{ chargeId: string; remaining: number; closedInImport: boolean }>,
+    description: string | undefined,
+    paymentAmount: number
+  ): { charges: Array<{ chargeId: string; remaining: number; closedInImport: boolean }>; reason: string } | null {
+    const targetCents = Math.round(paymentAmount * 100);
+    if (targetCents <= 0) {
+      return null;
+    }
+
+    const normalizedDescription = normalizeKeywordForMatch(description ?? "");
+    const typeHints = normalizedDescription ? detectChargeTypeHints(normalizedDescription) : new Set<"aidat" | "dogalgaz" | "su" | "elektrik">();
+    const hintedCandidates =
+      typeHints.size > 0 ? openCharges.filter((charge) => chargeMatchesTypeHints(charge.chargeId, typeHints)) : [];
+
+    // Prefer type-hinted candidates when available, otherwise search on all open charges.
+    const candidateBase = hintedCandidates.length >= 2 ? hintedCandidates : openCharges;
+
+    // Safety cap: avoid expensive combinatorics on unusually large open debt sets.
+    if (candidateBase.length < 2 || candidateBase.length > 18) {
+      return null;
+    }
+
+    const candidates = candidateBase
+      .map((charge, originalIndex) => ({
+        originalIndex,
+        charge,
+        cents: Math.round(charge.remaining * 100),
+      }))
+      .filter((x) => x.cents > 0)
+      .sort((a, b) => {
+        const centsDiff = b.cents - a.cents;
+        if (centsDiff !== 0) {
+          return centsDiff;
+        }
+        return a.originalIndex - b.originalIndex;
+      });
+
+    if (candidates.length < 2) {
+      return null;
+    }
+
+    const suffixSums = new Array<number>(candidates.length + 1).fill(0);
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      suffixSums[i] = suffixSums[i + 1] + candidates[i].cents;
+    }
+
+    let solutionCount = 0;
+    let firstSolutionIndexes: number[] = [];
+    const selectedOriginalIndexes: number[] = [];
+
+    function dfs(index: number, currentSum: number): void {
+      if (solutionCount > 1) {
+        return;
+      }
+
+      if (currentSum === targetCents) {
+        solutionCount += 1;
+        if (solutionCount === 1) {
+          firstSolutionIndexes = [...selectedOriginalIndexes];
+        }
+        return;
+      }
+
+      if (index >= candidates.length) {
+        return;
+      }
+
+      if (currentSum > targetCents) {
+        return;
+      }
+
+      if (currentSum + suffixSums[index] < targetCents) {
+        return;
+      }
+
+      const nextSum = currentSum + candidates[index].cents;
+      if (nextSum <= targetCents) {
+        selectedOriginalIndexes.push(candidates[index].originalIndex);
+        dfs(index + 1, nextSum);
+        selectedOriginalIndexes.pop();
+      }
+
+      dfs(index + 1, currentSum);
+    }
+
+    dfs(0, 0);
+
+    if (solutionCount !== 1 || firstSolutionIndexes.length === 0) {
+      return null;
+    }
+
+    const selectedChargeIds = new Set(firstSolutionIndexes.map((i: number) => candidateBase[i].chargeId));
+    const orderedSelected = openCharges.filter((charge) => selectedChargeIds.has(charge.chargeId));
+
+    // Ignore single-item matches here; they are already handled by unique exact-charge logic.
+    if (orderedSelected.length <= 1) {
+      return null;
+    }
+
+    const reason = hintedCandidates.length >= 2 ? "UNIQUE_SUBSET_SUM_MATCH:TYPE_HINT" : "UNIQUE_SUBSET_SUM_MATCH";
+    return { charges: orderedSelected, reason };
+  }
+
   let paymentCreatedCount = 0;
   let expenseCreatedCount = 0;
   let skippedCount = 0;
@@ -2867,17 +2971,51 @@ async function processBankStatementImport(params: {
         // Safety gate: when debt is multi-target and there is no unique exact match,
         // keep payment unapplied instead of doing FIFO-like auto allocation.
         if (openCharges.length > 1 && exactCharges.length === 0 && !safelyCoversAllOpenDebt) {
-          const hintedSelection = pickPreferredOpenChargesFromDescription(openCharges, row.description, paymentAmount);
-          if (hintedSelection) {
-            const hintedChargeIds = new Set(hintedSelection.charges.map((charge) => charge.chargeId));
-            const hintedOrdered = openCharges.filter((charge) => hintedChargeIds.has(charge.chargeId));
-            const remainingOrdered = openCharges.filter((charge) => !hintedChargeIds.has(charge.chargeId));
-            // Apply hinted candidates first but continue with remaining open debts for leftover amount.
-            orderedCharges = [...hintedOrdered, ...remainingOrdered];
-            autoMatchHintReason = hintedSelection.reason;
+          // First try: FIFO prefix-sum exact match.
+          // If the payment equals the exact sum of the N oldest debts (in due-date order),
+          // it is safe to auto-allocate — the resident paid exactly what was owed up to
+          // a certain charge without month-hinting needed.
+          let fifoSumMatchCharges: typeof openCharges | null = null;
+          {
+            let runningSum = 0;
+            for (let i = 0; i < openCharges.length; i++) {
+              runningSum = Number((runningSum + openCharges[i].remaining).toFixed(2));
+              if (Math.abs(runningSum - paymentAmount) <= 0.01) {
+                fifoSumMatchCharges = openCharges.slice(0, i + 1);
+                break;
+              }
+              if (runningSum > paymentAmount + 0.01) {
+                break; // exceeded — no prefix-sum match
+              }
+            }
           }
 
-          if (!hintedSelection) {
+          if (fifoSumMatchCharges !== null) {
+            const remainingOrdered = openCharges.filter((c) => !fifoSumMatchCharges!.includes(c));
+            orderedCharges = [...fifoSumMatchCharges, ...remainingOrdered];
+            autoMatchHintReason = "FIFO_SUM_MATCH";
+          } else {
+            const hintedSelection = pickPreferredOpenChargesFromDescription(openCharges, row.description, paymentAmount);
+            const subsetSelection = hintedSelection
+              ? null
+              : pickUniqueSubsetSumCharges(openCharges, row.description, paymentAmount);
+
+            if (hintedSelection) {
+              const hintedChargeIds = new Set(hintedSelection.charges.map((charge) => charge.chargeId));
+              const hintedOrdered = openCharges.filter((charge) => hintedChargeIds.has(charge.chargeId));
+              const remainingOrdered = openCharges.filter((charge) => !hintedChargeIds.has(charge.chargeId));
+              // Apply hinted candidates first but continue with remaining open debts for leftover amount.
+              orderedCharges = [...hintedOrdered, ...remainingOrdered];
+              autoMatchHintReason = hintedSelection.reason;
+            } else if (subsetSelection) {
+              const subsetChargeIds = new Set(subsetSelection.charges.map((charge) => charge.chargeId));
+              const subsetOrdered = openCharges.filter((charge) => subsetChargeIds.has(charge.chargeId));
+              const remainingOrdered = openCharges.filter((charge) => !subsetChargeIds.has(charge.chargeId));
+              orderedCharges = [...subsetOrdered, ...remainingOrdered];
+              autoMatchHintReason = subsetSelection.reason;
+            }
+
+          if (!fifoSumMatchCharges && !hintedSelection && !subsetSelection) {
             const method = row.paymentMethod ?? derivePaymentMethod(row.txType);
             let remainingToAllocate = paymentAmount;
             const provisionalItems: Array<{ chargeId: string; amount: number }> = [];
@@ -2953,6 +3091,7 @@ async function processBankStatementImport(params: {
             );
             continue;
           }
+          } // end else (no fifoSumMatch)
         }
 
         let remainingToAllocate = paymentAmount;
@@ -6272,6 +6411,47 @@ router.post("/bank-statement/preview", upload.single("file"), async (req, res) =
   });
 });
 
+router.post("/bank-statement/check-references", async (req, res) => {
+  try {
+    const bodySchema = z.object({
+      references: z.array(z.string().min(1)).min(1).max(500),
+    });
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+    }
+
+    const refs = [...new Set(parsed.data.references.map((r) => r.trim()).filter(Boolean))];
+    // A payment is considered a duplicate if its note starts with BANK_REF:<reference>
+    const existingPayments = await prisma.payment.findMany({
+      where: {
+        note: {
+          in: refs.map((r) => `BANK_REF:${r}`),
+        },
+      },
+      select: { note: true },
+    });
+    // Also check notes that start with BANK_REF:<ref> (split payments have extra suffix)
+    const noteStartMatches = await prisma.payment.findMany({
+      where: {
+        OR: refs.map((r) => ({ note: { startsWith: `BANK_REF:${r}` } })),
+      },
+      select: { note: true },
+    });
+    const existingRefSet = new Set<string>();
+    for (const p of [...existingPayments, ...noteStartMatches]) {
+      if (!p.note) continue;
+      const match = p.note.match(/^BANK_REF:(.+?)(?:\|.*)?$/);
+      if (match) existingRefSet.add(match[1]);
+    }
+
+    return res.json({ existingReferences: [...existingRefSet] });
+  } catch (err) {
+    console.error("[bank-statement-check-references-failed]", err);
+    return res.status(500).json({ message: "Referans kontrolu basarisiz" });
+  }
+});
+
 router.post("/bank-statement/commit", async (req, res) => {
   try {
     await ensurePaymentMethodDefinitions();
@@ -6734,6 +6914,109 @@ router.get("/reports/overdue-payments", async (req, res) => {
     snapshotAt: now,
     totals,
     rows: responseRows,
+  });
+});
+
+router.get("/reports/staff-open-aidat", async (req, res) => {
+  const querySchema = z.object({
+    apartmentId: z.string().min(1),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const now = new Date();
+  const apartmentId = parsed.data.apartmentId.trim();
+
+  const apartment = await prisma.apartment.findUnique({
+    where: { id: apartmentId },
+    select: {
+      id: true,
+      doorNo: true,
+      ownerFullName: true,
+      block: {
+        select: { name: true },
+      },
+    },
+  });
+
+  if (!apartment) {
+    return res.status(404).json({ message: "Daire bulunamadi" });
+  }
+
+  const charges = await prisma.charge.findMany({
+    where: {
+      apartmentId,
+      status: "OPEN",
+    },
+    include: {
+      chargeType: {
+        select: {
+          code: true,
+          name: true,
+        },
+      },
+      paymentItems: {
+        select: {
+          amount: true,
+        },
+      },
+    },
+    orderBy: [{ periodYear: "asc" }, { periodMonth: "asc" }, { dueDate: "asc" }, { createdAt: "asc" }],
+  });
+
+  const rows = charges
+    .filter((charge) => {
+      const chargeTypeCode = toAsciiLower(charge.chargeType.code).trim();
+      const chargeTypeName = toAsciiLower(charge.chargeType.name).trim();
+      return chargeTypeCode === "aidat" || chargeTypeName.includes("aidat");
+    })
+    .map((charge) => {
+      const paidTotal = charge.paymentItems.reduce((sum, x) => sum + Number(x.amount), 0);
+      const remaining = Math.max(0, Number(charge.amount) - paidTotal);
+      const overdueDays = Math.max(
+        0,
+        Math.floor((now.getTime() - new Date(charge.dueDate).getTime()) / (1000 * 60 * 60 * 24))
+      );
+
+      return {
+        chargeId: charge.id,
+        apartmentId,
+        blockName: apartment.block.name,
+        apartmentDoorNo: apartment.doorNo,
+        apartmentOwnerName: apartment.ownerFullName,
+        periodYear: charge.periodYear,
+        periodMonth: charge.periodMonth,
+        dueDate: charge.dueDate,
+        amount: Number(charge.amount),
+        paidTotal: Number(paidTotal.toFixed(2)),
+        remaining: Number(remaining.toFixed(2)),
+        overdueDays,
+        description: charge.description,
+      };
+    })
+    .filter((row) => row.remaining > 0.0001);
+
+  return res.json({
+    snapshotAt: now,
+    apartment: {
+      apartmentId,
+      blockName: apartment.block.name,
+      apartmentDoorNo: apartment.doorNo,
+      apartmentOwnerName: apartment.ownerFullName,
+    },
+    totals: {
+      rowCount: rows.length,
+      totalAmount: Number(rows.reduce((sum, row) => sum + row.amount, 0).toFixed(2)),
+      totalPaid: Number(rows.reduce((sum, row) => sum + row.paidTotal, 0).toFixed(2)),
+      totalRemaining: Number(rows.reduce((sum, row) => sum + row.remaining, 0).toFixed(2)),
+    },
+    rows: rows.map((row) => ({
+      ...row,
+      dueDate: row.dueDate.toISOString(),
+    })),
   });
 });
 
