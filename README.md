@@ -138,6 +138,7 @@ Gmail otomatik banka ekstresi (opsiyonel):
 - `GMAIL_CLIENT_SECRET`
 - `GMAIL_REFRESH_TOKEN`
 - `GMAIL_BANK_SENDER` (opsiyonel, ornek: `noreply@isbank.com.tr`)
+- `GMAIL_BANK_SUBJECT_CONTAINS` (opsiyonel, konu icinde gecmesi gereken ifade)
 - `ISBANK_EMAIL_FROM` (legacy uyumluluk: `GMAIL_BANK_SENDER` bossa bunu kullanir)
 - `GMAIL_BANK_QUERY` (opsiyonel, doluysa sender filtresi yerine direkt kullanilir)
 - `GMAIL_BANK_IMPORT_ONLY_INCOMING` (default `true`)
@@ -286,7 +287,7 @@ Admin ust menu:
 - Ayni e-posta eki iki kez islenmez (import dosya adi `gmail:<messageId>:<fileName>` formatinda batch olarak kaydedilir).
 
 Calisma modu:
-- `GMAIL_APP_PASSWORD` doluysa IMAP (`imap.gmail.com`) ile mail kutusundan PDF ekleri okunur.
+- `GMAIL_APP_PASSWORD` doluysa IMAP (`imap.gmail.com`) ile mail kutusundan PDF ekleri okunur (`GMAIL_USER` bu modda tam e-posta adresi olmali, `me` kullanilmaz).
 - `GMAIL_APP_PASSWORD` bossa OAuth (`GMAIL_CLIENT_ID/GMAIL_CLIENT_SECRET/GMAIL_REFRESH_TOKEN`) ile Gmail API kullanilir.
 
 Manuel test komutu:

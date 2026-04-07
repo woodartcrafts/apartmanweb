@@ -1,4 +1,5 @@
 import { ApartmentType, ImportBatchType, OccupancyType, PaymentMethod, Prisma, UserRole } from "@prisma/client";
+import { createHash } from "crypto";
 import { Router } from "express";
 import multer from "multer";
 import { PDFParse } from "pdf-parse";
@@ -1126,6 +1127,25 @@ type GmailAttachmentGetResponse = {
   data?: string;
 };
 
+const GMAIL_PDF_REFERENCE_FALLBACK_PREFIX = "e-mail ekindeki pdf den kayit";
+
+function normalizeBankDescriptionForDedup(description: string | undefined): string {
+  return (description ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("tr");
+}
+
+function buildGmailFallbackReference(row: BankStatementRow): string {
+  const occurredAt = row.occurredAt.toISOString();
+  const signedAmount = Number(row.amount.toFixed(2)).toFixed(2);
+  const txType = (row.txType ?? "").trim().toUpperCase();
+  const normalizedDescription = normalizeBankDescriptionForDedup(row.description);
+  const dedupPayload = [occurredAt, signedAmount, txType, normalizedDescription].join("|");
+  const digest = createHash("sha1").update(dedupPayload).digest("hex").slice(0, 16).toUpperCase();
+  return `${GMAIL_PDF_REFERENCE_FALLBACK_PREFIX}|${digest}`;
+}
+
 function getExcelCellValue(value: ExcelJS.CellValue | undefined): unknown {
   if (value === undefined || value === null) {
     return "";
@@ -2012,10 +2032,32 @@ function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] 
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
 
+  const transactionStartRegex = /^\d{2}[./-]\d{2}[./-]\d{4}(?:\s+\d{2}:\d{2}(?::\d{2})?)?/;
+  const mergedLines: string[] = [];
+  let currentLine: string | null = null;
+
+  for (const line of lines) {
+    if (transactionStartRegex.test(line)) {
+      if (currentLine) {
+        mergedLines.push(currentLine);
+      }
+      currentLine = line;
+      continue;
+    }
+
+    if (currentLine) {
+      currentLine = `${currentLine} ${line}`;
+    }
+  }
+
+  if (currentLine) {
+    mergedLines.push(currentLine);
+  }
+
   const dateRegex = /(\d{2}[./-]\d{2}[./-]\d{4}(?:\s+\d{2}:\d{2}(?::\d{2})?)?)/;
   const amountRegex = /[-+]?\d{1,3}(?:[.\s]\d{3})*(?:,\d{2})|[-+]?\d+(?:,\d{2})/g;
 
-  for (const line of lines) {
+  for (const line of mergedLines) {
     const dateMatch = line.match(dateRegex);
     if (!dateMatch) {
       continue;
@@ -2031,7 +2073,16 @@ function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] 
       continue;
     }
 
-    const rawAmount = amountMatches[amountMatches.length - 1]?.[0] ?? "";
+    const dateStartIndex = dateMatch.index ?? line.indexOf(dateMatch[1]);
+    const dateEndIndex = dateStartIndex >= 0 ? dateStartIndex + dateMatch[1].length : 0;
+    // ISBANK statement lines are rendered as: date ... transaction amount ... balance ... description.
+    // Using the first monetary token after the date avoids accidentally reading the balance column.
+    const amountCandidates = amountMatches.filter((m) => (m.index ?? -1) >= dateEndIndex);
+    if (amountCandidates.length === 0) {
+      continue;
+    }
+
+    const rawAmount = amountCandidates[0]?.[0] ?? "";
     const parsedAmount = parseSignedAmount(rawAmount);
     if (parsedAmount === null) {
       continue;
@@ -2149,9 +2200,12 @@ function buildGmailQuery(): string {
   }
 
   const senderFilter = config.gmailBankSync.senderFilter?.trim();
+  const subjectContains = config.gmailBankSync.subjectContains?.trim();
+  const safeSubjectContains = subjectContains ? subjectContains.replace(/"/g, " ").trim() : "";
   const lookbackDays = Math.max(1, config.gmailBankSync.lookbackDays);
   const parts = [
     senderFilter ? `from:${senderFilter}` : "",
+    safeSubjectContains ? `subject:${safeSubjectContains}` : "",
     "has:attachment",
     "filename:pdf",
     `newer_than:${lookbackDays}d`,
@@ -2209,6 +2263,7 @@ async function fetchImapPdfAttachments(): Promise<{
   }
 
   const senderFilter = config.gmailBankSync.senderFilter?.trim().toLowerCase() ?? "";
+  const subjectContains = config.gmailBankSync.subjectContains?.trim().toLocaleLowerCase("tr") ?? "";
   const lookbackDays = Math.max(1, config.gmailBankSync.lookbackDays);
   const since = new Date();
   since.setDate(since.getDate() - lookbackDays);
@@ -2244,7 +2299,16 @@ async function fetchImapPdfAttachments(): Promise<{
         continue;
       }
 
+      const envelopeSubject = (message.envelope?.subject ?? "").toString().trim().toLocaleLowerCase("tr");
+      if (subjectContains && !envelopeSubject.includes(subjectContains)) {
+        continue;
+      }
+
       const parsed = await simpleParser(message.source as Buffer);
+      const parsedSubject = (parsed.subject ?? "").trim().toLocaleLowerCase("tr");
+      if (subjectContains && parsedSubject && !parsedSubject.includes(subjectContains)) {
+        continue;
+      }
       const messageKey = (parsed.messageId?.trim() || String(message.uid)).replace(/[<>]/g, "");
 
       for (const att of parsed.attachments) {
@@ -2369,7 +2433,7 @@ export async function runGmailBankSync(uploadedById?: string): Promise<{
         amount: Number(Math.abs(row.amount).toFixed(2)),
         entryType: row.amount > 0 ? "PAYMENT" : "EXPENSE",
         description: row.description,
-        reference: row.reference,
+        reference: row.reference?.trim() || buildGmailFallbackReference(row),
         txType: row.txType,
         paymentMethod: derivePaymentMethod(row.txType),
       }));

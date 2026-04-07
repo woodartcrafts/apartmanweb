@@ -103,6 +103,10 @@ export function UploadBatchesPage({
     return cleaned || "-";
   }
 
+  function isGmailBatch(row: UploadBatchRow): boolean {
+    return row.kind === "BANK_STATEMENT_UPLOAD" && row.fileName.toLowerCase().startsWith("gmail:");
+  }
+
   return (
     <section className="dashboard">
       <div className="card table-card">
@@ -193,8 +197,14 @@ export function UploadBatchesPage({
                 <Fragment key={row.id}>
                   <tr>
                     <td>{formatDateTr(row.uploadedAt)}</td>
-                    <td>{row.uploadedByName ?? row.uploadedByEmail ?? "-"}</td>
-                    <td>{row.kind === "BANK_STATEMENT_UPLOAD" ? "Banka Ekstresi Upload" : "Toplu Odeme Upload"}</td>
+                    <td>{isGmailBatch(row) ? "Railway" : row.uploadedByName ?? row.uploadedByEmail ?? "-"}</td>
+                    <td>
+                      {isGmailBatch(row)
+                        ? "Gmail"
+                        : row.kind === "BANK_STATEMENT_UPLOAD"
+                          ? "Banka Ekstresi Upload"
+                          : "Toplu Odeme Upload"}
+                    </td>
                     <td>{row.fileName}</td>
                     <td className="col-num">{row.totalRows}</td>
                     <td className="col-num">{row.createdPaymentCount}</td>

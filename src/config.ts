@@ -66,6 +66,7 @@ export const config = {
     oauthClientSecret: process.env.GMAIL_CLIENT_SECRET,
     oauthRefreshToken: process.env.GMAIL_REFRESH_TOKEN,
     senderFilter: process.env.GMAIL_BANK_SENDER ?? process.env.ISBANK_EMAIL_FROM,
+    subjectContains: process.env.GMAIL_BANK_SUBJECT_CONTAINS,
     query: process.env.GMAIL_BANK_QUERY,
     importOnlyIncoming: toBoolean(process.env.GMAIL_BANK_IMPORT_ONLY_INCOMING, true),
     lookbackDays: toPositiveInt(process.env.GMAIL_BANK_LOOKBACK_DAYS, 2),
