@@ -4982,7 +4982,7 @@ td {
   flex-wrap: nowrap;
   align-items: stretch;
   gap: 10px;
-  overflow-x: auto;
+  overflow: visible;
 }
 
 .expense-report-filter-row > label {
@@ -4996,8 +4996,8 @@ td {
 }
 
 .expense-report-filter-row .apartment-edit-select-dropdown > .filter-dropdown-panel {
-  top: auto;
-  bottom: calc(100% + 6px);
+  top: calc(100% + 6px);
+  bottom: auto;
 }
 
 .bank-statement-filter-row {
