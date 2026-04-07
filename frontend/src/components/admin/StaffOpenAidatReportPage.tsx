@@ -33,6 +33,10 @@ function resolveApartmentDisplayName(apt: ApartmentOption): string {
   return resident || "Isim yok";
 }
 
+function normalizeBlockLabel(blockName: string): string {
+  return blockName.replace(/\s*blok\s*$/i, "").trim();
+}
+
 export function StaffOpenAidatReportPage({
   loading,
   apartmentOptions,
@@ -112,7 +116,7 @@ export function StaffOpenAidatReportPage({
                 <option value="">Daire secin</option>
                 {selectableApartments.map((apt) => (
                   <option key={apt.id} value={apt.id}>
-                    {apt.blockName} - {apt.doorNo} ({resolveApartmentDisplayName(apt)})
+                    {normalizeBlockLabel(apt.blockName)} - {apt.doorNo} ({resolveApartmentDisplayName(apt)})
                   </option>
                 ))}
               </select>
@@ -124,7 +128,7 @@ export function StaffOpenAidatReportPage({
               <article className="stat-card staff-open-aidat-apartment-card">
                 <span className="stat-label">Secili Daire</span>
                 <strong>
-                  Daire {apartmentSummary.blockName} - {apartmentSummary.apartmentDoorNo}
+                  Daire {normalizeBlockLabel(apartmentSummary.blockName)} - {apartmentSummary.apartmentDoorNo}
                   {summaryName ? ` (${summaryName})` : ""}
                 </strong>
               </article>
