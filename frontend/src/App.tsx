@@ -319,6 +319,7 @@ function AdminPage() {
     | "systemReference"
     | "statementReference"
     | "diffCount";
+  type UploadBatchKindFilter = "" | UploadBatchKind | "GMAIL";
   type OverduePaymentsColumnKey =
     | "block"
     | "doorNo"
@@ -820,7 +821,7 @@ function AdminPage() {
     from: "",
     to: "",
     uploadedByUserId: "",
-    kind: "" as "" | UploadBatchKind,
+      kind: "" as UploadBatchKindFilter,
     limit: "200",
     offset: "0",
   });
@@ -5144,7 +5145,7 @@ function AdminPage() {
       from: "",
       to: "",
       uploadedByUserId: "",
-      kind: "" as "" | UploadBatchKind,
+      kind: "" as UploadBatchKindFilter,
       limit: "200",
       offset: "0",
     };
@@ -5194,6 +5195,123 @@ function AdminPage() {
       setDeletingUploadBatchId(null);
       setDeletingUploadBatchFileName("");
     }
+  }
+
+  async function editUploadBatchMovement(input: {
+    movementType: "PAYMENT" | "EXPENSE";
+    movementId: string;
+    occurredAt: string;
+    reference?: string | null;
+  }): Promise<void> {
+    const targetDate = isoToDateInput(input.occurredAt);
+
+    setLoading(true);
+    try {
+      if (input.movementType === "PAYMENT") {
+        const nextFilter = {
+          from: targetDate,
+          to: targetDate,
+          source: "BANK_STATEMENT_UPLOAD" as PaymentSourceFilter,
+        };
+
+        setPaymentListFilter(nextFilter);
+        navigate("/admin/payments/list");
+
+        const params = new URLSearchParams();
+        if (nextFilter.from) {
+          params.set("from", dateInputToIso(nextFilter.from));
+        }
+        if (nextFilter.to) {
+          params.set("to", dateInputToIso(nextFilter.to));
+        }
+        params.set("source", nextFilter.source);
+
+        const endpoint = `/api/admin/payments/list?${params.toString()}`;
+        const rows = await authorizedRequest<PaymentListRow[]>(endpoint);
+        setPaymentListError("");
+        setPaymentListRows(rows);
+
+        const targetRow = rows.find((row) => row.id === input.movementId);
+        if (targetRow) {
+          startEditPaymentListRow(targetRow);
+          setMessage(
+            `Tahsilat filtrelenip duzeltme acildi (ID: ${input.movementId}${
+              input.reference ? `, Ref: ${input.reference}` : ""
+            })`
+          );
+        } else {
+          setMessage(`Tahsilat raporu filtrelendi fakat kayit bulunamadi (ID: ${input.movementId})`);
+        }
+        return;
+      }
+
+      const nextExpenseFilter = {
+        from: targetDate,
+        to: targetDate,
+        sources: ["BANK_STATEMENT_UPLOAD"] as Array<Exclude<ExpenseSourceFilter, "">>,
+        expenseItemIds: [] as string[],
+      };
+
+      setExpenseReportFilter(nextExpenseFilter);
+      skipNextExpenseReportAutoRefreshRef.current = true;
+      setExpenseReportAutoRefreshEnabled(true);
+      navigate("/admin/expenses/report");
+
+      const params = new URLSearchParams();
+      if (nextExpenseFilter.from) {
+        params.set("from", dateInputToIso(nextExpenseFilter.from));
+      }
+      if (nextExpenseFilter.to) {
+        params.set("to", dateInputToIso(nextExpenseFilter.to));
+      }
+      params.set("source", "BANK_STATEMENT_UPLOAD");
+      params.set("includeDistributed", "false");
+
+      const endpoint = `/api/admin/expenses/report?${params.toString()}`;
+      const rows = await authorizedRequest<ExpenseReportRow[]>(endpoint);
+      setExpenseReportError("");
+      setExpenseReportRows(rows);
+
+      const targetRow = rows.find((row) => row.id === input.movementId);
+      if (targetRow) {
+        startEditExpenseReportRow(targetRow);
+        setMessage(
+          `Gider filtrelenip duzeltme acildi (ID: ${input.movementId}${
+            input.reference ? `, Ref: ${input.reference}` : ""
+          })`
+        );
+      } else {
+        setMessage(`Gider raporu filtrelendi fakat kayit bulunamadi (ID: ${input.movementId})`);
+      }
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Duzeltme sayfasi filtrelenemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deleteUploadBatchMovement(input: {
+    movementType: "PAYMENT" | "EXPENSE";
+    movementId: string;
+  }): Promise<void> {
+    const accepted = window.confirm(
+      `${input.movementType === "PAYMENT" ? "Tahsilat" : "Gider"} kaydi silinsin mi? ID: ${input.movementId}`
+    );
+    if (!accepted) {
+      return;
+    }
+
+    if (input.movementType === "PAYMENT") {
+      await authorizedRequest(`/api/admin/payments/${input.movementId}`, { method: "DELETE" });
+      await fetchPaymentList(paymentListFilter);
+      setMessage(`Tahsilat silindi (ID: ${input.movementId})`);
+      return;
+    }
+
+    await authorizedRequest(`/api/admin/expenses/${input.movementId}`, { method: "DELETE" });
+    await fetchExpenseReport(expenseReportFilter);
+    setMessage(`Gider silindi (ID: ${input.movementId})`);
   }
 
   async function onSubmitChargeType(e: FormEvent<HTMLFormElement>): Promise<void> {
@@ -11483,6 +11601,8 @@ function AdminPage() {
                 goUploadBatchPage={goUploadBatchPage}
                 clearUploadBatchFilters={clearUploadBatchFilters}
                 deleteUploadBatch={deleteUploadBatch}
+                editUploadBatchMovement={editUploadBatchMovement}
+                deleteUploadBatchMovement={deleteUploadBatchMovement}
               />
             </Suspense>
           }

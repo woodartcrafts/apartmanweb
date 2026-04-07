@@ -6032,7 +6032,7 @@ router.get("/upload-batches", async (req, res) => {
     from: z.string().datetime().optional(),
     to: z.string().datetime().optional(),
     uploadedByUserId: z.string().optional(),
-    kind: z.nativeEnum(ImportBatchType).optional(),
+    kind: z.union([z.nativeEnum(ImportBatchType), z.literal("GMAIL")]).optional(),
     limit: z.coerce.number().int().min(1).max(1000).optional(),
     offset: z.coerce.number().int().min(0).optional(),
   });
@@ -6043,6 +6043,8 @@ router.get("/upload-batches", async (req, res) => {
   }
 
   const { from, to, uploadedByUserId, kind } = parsed.data;
+  const gmailOnly = kind === "GMAIL";
+  const normalizedKind = gmailOnly ? ImportBatchType.BANK_STATEMENT_UPLOAD : kind;
   const limit = parsed.data.limit ?? 200;
   const offset = parsed.data.offset ?? 0;
 
@@ -6056,7 +6058,13 @@ router.get("/upload-batches", async (req, res) => {
             }
           : undefined,
       uploadedById: uploadedByUserId || undefined,
-      kind: kind || undefined,
+      kind: normalizedKind || undefined,
+      fileName: gmailOnly
+        ? {
+            startsWith: "gmail:",
+            mode: "insensitive",
+          }
+        : undefined,
     },
     include: {
       uploadedBy: {

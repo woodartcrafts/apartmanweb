@@ -4686,6 +4686,47 @@ td {
   color: #7a1f1f;
 }
 
+.apartment-list-table.upload-batch-detail-table th,
+.apartment-list-table.upload-batch-detail-table td {
+  white-space: nowrap;
+}
+
+.apartment-list-table.upload-batch-detail-table td {
+  padding: 7px 6px;
+}
+
+.apartment-list-table.upload-batch-detail-table .truncate-cell {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.apartment-list-table.upload-batch-detail-table .truncate-method {
+  max-width: 120px;
+}
+
+.apartment-list-table.upload-batch-detail-table .truncate-reference {
+  max-width: 130px;
+}
+
+.apartment-list-table.upload-batch-detail-table .truncate-description {
+  max-width: 520px;
+}
+
+.apartment-list-table.upload-batch-detail-table .truncate-id {
+  max-width: 110px;
+}
+
+.apartment-list-table.upload-batch-detail-table .actions-cell {
+  gap: 4px;
+}
+
+.apartment-list-table.upload-batch-detail-table .btn.btn-compact {
+  padding: 4px 6px;
+  font-size: 0.72rem;
+}
+
 .apartment-list-page-table th,
 .apartment-list-page-table td {
   padding: 6px 6px;

@@ -8,11 +8,13 @@ import {
   type UploadBatchUploader,
 } from "../../app/shared";
 
+type UploadBatchKindFilter = "" | UploadBatchKind | "GMAIL";
+
 type UploadBatchFilterState = {
   from: string;
   to: string;
   uploadedByUserId: string;
-  kind: "" | UploadBatchKind;
+  kind: UploadBatchKindFilter;
   limit: string;
   offset: string;
 };
@@ -29,6 +31,16 @@ type UploadBatchesPageProps = {
   goUploadBatchPage: (direction: "prev" | "next") => Promise<void>;
   clearUploadBatchFilters: () => Promise<void>;
   deleteUploadBatch: (row: UploadBatchRow) => Promise<void>;
+  editUploadBatchMovement: (input: {
+    movementType: "PAYMENT" | "EXPENSE";
+    movementId: string;
+    occurredAt: string;
+    reference?: string | null;
+  }) => Promise<void>;
+  deleteUploadBatchMovement: (input: {
+    movementType: "PAYMENT" | "EXPENSE";
+    movementId: string;
+  }) => Promise<void>;
 };
 
 export function UploadBatchesPage({
@@ -43,11 +55,14 @@ export function UploadBatchesPage({
   goUploadBatchPage,
   clearUploadBatchFilters,
   deleteUploadBatch,
+  editUploadBatchMovement,
+  deleteUploadBatchMovement,
 }: UploadBatchesPageProps) {
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
   const [detailsLoadingBatchId, setDetailsLoadingBatchId] = useState<string | null>(null);
   const [detailsByBatchId, setDetailsByBatchId] = useState<Record<string, UploadBatchDetailsResponse>>({});
   const [detailsErrorByBatchId, setDetailsErrorByBatchId] = useState<Record<string, string>>({});
+  const [deletingMovementKey, setDeletingMovementKey] = useState<string | null>(null);
 
   async function toggleBatchDetails(row: UploadBatchRow): Promise<void> {
     if (expandedBatchId === row.id) {
@@ -70,6 +85,22 @@ export function UploadBatchesPage({
       setDetailsErrorByBatchId((prev) => ({ ...prev, [row.id]: text }));
     } finally {
       setDetailsLoadingBatchId((current) => (current === row.id ? null : current));
+    }
+  }
+
+  async function onDeleteMovement(batchId: string, input: { movementType: "PAYMENT" | "EXPENSE"; movementId: string }) {
+    const key = `${input.movementType}:${input.movementId}`;
+    setDeletingMovementKey(key);
+    try {
+      await deleteUploadBatchMovement(input);
+      const refreshed = await fetchUploadBatchDetails(batchId);
+      setDetailsByBatchId((prev) => ({ ...prev, [batchId]: refreshed }));
+      setDetailsErrorByBatchId((prev) => ({ ...prev, [batchId]: "" }));
+    } catch (err) {
+      const text = err instanceof Error ? err.message : "Kayit silinemedi";
+      setDetailsErrorByBatchId((prev) => ({ ...prev, [batchId]: text }));
+    } finally {
+      setDeletingMovementKey(null);
     }
   }
 
@@ -167,10 +198,11 @@ export function UploadBatchesPage({
             <select
               value={uploadBatchFilter.kind}
               onChange={(e) =>
-                setUploadBatchFilter((prev) => ({ ...prev, kind: e.target.value as "" | UploadBatchKind }))
+                setUploadBatchFilter((prev) => ({ ...prev, kind: e.target.value as UploadBatchKindFilter }))
               }
             >
               <option value="">Hepsi</option>
+              <option value="GMAIL">Gmail</option>
               <option value="BANK_STATEMENT_UPLOAD">Banka Ekstresi Upload</option>
               <option value="PAYMENT_UPLOAD">Toplu Odeme Upload</option>
             </select>
@@ -284,7 +316,7 @@ export function UploadBatchesPage({
                               </p>
 
                               <div className="table-wrap compact-row-top-gap">
-                                <table className="apartment-list-table">
+                                <table className="apartment-list-table upload-batch-detail-table">
                                   <thead>
                                     <tr>
                                       <th>Tarih</th>
@@ -295,6 +327,7 @@ export function UploadBatchesPage({
                                       <th>Referans</th>
                                       <th>Aciklama</th>
                                       <th>ID</th>
+                                      <th>Islem</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -305,17 +338,65 @@ export function UploadBatchesPage({
                                       >
                                         <td>{formatDateTr(entry.occurredAt)}</td>
                                         <td>{entry.rowType === "PAYMENT" ? "Tahsilat" : "Gider"}</td>
-                                        <td>{entry.method.replaceAll("_", " ")}</td>
+                                        <td>
+                                          <span
+                                            className="truncate-cell truncate-method"
+                                            title={entry.method.replaceAll("_", " ")}
+                                          >
+                                            {entry.method.replaceAll("_", " ")}
+                                          </span>
+                                        </td>
                                         <td className="col-num">{entry.rowType === "EXPENSE" ? formatTry(-entry.amount) : formatTry(entry.amount)}</td>
                                         <td>{entry.detailMain}</td>
-                                        <td>{entry.reference ?? "-"}</td>
-                                        <td>{entry.detailText}</td>
-                                        <td>{entry.id}</td>
+                                        <td>
+                                          <span className="truncate-cell truncate-reference" title={entry.reference ?? "-"}>
+                                            {entry.reference ?? "-"}
+                                          </span>
+                                        </td>
+                                        <td>
+                                          <span className="truncate-cell truncate-description" title={entry.detailText}>
+                                            {entry.detailText}
+                                          </span>
+                                        </td>
+                                        <td>
+                                          <span className="truncate-cell truncate-id" title={entry.id}>
+                                            {entry.id}
+                                          </span>
+                                        </td>
+                                        <td className="actions-cell">
+                                          <button
+                                            className="btn btn-ghost btn-compact"
+                                            type="button"
+                                            onClick={() =>
+                                              void editUploadBatchMovement({
+                                                movementType: entry.rowType,
+                                                movementId: entry.id,
+                                                occurredAt: entry.occurredAt,
+                                                reference: entry.reference,
+                                              })
+                                            }
+                                          >
+                                            Duzelt
+                                          </button>
+                                          <button
+                                            className="btn btn-danger btn-compact"
+                                            type="button"
+                                            disabled={deletingMovementKey === `${entry.rowType}:${entry.id}`}
+                                            onClick={() =>
+                                              void onDeleteMovement(row.id, {
+                                                movementType: entry.rowType,
+                                                movementId: entry.id,
+                                              })
+                                            }
+                                          >
+                                            {deletingMovementKey === `${entry.rowType}:${entry.id}` ? "Siliniyor..." : "Sil"}
+                                          </button>
+                                        </td>
                                       </tr>
                                     ))}
                                     {combinedRows.length === 0 && (
                                       <tr>
-                                        <td colSpan={8} className="empty">
+                                        <td colSpan={9} className="empty">
                                           Bu yuklemeye ait kayit yok
                                         </td>
                                       </tr>
