@@ -4986,13 +4986,13 @@ td {
 }
 
 .expense-report-filter-row > label {
-  flex: 0 0 210px;
-  min-width: 210px;
+  flex: 1 1 0;
+  min-width: 170px;
 }
 
 .expense-report-filter-row > label:last-child {
-  flex-basis: 260px;
-  min-width: 260px;
+  flex: 1.2 1 0;
+  min-width: 210px;
 }
 
 .bank-statement-filter-row {
