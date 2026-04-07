@@ -2502,6 +2502,8 @@ async function processBankStatementImport(params: {
   uploadedById?: string;
 }) {
   const { rows, fileName, uploadedById } = params;
+  const uncategorizedExpenseCode = "SINIFLANDIRILAMAYAN_GIDERLER";
+  const uncategorizedExpenseName = "Siniflandirilamayan Giderler";
 
   const batch = await prisma.importBatch.create({
     data: {
@@ -2533,9 +2535,17 @@ async function processBankStatementImport(params: {
     doorNo: rule.doorNo,
   }));
 
+  await prisma.expenseItemDefinition.upsert({
+    where: { code: uncategorizedExpenseCode },
+    update: { name: uncategorizedExpenseName, isActive: true },
+    create: { code: uncategorizedExpenseCode, name: uncategorizedExpenseName, isActive: true },
+  });
+
   const allExpenseItems = await prisma.expenseItemDefinition.findMany({
     select: { id: true, code: true, name: true, isActive: true },
   });
+  const uncategorizedExpenseItemId =
+    allExpenseItems.find((item) => item.code === uncategorizedExpenseCode)?.id ?? null;
   const activeExpenseItems = allExpenseItems
     .filter((item) => item.isActive)
     .map((item) => ({ id: item.id, code: item.code, name: item.name }));
@@ -3292,16 +3302,23 @@ async function processBankStatementImport(params: {
         : undefined;
       const detectedExpenseItemId =
         selectedExpenseItemId ?? matchExpenseItemId(row.description, activeExpenseItems, activeExpenseRules) ?? undefined;
-      if (!detectedExpenseItemId || !allExpenseItemIdSet.has(detectedExpenseItemId)) {
+      const expenseItemIdToUse =
+        detectedExpenseItemId && allExpenseItemIdSet.has(detectedExpenseItemId)
+          ? detectedExpenseItemId
+          : uncategorizedExpenseItemId;
+      if (!expenseItemIdToUse) {
         skippedCount += 1;
         errors.push(`Satir ${rowNo}: Gider kalemi secilmedi veya bulunamadi`);
         continue;
+      }
+      if (!detectedExpenseItemId || !allExpenseItemIdSet.has(detectedExpenseItemId)) {
+        infos.push(`Satir ${rowNo}: Gider kalemi otomatik olarak ${uncategorizedExpenseName} kalemine atandi`);
       }
 
       await prisma.expense.create({
         data: {
           importBatchId: batch.id,
-          expenseItemId: detectedExpenseItemId,
+          expenseItemId: expenseItemIdToUse,
           spentAt: row.occurredAt,
           amount: expenseAmount,
           paymentMethod: row.paymentMethod ?? PaymentMethod.BANK_TRANSFER,

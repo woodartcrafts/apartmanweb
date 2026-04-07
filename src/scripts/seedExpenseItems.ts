@@ -6,6 +6,7 @@ const defaults = [
   { code: "DOGALGAZ", name: "Dogalgaz" },
   { code: "ELEKTRIK", name: "Elektrik" },
   { code: "SU", name: "Su" },
+  { code: "SINIFLANDIRILAMAYAN_GIDERLER", name: "Siniflandirilamayan Giderler" },
 ];
 
 async function main() {
