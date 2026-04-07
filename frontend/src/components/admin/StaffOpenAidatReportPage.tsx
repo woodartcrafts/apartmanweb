@@ -17,6 +17,7 @@ type StaffOpenAidatReportPageProps = {
   apartmentSummary: StaffOpenAidatReportResponse["apartment"] | null;
   reportLoading: boolean;
   runQuery: (apartmentId: string, options?: { silent?: boolean }) => Promise<void>;
+  sendStatementEmail: (apartmentId: string) => Promise<void>;
   clearFilters: () => void;
 };
 
@@ -46,12 +47,12 @@ export function StaffOpenAidatReportPage({
   apartmentSummary,
   reportLoading,
   runQuery,
+  sendStatementEmail,
   clearFilters,
 }: StaffOpenAidatReportPageProps) {
   const selectableApartments = useMemo(
     () =>
       apartmentOptions
-        .filter((apt) => apt.hasAidat)
         .sort((a, b) => {
           const blockCompare = a.blockName.localeCompare(b.blockName, "tr");
           if (blockCompare !== 0) {
@@ -91,12 +92,19 @@ export function StaffOpenAidatReportPage({
     () => overdueRows.reduce((sum, row) => sum + row.remaining, 0),
     [overdueRows]
   );
+  const emptyStateText = !selectedApartmentId
+    ? "Lutfen daire secin."
+    : reportLoading || loading
+      ? "Secilen daire verileri yukleniyor..."
+      : apartmentSummary
+        ? "Secilen daire icin acik borc bulunmuyor."
+        : "Secilen daire bilgisi yukleniyor...";
 
   return (
     <section className="dashboard report-page staff-open-aidat-page">
       <div className="card table-card report-page-card staff-open-aidat-card-shell" aria-busy={reportLoading}>
         <div className="section-head report-toolbar">
-          <h3>Gorevli Mobil Acik Aidat Raporu</h3>
+          <h3>Gorevli Mobil Acik Borc Raporu</h3>
         </div>
         <div className={`staff-open-aidat-content${reportLoading ? " is-loading" : ""}`}>
           <div className="upload-batch-filter-row compact-row-top-gap report-filter-grid staff-open-aidat-filter-grid">
@@ -126,15 +134,22 @@ export function StaffOpenAidatReportPage({
           {apartmentSummary ? (
             <div className="stats-grid report-summary-grid compact-row-top-gap">
               <article className="stat-card staff-open-aidat-apartment-card">
-                <span className="stat-label">Secili Daire</span>
-                <strong>
-                  Daire {normalizeBlockLabel(apartmentSummary.blockName)} - {apartmentSummary.apartmentDoorNo}
-                  {summaryName ? ` (${summaryName})` : ""}
-                </strong>
+                <button
+                  className="staff-open-aidat-email-trigger"
+                  type="button"
+                  onClick={() => void sendStatementEmail(selectedApartmentId)}
+                  disabled={!selectedApartmentId || loading || reportLoading}
+                >
+                  <span className="stat-label">Ekstre E-mail Gonder</span>
+                  <strong>
+                    Daire {normalizeBlockLabel(apartmentSummary.blockName)} - {apartmentSummary.apartmentDoorNo}
+                    {summaryName ? ` (${summaryName})` : ""}
+                  </strong>
+                </button>
               </article>
               {overdueRows.length > 0 ? (
                 <article className="stat-card">
-                  <span className="stat-label">Geciken Aidat</span>
+                  <span className="stat-label">Geciken Borc</span>
                   <strong>
                     {overdueRows.length} kayit - {formatTry(overdueTotal)}
                   </strong>
@@ -145,33 +160,27 @@ export function StaffOpenAidatReportPage({
 
           <div className="staff-open-aidat-list compact-row-top-gap">
             {rows.length === 0 ? (
-              <p className="small">Secilen daire icin acik aidat borcu bulunmuyor.</p>
+              <p className="small">{emptyStateText}</p>
             ) : (
               rows.map((row) => (
-                <article key={row.chargeId} className="staff-open-aidat-card">
+                <article
+                  key={row.chargeId}
+                  className={`staff-open-aidat-card${row.overdueDays > 0 ? " staff-open-aidat-card-overdue" : ""}`}
+                >
                   <header className="staff-open-aidat-card-head">
-                    <strong>{toPeriodLabel(row.periodYear, row.periodMonth)}</strong>
+                    <strong>{`${toPeriodLabel(row.periodYear, row.periodMonth)} - ${row.chargeTypeName}`}</strong>
                     <span>{row.overdueDays > 0 ? `${row.overdueDays} gun gecikme` : "Vadesi gelmedi"}</span>
                   </header>
                   <dl className="staff-open-aidat-meta">
                     <div>
-                      <dt>Vade</dt>
+                      <dt>Vade Tarihi</dt>
                       <dd>{formatDateTr(row.dueDate)}</dd>
                     </div>
-                    <div>
-                      <dt>Borc</dt>
-                      <dd>{formatTry(row.amount)}</dd>
-                    </div>
-                    <div>
-                      <dt>Odenen</dt>
-                      <dd>{formatTry(row.paidTotal)}</dd>
-                    </div>
-                    <div>
-                      <dt>Kalan</dt>
+                    <div className="staff-open-aidat-meta-right">
+                      <dt>Kalan Tutar</dt>
                       <dd className="staff-open-aidat-remaining">{formatTry(row.remaining)}</dd>
                     </div>
                   </dl>
-                  {row.description ? <p className="small">{row.description}</p> : null}
                 </article>
               ))
             )}

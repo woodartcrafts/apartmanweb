@@ -85,6 +85,8 @@ import {
   type UploadBatchDetailsResponse,
   type UploadBatchRow,
   type UploadBatchUploader,
+  type UnclassifiedExpenseRow,
+  type UnclassifiedPaymentRow,
 } from "./app/shared";
 const ApartmentTypeManagementPage = lazy(() =>
   import("./components/admin/ApartmentTypeManagementPage").then((module) => ({
@@ -234,6 +236,11 @@ const MonthlyLedgerPrintPage = lazy(() =>
 const StaffOpenAidatReportPage = lazy(() =>
   import("./components/admin/StaffOpenAidatReportPage").then((module) => ({
     default: module.StaffOpenAidatReportPage,
+  }))
+);
+const UnclassifiedItemsPage = lazy(() =>
+  import("./components/admin/UnclassifiedItemsPage").then((module) => ({
+    default: module.UnclassifiedItemsPage,
   }))
 );
 const MeetingGuidePage = lazy(() =>
@@ -511,6 +518,23 @@ function AdminPage() {
   const [bankPreviewFilterMissingOnly, setBankPreviewFilterMissingOnly] = useState(false);
   const [bankPreviewFilterSplitOnly, setBankPreviewFilterSplitOnly] = useState(false);
   const [activeBankPreviewFilterKey, setActiveBankPreviewFilterKey] = useState<BankPreviewHeaderFilterKey | null>(null);
+
+  function normalizeToastText(value: string): string {
+    return value
+      .toLowerCase()
+      .replaceAll("ı", "i")
+      .replaceAll("İ", "i")
+      .replaceAll("ş", "s")
+      .replaceAll("Ş", "s")
+      .replaceAll("ğ", "g")
+      .replaceAll("Ğ", "g")
+      .replaceAll("ü", "u")
+      .replaceAll("Ü", "u")
+      .replaceAll("ö", "o")
+      .replaceAll("Ö", "o")
+      .replaceAll("ç", "c")
+      .replaceAll("Ç", "c");
+  }
   const [bankPreviewHeaderFilterSelections, setBankPreviewHeaderFilterSelections] = useState<
     Record<BankPreviewHeaderFilterKey, string[]>
   >({
@@ -617,6 +641,9 @@ function AdminPage() {
   const [selectedPaymentCorrectionIds, setSelectedPaymentCorrectionIds] = useState<string[]>([]);
   const [paymentListRows, setPaymentListRows] = useState<PaymentListRow[]>([]);
   const [paymentListError, setPaymentListError] = useState<string>("");
+  const [unclassifiedPaymentRows, setUnclassifiedPaymentRows] = useState<UnclassifiedPaymentRow[]>([]);
+  const [unclassifiedExpenseRows, setUnclassifiedExpenseRows] = useState<UnclassifiedExpenseRow[]>([]);
+  const [unclassifiedPageLoading, setUnclassifiedPageLoading] = useState<boolean>(false);
   const [paymentListFilter, setPaymentListFilter] = useState({
     from: "",
     to: "",
@@ -814,6 +841,7 @@ function AdminPage() {
     to: "",
     blockIds: [] as string[],
     doorNos: [] as string[],
+    chargeTypeId: "",
   });
   const [deletingUploadBatchId, setDeletingUploadBatchId] = useState<string | null>(null);
   const [deletingUploadBatchFileName, setDeletingUploadBatchFileName] = useState<string>("");
@@ -2742,7 +2770,11 @@ function AdminPage() {
       return;
     }
 
-    const timer = window.setTimeout(() => setToastMessage(""), 1800);
+    const normalizedToastMessage = normalizeToastText(toastMessage);
+    const isStatementEmailSuccess = normalizedToastMessage.includes("e-mail gonderildi");
+    const isStatementEmailMissingAddress = normalizedToastMessage.includes("kayitli bir email yok- gonderilmedi");
+    const toastDurationMs = isStatementEmailMissingAddress ? 5000 : isStatementEmailSuccess ? 3000 : 1800;
+    const timer = window.setTimeout(() => setToastMessage(""), toastDurationMs);
     return () => window.clearTimeout(timer);
   }, [toastMessage]);
 
@@ -3154,10 +3186,15 @@ function AdminPage() {
 
   async function authorizedRequest<T>(
     endpoint: string,
-    options?: { method?: "GET" | "POST" | "PUT" | "DELETE"; payload?: unknown }
+    options?: {
+      method?: "GET" | "POST" | "PUT" | "DELETE";
+      payload?: unknown;
+      suppressDataChangeToast?: boolean;
+    }
   ): Promise<T> {
     const method = options?.method ?? "GET";
     const payload = options?.payload;
+    const suppressDataChangeToast = options?.suppressDataChangeToast ?? false;
     const isSaveAction = method === "POST" || method === "PUT";
     const isDataChangeAction = isSaveAction || method === "DELETE";
 
@@ -3174,7 +3211,7 @@ function AdminPage() {
       setApiConnectionOk(true);
     } catch {
       setApiConnectionOk(false);
-      if (isDataChangeAction) {
+      if (isDataChangeAction && !suppressDataChangeToast) {
         setToastMessage(method === "DELETE" ? "Kayit silinemedi" : "Veri kaydedilemedi");
       }
       throw new Error("API baglantisi kurulamadi. Sunucunun calistigini kontrol edin (localhost:3000)");
@@ -3186,7 +3223,7 @@ function AdminPage() {
         warningCode?: string;
         blockedApartments?: string[];
       };
-      if (isDataChangeAction) {
+      if (isDataChangeAction && !suppressDataChangeToast) {
         setToastMessage(method === "DELETE" ? "Kayit silinemedi" : "Veri kaydedilemedi");
       }
       if (res.status === 401) {
@@ -3209,7 +3246,7 @@ function AdminPage() {
 
     setWarningPanel(null);
 
-    if (isDataChangeAction) {
+    if (isDataChangeAction && !suppressDataChangeToast) {
       setToastMessage(method === "DELETE" ? "Kayit silindi" : "Veri kaydedildi");
     }
 
@@ -3717,6 +3754,133 @@ function AdminPage() {
     setPaymentListRows([]);
     setPaymentListError("");
     setMessage("Odeme listesi filtresi temizlendi. Listelemek icin Filtrele butonuna basin");
+  }
+
+  function normalizeDoorNoForSearch(value: string): string {
+    return value.trim().replace(/\s+/g, "").toLocaleLowerCase("tr");
+  }
+
+  async function loadUnclassifiedRows(options?: { silent?: boolean }): Promise<void> {
+    const silent = options?.silent ?? false;
+    setUnclassifiedPageLoading(true);
+    try {
+      const [payments, expenses] = await Promise.all([
+        authorizedRequest<PaymentListRow[]>("/api/admin/payments/list"),
+        authorizedRequest<ExpenseReportRow[]>("/api/admin/expenses/report?includeDistributed=false"),
+      ]);
+
+      const uncategorizedExpenseItemId =
+        expenseItemOptions.find((item) => item.code === "SINIFLANDIRILAMAYAN_GIDERLER")?.id ?? null;
+
+      const unclassifiedPayments = payments.filter((row) => {
+        const note = (row.note ?? "").toUpperCase();
+        return (
+          note.includes("UNCLASSIFIED_COLLECTION:SINIFLANDIRILAMAYAN_TAHSILATLAR") ||
+          note.includes("UNAPPLIED:NO_DOOR_NO") ||
+          note.includes("UNAPPLIED:APARTMENT_NOT_FOUND")
+        );
+      });
+
+      const unclassifiedExpenses = expenses.filter((row) => {
+        if (row.source === "CHARGE_DISTRIBUTION") {
+          return false;
+        }
+        if (uncategorizedExpenseItemId) {
+          return row.expenseItemId === uncategorizedExpenseItemId;
+        }
+        return row.expenseItemName.toLocaleLowerCase("tr").includes("siniflandirilamayan");
+      });
+
+      setUnclassifiedPaymentRows(unclassifiedPayments);
+      setUnclassifiedExpenseRows(unclassifiedExpenses);
+
+      if (!silent) {
+        setMessage(
+          `Siniflandirilamayanlar yuklendi. Tahsilat: ${unclassifiedPayments.length}, Gider: ${unclassifiedExpenses.length}`
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      if (!silent) {
+        setMessage(err instanceof Error ? err.message : "Siniflandirilamayan kayitlar yuklenemedi");
+      }
+    } finally {
+      setUnclassifiedPageLoading(false);
+    }
+  }
+
+  async function saveUnclassifiedPaymentDoorNo(row: UnclassifiedPaymentRow, doorNo: string): Promise<void> {
+    const normalizedDoorNo = normalizeDoorNoForSearch(doorNo);
+    if (!normalizedDoorNo) {
+      setMessage("Daire no zorunlu");
+      return;
+    }
+
+    const matchedApartments = apartmentOptions.filter(
+      (apt) => normalizeDoorNoForSearch(apt.doorNo) === normalizedDoorNo
+    );
+    if (matchedApartments.length === 0) {
+      setMessage("Girdiginiz daire no bulunamadi");
+      return;
+    }
+    if (matchedApartments.length > 1) {
+      setMessage("Ayni daire no birden fazla bulundu. Daire kayitlarini kontrol edin.");
+      return;
+    }
+
+    const targetApartment = matchedApartments[0];
+
+    setLoading(true);
+    try {
+      await authorizedRequest(`/api/admin/payments/${row.id}`, {
+        method: "PUT",
+        payload: {
+          paidAt: row.paidAt,
+          method: row.method,
+          description: row.description ?? undefined,
+          reference: row.reference ?? undefined,
+          apartmentId: targetApartment.id,
+        },
+      });
+
+      await Promise.all([loadUnclassifiedRows({ silent: true }), fetchPaymentList(paymentListFilter), fetchActionLogs()]);
+      setMessage(`Tahsilat daireye baglandi: ${targetApartment.blockName}/${targetApartment.doorNo}`);
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Tahsilat duzeltmesi kaydedilemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveUnclassifiedExpenseItem(row: UnclassifiedExpenseRow, expenseItemId: string): Promise<void> {
+    if (!expenseItemId) {
+      setMessage("Gider kalemi seciniz");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await authorizedRequest(`/api/admin/expenses/${row.id}`, {
+        method: "PUT",
+        payload: {
+          expenseItemId,
+          spentAt: row.spentAt,
+          amount: row.amount,
+          paymentMethod: row.paymentMethod,
+          description: row.description ?? undefined,
+          reference: row.reference ?? undefined,
+        },
+      });
+
+      await Promise.all([loadUnclassifiedRows({ silent: true }), fetchExpenseReport(expenseReportFilter), fetchActionLogs()]);
+      setMessage("Gider kalemi duzeltildi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Gider duzeltmesi kaydedilemedi");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function fetchActionLogs(): Promise<void> {
@@ -4514,6 +4678,9 @@ function AdminPage() {
       if (overduePaymentsFilter.doorNos.length === 1) {
         params.set("doorNo", overduePaymentsFilter.doorNos[0]);
       }
+      if (overduePaymentsFilter.chargeTypeId) {
+        params.set("chargeTypeId", overduePaymentsFilter.chargeTypeId);
+      }
 
       const endpoint = `/api/admin/reports/overdue-payments${params.toString() ? `?${params.toString()}` : ""}`;
       const data = await authorizedRequest<OverduePaymentsReportResponse>(endpoint);
@@ -4615,7 +4782,7 @@ function AdminPage() {
   }
 
   function clearOverduePaymentsFilters(): void {
-    setOverduePaymentsFilter({ from: "", to: "", blockIds: [], doorNos: [] });
+    setOverduePaymentsFilter({ from: "", to: "", blockIds: [], doorNos: [], chargeTypeId: "" });
     setOverduePaymentsRows([]);
     setOverduePaymentsTotals(null);
     setMessage("Gecikmis odeme filtreleri temizlendi. Listelemek icin Calistir butonuna basin");
@@ -4637,7 +4804,7 @@ function AdminPage() {
 
     setStaffOpenAidatLoading(true);
     if (!silent) {
-      setMessage("Gorevli mobil aidat raporu hazirlaniyor...");
+      setMessage("Gorevli mobil acik borc raporu hazirlaniyor...");
     }
 
     try {
@@ -4649,7 +4816,7 @@ function AdminPage() {
       setStaffOpenAidatTotals(data.totals);
       setStaffOpenAidatApartment(data.apartment);
       if (!silent) {
-        setMessage(`Gorevli raporu hazir: ${data.totals.rowCount} acik aidat`);
+        setMessage(`Gorevli raporu hazir: ${data.totals.rowCount} acik borc`);
       }
     } catch (err) {
       console.error(err);
@@ -4667,6 +4834,34 @@ function AdminPage() {
     options?: { silent?: boolean }
   ): Promise<void> {
     await fetchStaffOpenAidatReport(apartmentId, options);
+  }
+
+  async function sendStaffOpenAidatStatementEmail(apartmentId: string): Promise<void> {
+    const targetApartmentId = apartmentId.trim();
+    if (!targetApartmentId) {
+      setMessage("Lutfen once daire secin");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("Ekstre e-mail gonderiliyor...");
+    try {
+      const response = await authorizedRequest<{ message: string }>(
+        `/api/admin/apartments/${targetApartmentId}/statement-email`,
+        { method: "POST", suppressDataChangeToast: true }
+      );
+      setMessage(response.message);
+      setToastMessage("E-Mail gonderildi");
+    } catch (err) {
+      console.error(err);
+      const errorText = err instanceof Error ? err.message : "Ekstre e-mail gonderilemedi";
+      setMessage(errorText);
+      if (normalizeToastText(errorText).includes("kayitli bir email yok- gonderilmedi")) {
+        setToastMessage("Kayitli bir email yok- GONDERILMEDI");
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   function clearStaffOpenAidatFilters(): void {
@@ -7838,8 +8033,17 @@ function AdminPage() {
     expenseReportFilter.to,
     expenseReportFilter.sources,
     expenseReportFilter.expenseItemIds,
+    expenseReportFilter.description,
     location.pathname,
   ]);
+
+  useEffect(() => {
+    if (location.pathname !== "/admin/unclassified") {
+      return;
+    }
+
+    void loadUnclassifiedRows({ silent: true });
+  }, [location.pathname]);
 
   function getFractionalClosureSourceStatus(row: FractionalClosureReportRow): string {
     const now = new Date();
@@ -7862,23 +8066,25 @@ function AdminPage() {
     return "Fazla Odeme";
   }
 
+  const normalizedToastForState = normalizeToastText(toastMessage);
   const toastIsError =
-    toastMessage.toLocaleLowerCase("tr").includes("kaydedilemedi") ||
-    toastMessage.toLocaleLowerCase("tr").includes("basarisiz");
-
-  const isReportRoute =
-    location.pathname.startsWith("/admin/reports") ||
-    location.pathname === "/admin/payments/list" ||
-    location.pathname === "/admin/expenses/report" ||
-    location.pathname === "/admin/upload-batches";
+    normalizedToastForState.includes("kaydedilemedi") ||
+    normalizedToastForState.includes("basarisiz") ||
+    normalizedToastForState.includes("gonderilmedi");
 
   const reportLoadingOverlayVisible =
-    (isReportRoute && loading) ||
+    loading ||
     reportsSummaryLoading ||
     bankReconciliationLoading ||
     overduePaymentsLoading ||
+    staffOpenAidatLoading ||
     chargeConsistencyLoading ||
     manualReviewMatchesLoading ||
+    fractionalClosureLoading ||
+    doorMismatchLoading ||
+    bankTermDepositLoading ||
+    distributedInvoiceDetailLoading ||
+    unclassifiedPageLoading ||
     apartmentBalanceMatrixLoading ||
     referenceSearchLoading;
 
@@ -7910,13 +8116,13 @@ function AdminPage() {
         </div>
       )}
       {!deletingUploadBatchId && reportLoadingOverlayVisible && (
-        <div className="card report-loading-banner" role="status" aria-live="polite" aria-busy="true">
-          <div className="report-loading-hourglass" aria-hidden="true">
-            ⌛
-          </div>
-          <div>
-            <h3>Rapor Hazirlaniyor</h3>
-            <p className="small">Lutfen bekleyin, rapor verileri hesaplaniyor...</p>
+        <div className="blocking-modal" role="status" aria-live="polite" aria-busy="true">
+          <div className="blocking-modal-card report-loading-modal-card">
+            <div className="report-loading-hourglass" aria-hidden="true">
+              ⌛
+            </div>
+            <h3>Islem Devam Ediyor</h3>
+            <p className="small">Lutfen bekleyin.</p>
           </div>
         </div>
       )}
@@ -8153,6 +8359,9 @@ function AdminPage() {
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/corrections">
               Duzeltmeler
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/unclassified">
+              Siniflandirilamayanlar
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/manual-closures">
               Manuel Kapama Yonetimi
@@ -9083,6 +9292,22 @@ function AdminPage() {
                       </div>
                     </details>
                   </label>
+                  <label>
+                    Tahakkuk Tipi
+                    <select
+                      value={overduePaymentsFilter.chargeTypeId}
+                      onChange={(e) =>
+                        setOverduePaymentsFilter((prev) => ({ ...prev, chargeTypeId: e.target.value }))
+                      }
+                    >
+                      <option value="">Tum tipler</option>
+                      {chargeTypeOptions.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.name} ({x.code})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
 
                 {overduePaymentsTotals && (
@@ -9659,6 +9884,7 @@ function AdminPage() {
                 apartmentSummary={staffOpenAidatApartment}
                 reportLoading={staffOpenAidatLoading}
                 runQuery={runStaffOpenAidatQuery}
+                sendStatementEmail={sendStaffOpenAidatStatementEmail}
                 clearFilters={clearStaffOpenAidatFilters}
               />
             </Suspense>
@@ -12763,6 +12989,24 @@ function AdminPage() {
                 savePaymentCorrection={savePaymentCorrection}
                 removePaymentCorrection={removePaymentCorrection}
                 splitPaymentCorrection={splitPaymentCorrection}
+              />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/unclassified"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <UnclassifiedItemsPage
+                loading={loading}
+                pageLoading={unclassifiedPageLoading}
+                paymentRows={unclassifiedPaymentRows}
+                expenseRows={unclassifiedExpenseRows}
+                apartmentOptions={apartmentOptions}
+                expenseItemOptions={expenseItemOptions}
+                refresh={() => loadUnclassifiedRows()}
+                savePaymentDoorNo={saveUnclassifiedPaymentDoorNo}
+                saveExpenseItem={saveUnclassifiedExpenseItem}
               />
             </Suspense>
           }

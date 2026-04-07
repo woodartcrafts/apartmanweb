@@ -424,6 +424,10 @@ export type ExpenseReportRow = {
   createdByEmail: string | null;
 };
 
+export type UnclassifiedPaymentRow = PaymentListRow;
+
+export type UnclassifiedExpenseRow = ExpenseReportRow;
+
 export type AdminActionLogRow = {
   id: string;
   createdAt: string;
@@ -619,6 +623,7 @@ export type StaffOpenAidatReportRow = {
   blockName: string;
   apartmentDoorNo: string;
   apartmentOwnerName: string | null;
+  chargeTypeName: string;
   periodYear: number;
   periodMonth: number;
   dueDate: string;

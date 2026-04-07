@@ -2,6 +2,7 @@ import { ApartmentType, ImportBatchType, OccupancyType, PaymentMethod, Prisma, U
 import { createHash } from "crypto";
 import { Router } from "express";
 import multer from "multer";
+import nodemailer, { type Transporter } from "nodemailer";
 import { PDFParse } from "pdf-parse";
 import ExcelJS from "exceljs";
 import { ImapFlow } from "imapflow";
@@ -29,6 +30,129 @@ import {
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+let statementEmailTransporter: Transporter | null = null;
+
+const tryCurrencyFormatter = new Intl.NumberFormat("tr-TR", {
+  style: "currency",
+  currency: "TRY",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function parseBooleanEnv(raw: string | undefined, fallback: boolean): boolean {
+  if (raw === undefined) {
+    return fallback;
+  }
+
+  const normalized = raw.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function formatAccountingEmailDescription(description: string): string {
+  const parts = description
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) =>
+      part
+        .replace(/^BANK_DESC\s*:\s*/i, "")
+        .replace(/\bCARRY_FORWARD\s*:\s*APARTMENT_CREDIT\b/gi, "")
+        .replace(/\bUNAPPLIED\s*:\s*CARRY_FORWARD\b/gi, "")
+        .replace(/\s{2,}/g, " ")
+        .trim()
+    )
+    .filter(Boolean)
+    .filter((part) => !/^baslang[ıi]c\s*:/i.test(part))
+    .filter((part) => !/^bitis\s*:/i.test(part))
+    .filter((part) => !/^door\s*:/i.test(part))
+    .filter((part) => !/^carry_forward\s*:/i.test(part))
+    .filter((part) => !/^unapplied\s*:/i.test(part))
+    .map((part) => part.replace(/(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, "$1"));
+
+  return parts.join(" | ") || "-";
+}
+
+function trimEmailStatementDescription(value: string, maxLength = 96): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
+}
+
+function getStatementEmailTransporter(): Transporter {
+  if (statementEmailTransporter) {
+    return statementEmailTransporter;
+  }
+
+  const smtpHost = process.env.STATEMENT_EMAIL_SMTP_HOST?.trim() || "smtp.gmail.com";
+  const smtpPort = Number(process.env.STATEMENT_EMAIL_SMTP_PORT ?? "465");
+  const smtpSecure = parseBooleanEnv(process.env.STATEMENT_EMAIL_SMTP_SECURE, smtpPort === 465);
+  const smtpUser =
+    process.env.STATEMENT_EMAIL_SMTP_USER?.trim() ||
+    config.gmailBankSync.gmailUser?.trim() ||
+    "";
+  const smtpPass =
+    process.env.STATEMENT_EMAIL_SMTP_PASS?.trim() ||
+    config.gmailBankSync.appPassword?.trim() ||
+    "";
+
+  if (!smtpUser || !smtpPass) {
+    throw new Error("Ekstre e-mail icin SMTP bilgileri tanimli degil");
+  }
+
+  statementEmailTransporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: Number.isFinite(smtpPort) && smtpPort > 0 ? smtpPort : 465,
+    secure: smtpSecure,
+    auth: {
+      user: smtpUser,
+      pass: smtpPass,
+    },
+  });
+
+  return statementEmailTransporter;
+}
+
+function collectApartmentStatementRecipients(apartment: {
+  email1: string | null;
+  email2: string | null;
+  email3: string | null;
+  email4: string | null;
+  landlordEmail: string | null;
+}): string[] {
+  const raw = [apartment.email1, apartment.email2, apartment.email3, apartment.email4, apartment.landlordEmail];
+  const unique = new Set<string>();
+
+  for (const item of raw) {
+    const normalized = item?.trim().toLowerCase();
+    if (!normalized) {
+      continue;
+    }
+    if (!z.string().email().safeParse(normalized).success) {
+      continue;
+    }
+    unique.add(normalized);
+  }
+
+  return [...unique];
+}
 
 router.use(requireAuth, requireRole([UserRole.ADMIN]));
 router.use(blockRoutes);
@@ -2157,6 +2281,141 @@ function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] 
   return rows;
 }
 
+function parseDoorNosFromFreeText(value: string): string[] {
+  if (!value.trim()) {
+    return [];
+  }
+
+  return value
+    .replace(/\bve\b/gi, ",")
+    .replace(/\bveya\b/gi, ",")
+    .split(/[,;|/&\-\s]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function normalizeDoorPatternText(value: string): string {
+  return value
+    .toLocaleLowerCase("tr")
+    .replace(/ı/g, "i")
+    .replace(/ş/g, "s")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c");
+}
+
+function extractDoorNosFromDescriptionForSplit(description: string): string[] {
+  const text = normalizeDoorPatternText(description.trim());
+  if (!text.trim()) {
+    return [];
+  }
+
+  const explicitPrefixedDoorNos = [...text.matchAll(/\b(?:d|daire)\s*[:#\-\/.]?\s*0*(\d{1,4})\b/g)].map(
+    (match) => match[1]
+  );
+
+  const groupedByKeyword = [
+    ...text.matchAll(/\b(?:d|daire|daireler)\b[^\d]{0,6}((?:\d{1,4}\s*(?:,|ve|veya|&|\/|-)\s*)+\d{1,4})/g),
+  ].flatMap((match) => parseDoorNosFromFreeText(match[1] ?? ""));
+
+  const compactPairs = [
+    ...text.matchAll(/\bd\s*0*(\d{1,4})\s*(?:ve|veya|\/|&|-)\s*0*(\d{1,4})\b/g),
+    ...text.matchAll(/\b0*(\d{1,4})\s*(?:ve|veya|\/|&)\s*0*(\d{1,4})\b/g),
+  ].flatMap((match) => [match[1], match[2]]);
+
+  const merged = [...new Set([...explicitPrefixedDoorNos, ...groupedByKeyword, ...compactPairs])];
+  if (merged.length >= 2) {
+    return merged;
+  }
+
+  return [];
+}
+
+function resolveSplitDoorNosFromDescription(description: string, validDoorNos: Set<string>): string[] {
+  const knownPairs = [
+    ["57", "93"],
+    ["48", "65"],
+    ["35", "45"],
+  ] as const;
+
+  const normalizedDescription = normalizeDoorPatternText(description);
+
+  for (const [left, right] of knownPairs) {
+    const leftEscaped = left.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rightEscaped = right.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    const pairPattern = new RegExp(
+      `(?:^|\\D)${leftEscaped}\\s*(?:-|/|ve|veya|&)\\s*${rightEscaped}(?:\\D|$)|(?:^|\\D)${rightEscaped}\\s*(?:-|/|ve|veya|&)\\s*${leftEscaped}(?:\\D|$)`,
+      "i"
+    );
+    const leftToken = new RegExp(`(?:^|\\D)${leftEscaped}(?:\\D|$)`, "i");
+    const rightToken = new RegExp(`(?:^|\\D)${rightEscaped}(?:\\D|$)`, "i");
+
+    const isKnownPairMentioned = pairPattern.test(normalizedDescription);
+    const isSingleKnownMemberMentioned = leftToken.test(normalizedDescription) || rightToken.test(normalizedDescription);
+
+    if (!isKnownPairMentioned && !isSingleKnownMemberMentioned) {
+      continue;
+    }
+
+    const normalizedLeft = normalizeDoorNoForCompare(left);
+    const normalizedRight = normalizeDoorNoForCompare(right);
+    const knownDoorNos = [normalizedLeft, normalizedRight].filter((doorNo) => validDoorNos.has(doorNo));
+
+    if (knownDoorNos.length >= 2) {
+      return knownDoorNos;
+    }
+  }
+
+  const fromDescription = extractDoorNosFromDescriptionForSplit(description);
+  return [...new Set(fromDescription.map((x) => normalizeDoorNoForCompare(x)))].filter((doorNo) => validDoorNos.has(doorNo));
+}
+
+function autoSplitMultiDoorPaymentRows(rows: BankStatementCommitRow[], validDoorNos: Set<string>): BankStatementCommitRow[] {
+  const nextRows: BankStatementCommitRow[] = [];
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    const rowNo = i + 1;
+
+    if (row.entryType !== "PAYMENT" || !Number.isFinite(row.amount) || row.amount <= 0) {
+      nextRows.push({
+        ...row,
+        isAutoSplit: false,
+        splitSourceRowNo: undefined,
+      });
+      continue;
+    }
+
+    const mergedCandidates = resolveSplitDoorNosFromDescription(row.description, validDoorNos);
+    if (mergedCandidates.length < 2) {
+      nextRows.push({
+        ...row,
+        isAutoSplit: false,
+        splitSourceRowNo: undefined,
+      });
+      continue;
+    }
+
+    const count = mergedCandidates.length;
+    const base = Math.floor((row.amount / count) * 100) / 100;
+    const remainder = Number((row.amount - base * count).toFixed(2));
+
+    mergedCandidates.forEach((doorNo, idx) => {
+      nextRows.push({
+        ...row,
+        doorNo,
+        amount: Number((base + (idx === 0 ? remainder : 0)).toFixed(2)),
+        isAutoSplit: true,
+        splitSourceRowNo: rowNo,
+      });
+    });
+  }
+
+  return nextRows;
+}
+
 async function parseBankStatementRowsFromPdfBuffer(fileBuffer: Buffer): Promise<BankStatementRow[]> {
   const parser = new PDFParse({ data: fileBuffer });
   const parsed = await parser.getText();
@@ -2399,6 +2658,14 @@ export async function runGmailBankSync(uploadedById?: string): Promise<{
 
   const allAttachments: Array<{ key: string; fileName: string; data: Buffer }> = [];
   let scannedMessageCount = 0;
+  const apartmentsForSplit = await prisma.apartment.findMany({
+    select: { doorNo: true },
+  });
+  const validDoorNosForSplit = new Set(
+    apartmentsForSplit
+      .flatMap((apt) => [apt.doorNo, normalizeDoorNoForCompare(apt.doorNo)])
+      .filter((value): value is string => Boolean(value && value.trim().length > 0))
+  );
 
   if (usingImap) {
     const imapResult = await fetchImapPdfAttachments();
@@ -2455,7 +2722,7 @@ export async function runGmailBankSync(uploadedById?: string): Promise<{
         continue;
       }
 
-      const commitRows: BankStatementCommitRow[] = filteredRows.map((row) => ({
+      const rawCommitRows: BankStatementCommitRow[] = filteredRows.map((row) => ({
         occurredAt: row.occurredAt,
         amount: Number(Math.abs(row.amount).toFixed(2)),
         entryType: row.amount > 0 ? "PAYMENT" : "EXPENSE",
@@ -2464,6 +2731,8 @@ export async function runGmailBankSync(uploadedById?: string): Promise<{
         txType: row.txType,
         paymentMethod: derivePaymentMethod(row.txType),
       }));
+
+      const commitRows = autoSplitMultiDoorPaymentRows(rawCommitRows, validDoorNosForSplit);
 
       const result = await processBankStatementImport({
         rows: commitRows,
@@ -2504,6 +2773,8 @@ async function processBankStatementImport(params: {
   const { rows, fileName, uploadedById } = params;
   const uncategorizedExpenseCode = "SINIFLANDIRILAMAYAN_GIDERLER";
   const uncategorizedExpenseName = "Siniflandirilamayan Giderler";
+  const uncategorizedCollectionCode = "SINIFLANDIRILAMAYAN_TAHSILATLAR";
+  const uncategorizedCollectionName = "Siniflandirilamayan Tahsilatlar";
 
   const batch = await prisma.importBatch.create({
     data: {
@@ -2539,6 +2810,11 @@ async function processBankStatementImport(params: {
     where: { code: uncategorizedExpenseCode },
     update: { name: uncategorizedExpenseName, isActive: true },
     create: { code: uncategorizedExpenseCode, name: uncategorizedExpenseName, isActive: true },
+  });
+  await prisma.chargeTypeDefinition.upsert({
+    where: { code: uncategorizedCollectionCode },
+    update: { name: uncategorizedCollectionName, isActive: true },
+    create: { code: uncategorizedCollectionCode, name: uncategorizedCollectionName, isActive: true },
   });
 
   const allExpenseItems = await prisma.expenseItemDefinition.findMany({
@@ -2974,26 +3250,6 @@ async function processBankStatementImport(params: {
 
     try {
       if (row.entryType === "PAYMENT") {
-        const enteredDoorNo = row.doorNo?.trim();
-        const detectedDoorNo =
-          enteredDoorNo || extractDoorNoFromDescription(row.description, doorNoSet, activeDoorNoRules) || undefined;
-        if (!detectedDoorNo) {
-          skippedCount += 1;
-          errors.push(`Satir ${rowNo}: Daire no girilmedi veya aciklamadan bulunamadi`);
-          continue;
-        }
-
-        const apartmentId = doorNoMap.get(detectedDoorNo) ?? doorNoMap.get(String(Number(detectedDoorNo)));
-        if (!apartmentId) {
-          skippedCount += 1;
-          errors.push(`Satir ${rowNo}: Daire bulunamadi (${detectedDoorNo})`);
-          continue;
-        }
-
-        const infoDoorNo = detectedDoorNo && detectedDoorNo.trim().length > 0 ? detectedDoorNo.trim() : "-";
-        const infoAmount = Number(row.amount.toFixed(2)).toFixed(2);
-        const infoContextTag = `[DAIRE:${infoDoorNo} | TUTAR:${infoAmount}]`;
-
         if (reference) {
           if (paymentReferenceSet.has(reference)) {
             if (!isSplitPaymentRow) {
@@ -3025,6 +3281,67 @@ async function processBankStatementImport(params: {
             continue;
           }
         }
+
+        const enteredDoorNo = row.doorNo?.trim();
+        const detectedDoorNo =
+          enteredDoorNo || extractDoorNoFromDescription(row.description, doorNoSet, activeDoorNoRules) || undefined;
+        if (!detectedDoorNo) {
+          const method = row.paymentMethod ?? derivePaymentMethod(row.txType);
+          const noteParts = [
+            reference ? `BANK_REF:${reference}` : undefined,
+            row.description ? `BANK_DESC:${row.description}` : undefined,
+            `UNCLASSIFIED_COLLECTION:${uncategorizedCollectionCode}`,
+            "UNAPPLIED:NO_DOOR_NO",
+          ].filter(Boolean) as string[];
+
+          await prisma.payment.create({
+            data: {
+              importBatchId: batch.id,
+              paidAt: row.occurredAt,
+              method,
+              note: noteParts.join(" | "),
+              totalAmount: Number(row.amount.toFixed(2)),
+              createdById: uploadedById,
+            },
+          });
+
+          paymentCreatedCount += 1;
+          infos.push(`Satir ${rowNo}: Daire no bulunamadi, tahsilat ${uncategorizedCollectionName} olarak dagitimsiz kaydedildi`);
+          continue;
+        }
+
+        const apartmentId = doorNoMap.get(detectedDoorNo) ?? doorNoMap.get(String(Number(detectedDoorNo)));
+        if (!apartmentId) {
+          const method = row.paymentMethod ?? derivePaymentMethod(row.txType);
+          const noteParts = [
+            reference ? `BANK_REF:${reference}` : undefined,
+            row.description ? `BANK_DESC:${row.description}` : undefined,
+            detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
+            `UNCLASSIFIED_COLLECTION:${uncategorizedCollectionCode}`,
+            "UNAPPLIED:APARTMENT_NOT_FOUND",
+          ].filter(Boolean) as string[];
+
+          await prisma.payment.create({
+            data: {
+              importBatchId: batch.id,
+              paidAt: row.occurredAt,
+              method,
+              note: noteParts.join(" | "),
+              totalAmount: Number(row.amount.toFixed(2)),
+              createdById: uploadedById,
+            },
+          });
+
+          paymentCreatedCount += 1;
+          infos.push(
+            `Satir ${rowNo}: Daire bulunamadi (${detectedDoorNo}), tahsilat ${uncategorizedCollectionName} olarak dagitimsiz kaydedildi`
+          );
+          continue;
+        }
+
+        const infoDoorNo = detectedDoorNo && detectedDoorNo.trim().length > 0 ? detectedDoorNo.trim() : "-";
+        const infoAmount = Number(row.amount.toFixed(2)).toFixed(2);
+        const infoContextTag = `[DAIRE:${infoDoorNo} | TUTAR:${infoAmount}]`;
 
         const chargeStates = openChargeStatesByApartment.get(apartmentId) ?? [];
         const openCharges = chargeStates.filter((x) => x.remaining > 0.0001);
@@ -6726,6 +7043,249 @@ router.get("/apartments/:apartmentId/statement", async (req, res) => {
   return res.json({ apartmentId, statement, accountingStatement });
 });
 
+router.post("/apartments/:apartmentId/statement-email", async (req, res) => {
+  try {
+    const { apartmentId } = req.params;
+
+    const apartment = await prisma.apartment.findUnique({
+      where: { id: apartmentId },
+      select: {
+        id: true,
+        doorNo: true,
+        ownerFullName: true,
+        email1: true,
+        email2: true,
+        email3: true,
+        email4: true,
+        landlordEmail: true,
+        block: {
+          select: { name: true },
+        },
+      },
+    });
+
+    if (!apartment) {
+      return res.status(404).json({ message: "Daire bulunamadi" });
+    }
+
+    const recipients = collectApartmentStatementRecipients(apartment);
+    if (recipients.length === 0) {
+      return res.status(400).json({
+        message: "Kayitli bir email yok- GONDERILMEDI",
+      });
+    }
+
+    const { statement, accountingStatement } = await getApartmentStatements(apartmentId);
+    const rowMarkup =
+      accountingStatement.length > 0
+        ? accountingStatement
+            .map((row) => {
+              const movementLabel = row.movementType === "BORC" ? "BORC" : "ALACAK";
+              const year = row.periodYear ?? row.date.getFullYear();
+              const month = row.periodMonth ?? row.date.getMonth() + 1;
+              const description = trimEmailStatementDescription(formatAccountingEmailDescription(row.description));
+              const debitText = row.debit > 0.0001 ? tryCurrencyFormatter.format(row.debit) : "-";
+              const creditText = row.credit > 0.0001 ? tryCurrencyFormatter.format(row.credit) : "-";
+
+              return `<tr>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap;">${escapeHtml(String(year))}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap;">${escapeHtml(String(month).padStart(2, "0"))}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap;">${escapeHtml(row.date.toLocaleDateString("tr-TR"))}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap;">${escapeHtml(movementLabel)}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; font-size:11px; line-height:1.25;">${escapeHtml(description)}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; white-space:nowrap;">${escapeHtml(debitText)}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; white-space:nowrap;">${escapeHtml(creditText)}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; white-space:nowrap; font-weight:700; color:#184267;">${escapeHtml(tryCurrencyFormatter.format(row.balance))}</td>
+</tr>`;
+            })
+            .join("")
+        : "<tr><td colspan=\"8\" style=\"border:1px solid #d2dbe5; padding:10px; text-align:left;\">Muhasebe ekstre kaydi bulunmuyor.</td></tr>";
+
+    const mobileRowMarkup =
+      accountingStatement.length > 0
+        ? accountingStatement
+            .map((row) => {
+              const movementLabel = row.movementType === "BORC" ? "BORC" : "ALACAK";
+              const year = row.periodYear ?? row.date.getFullYear();
+              const month = row.periodMonth ?? row.date.getMonth() + 1;
+              const description = trimEmailStatementDescription(formatAccountingEmailDescription(row.description), 76);
+              const debitText = row.debit > 0.0001 ? tryCurrencyFormatter.format(row.debit) : "-";
+              const creditText = row.credit > 0.0001 ? tryCurrencyFormatter.format(row.credit) : "-";
+
+              return `<div style="border:1px solid #d6e0eb; border-radius:12px; background:#fff; padding:10px; margin-bottom:10px; box-shadow:0 2px 8px rgba(24,66,103,0.08);">
+  <div style="font-size:10px; color:#325b82; font-weight:700; letter-spacing:0.3px; margin-bottom:6px;">${escapeHtml(movementLabel)}</div>
+  <div style="font-size:11px; color:#5a6b7c; margin-bottom:6px;">${escapeHtml(String(year))}/${escapeHtml(String(month).padStart(2, "0"))} - ${escapeHtml(row.date.toLocaleDateString("tr-TR"))}</div>
+  <div style="font-size:11px; line-height:1.35; color:#1f2f40; margin-bottom:8px;">${escapeHtml(description)}</div>
+  <table role="presentation" style="width:100%; border-collapse:collapse; font-size:11px; background:#f7f9fc; border:1px solid #e1e8f0; border-radius:8px;">
+    <tr>
+      <td style="color:#5a6b7c; padding:6px 7px 4px;">Borc</td>
+      <td style="text-align:right; padding:6px 7px 4px; white-space:nowrap;">${escapeHtml(debitText)}</td>
+    </tr>
+    <tr>
+      <td style="color:#5a6b7c; padding:0 7px 4px;">Alacak</td>
+      <td style="text-align:right; padding:0 7px 4px; white-space:nowrap;">${escapeHtml(creditText)}</td>
+    </tr>
+    <tr>
+      <td style="color:#184267; padding:0 7px 6px; font-weight:700;">Bakiye</td>
+      <td style="text-align:right; padding:0 7px 6px; white-space:nowrap; font-weight:700; color:#184267;">${escapeHtml(tryCurrencyFormatter.format(row.balance))}</td>
+    </tr>
+  </table>
+</div>`;
+            })
+            .join("")
+        : "<div style=\"border:1px solid #d2dbe5; border-radius:10px; background:#fff; padding:10px; font-size:12px;\">Muhasebe ekstre kaydi bulunmuyor.</div>";
+
+    const now = new Date();
+    const overdueDebt = Number(
+      statement
+        .filter((row) => row.remaining > 0.0001)
+        .filter((row) => row.dueDate.getTime() < now.getTime())
+        .reduce((sum, row) => sum + row.remaining, 0)
+        .toFixed(2)
+    );
+    const apartmentLabel = `${apartment.block.name} - ${apartment.doorNo}`;
+    const ownerLabel = apartment.ownerFullName?.trim() ? ` (${apartment.ownerFullName.trim()})` : "";
+
+    const html = `
+<div style="margin:0; padding:20px 0; background:#eef3f8; font-family: Arial, Helvetica, sans-serif; color:#1e2f40;">
+  <style>
+    @media only screen and (max-width: 600px) {
+      .statement-email-shell {
+        margin: 0 10px !important;
+      }
+      .statement-email-title {
+        font-size: 15px !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+      }
+      .statement-email-body {
+        padding: 18px 14px !important;
+      }
+      .statement-meta-table {
+        table-layout: fixed !important;
+      }
+      .statement-apartment-cell {
+        width: 72% !important;
+      }
+      .statement-debt-cell {
+        width: 28% !important;
+      }
+      .statement-apartment-line {
+        display: block !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+      }
+      .statement-desktop-only {
+        display: none !important;
+      }
+      .statement-mobile-only {
+        display: block !important;
+      }
+      .statement-email-table th,
+      .statement-email-table td {
+        padding: 6px 5px !important;
+        font-size: 10.5px !important;
+      }
+      .statement-email-meta {
+        font-size: 12px !important;
+      }
+    }
+  </style>
+  <div class="statement-email-shell" style="max-width:900px; margin:0 auto; background:#ffffff; border:1px solid #dbe5f1; border-radius:14px; overflow:hidden; box-shadow:0 8px 24px rgba(30,47,64,0.08);">
+    <div style="background:linear-gradient(135deg,#1f4e79 0%,#2a6aa1 100%); padding:18px 20px; color:#ffffff;">
+      <table role="presentation" style="width:100%; border-collapse:collapse;">
+        <tr>
+          <td style="vertical-align:top; padding-bottom:10px;">
+            <div style="width:44px; height:44px; border-radius:10px; background:#ffffff; color:#1f4e79; font-weight:700; font-size:18px; line-height:44px; text-align:center;">AW</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="vertical-align:top;">
+            <div style="font-size:13px; opacity:0.9; margin-bottom:3px;">ApartmanWeb</div>
+            <h2 class="statement-email-title" style="margin:0; font-size:20px; line-height:1.2; white-space:normal; word-break:break-word;">ApartmanWeb Ekstre Bilgilendirmesi</h2>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="statement-email-body" style="padding:22px 20px 20px;">
+      <table role="presentation" class="statement-meta-table" style="width:100%; border-collapse:collapse; margin-bottom:14px;">
+        <tr>
+          <td class="statement-email-meta statement-apartment-cell" style="font-size:14px; padding:0 0 8px;">Daire: <strong class="statement-apartment-line">${escapeHtml(apartmentLabel + ownerLabel)}</strong></td>
+          <td class="statement-email-meta statement-debt-cell" style="font-size:14px; padding:0 0 8px; text-align:right;">Geciken borc: <strong>${escapeHtml(tryCurrencyFormatter.format(overdueDebt))}</strong></td>
+        </tr>
+      </table>
+
+      <table class="statement-email-table statement-desktop-only" style="border-collapse:collapse; width:100%; table-layout:fixed; font-size:12px; background:#ffffff; border:1px solid #d2dbe5;">
+        <thead>
+          <tr style="background:#e9f0f8;">
+            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; width:52px;">Yil</th>
+            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; width:42px;">Ay</th>
+            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; width:96px;">Tarih</th>
+            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; width:76px;">Hareket</th>
+            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left;">Aciklama</th>
+            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; width:96px;">Borc</th>
+            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; width:96px;">Alacak</th>
+            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; width:96px;">Bakiye</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowMarkup}
+        </tbody>
+      </table>
+      <div class="statement-mobile-only" style="display:none;">
+        ${mobileRowMarkup}
+      </div>
+    </div>
+  </div>
+</div>`;
+
+    const textLines = [
+      "ApartmanWeb Ekstre Bilgilendirmesi",
+      `Daire: ${apartmentLabel}${ownerLabel}`,
+      `Geciken borc: ${tryCurrencyFormatter.format(overdueDebt)}`,
+      "",
+      "Tarih | Aciklama | Borc | Alacak | Bakiye",
+      ...accountingStatement.map(
+        (row) =>
+          `${row.date.toLocaleDateString("tr-TR")} | ${(row.movementType === "BORC" ? "Borc" : "Alacak") + " - " + formatAccountingEmailDescription(row.description)} | ${tryCurrencyFormatter.format(row.debit)} | ${tryCurrencyFormatter.format(row.credit)} | ${tryCurrencyFormatter.format(row.balance)}`
+      ),
+    ];
+
+    const transporter = getStatementEmailTransporter();
+    const fromAddress =
+      process.env.STATEMENT_EMAIL_FROM?.trim() ||
+      process.env.STATEMENT_EMAIL_SMTP_USER?.trim() ||
+      config.gmailBankSync.gmailUser?.trim() ||
+      "";
+    if (!fromAddress) {
+      return res.status(500).json({ message: "Ekstre e-mail gonderici adresi tanimli degil" });
+    }
+
+    const fromName = process.env.STATEMENT_EMAIL_FROM_NAME?.trim() || "ApartmanWeb";
+
+    await transporter.sendMail({
+      from: `${fromName} <${fromAddress}>`,
+      to: recipients.join(", "),
+      subject: `ApartmanWeb Muhasebe Ekstresi - ${apartmentLabel}`,
+      html,
+      text: textLines.join("\n"),
+    });
+
+    return res.json({
+      message: "E-mail gonderildi",
+      recipients,
+      rowCount: accountingStatement.length,
+      overdueDebt,
+    });
+  } catch (err) {
+    console.error("[statement-email-send-failed]", err);
+    const detail = err instanceof Error ? err.message : "Bilinmeyen hata";
+    return res.status(500).json({ message: `Ekstre e-mail gonderilemedi: ${detail}` });
+  }
+});
+
 router.post("/apartments/:apartmentId/reconcile", async (req, res) => {
   const { apartmentId } = req.params;
   const result = await reconcileApartmentPaymentLinks(apartmentId);
@@ -6884,6 +7444,7 @@ router.get("/reports/overdue-payments", async (req, res) => {
     to: z.string().datetime().optional(),
     blockId: z.string().optional(),
     doorNo: z.string().optional(),
+    chargeTypeId: z.string().optional(),
   });
 
   const parsed = querySchema.safeParse(req.query);
@@ -6891,7 +7452,7 @@ router.get("/reports/overdue-payments", async (req, res) => {
     return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
   }
 
-  const { from, to, blockId, doorNo } = parsed.data;
+  const { from, to, blockId, doorNo, chargeTypeId } = parsed.data;
   const now = new Date();
 
   function formatOverdueChargeDescription(
@@ -6954,6 +7515,7 @@ router.get("/reports/overdue-payments", async (req, res) => {
         blockId: blockId || undefined,
         doorNo: doorNo?.trim() ? { equals: doorNo.trim() } : undefined,
       },
+      chargeTypeId: chargeTypeId?.trim() ? chargeTypeId.trim() : undefined,
     },
     include: {
       chargeType: {
@@ -7087,11 +7649,6 @@ router.get("/reports/staff-open-aidat", async (req, res) => {
   });
 
   const rows = charges
-    .filter((charge) => {
-      const chargeTypeCode = toAsciiLower(charge.chargeType.code).trim();
-      const chargeTypeName = toAsciiLower(charge.chargeType.name).trim();
-      return chargeTypeCode === "aidat" || chargeTypeName.includes("aidat");
-    })
     .map((charge) => {
       const paidTotal = charge.paymentItems.reduce((sum, x) => sum + Number(x.amount), 0);
       const remaining = Math.max(0, Number(charge.amount) - paidTotal);
@@ -7106,6 +7663,7 @@ router.get("/reports/staff-open-aidat", async (req, res) => {
         blockName: apartment.block.name,
         apartmentDoorNo: apartment.doorNo,
         apartmentOwnerName: apartment.ownerFullName,
+        chargeTypeName: charge.chargeType.name,
         periodYear: charge.periodYear,
         periodMonth: charge.periodMonth,
         dueDate: charge.dueDate,

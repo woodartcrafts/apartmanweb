@@ -3576,6 +3576,24 @@ button:active:not(:disabled) {
   color: #ffffff;
 }
 
+.staff-open-aidat-email-trigger {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  text-align: center;
+}
+
+.staff-open-aidat-email-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 .staff-open-aidat-card-shell {
   position: relative;
 }
@@ -3626,6 +3644,11 @@ button:active:not(:disabled) {
   gap: 8px;
 }
 
+.staff-open-aidat-card-overdue {
+  border-color: #d16c6c;
+  background: linear-gradient(180deg, #fff4f4, #ffe5e5);
+}
+
 .staff-open-aidat-card-head {
   display: flex;
   align-items: center;
@@ -3659,6 +3682,11 @@ button:active:not(:disabled) {
 .staff-open-aidat-meta dd {
   margin: 0;
   font-weight: 600;
+}
+
+.staff-open-aidat-meta-right {
+  justify-items: end;
+  text-align: right;
 }
 
 .staff-open-aidat-remaining {
@@ -5052,6 +5080,34 @@ td {
 .bank-statement-table th:nth-child(2),
 .bank-statement-table td:nth-child(2) {
   width: 68px;
+}
+
+.unclassified-table th,
+.unclassified-table td {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.unclassified-col-ellipsis {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.unclassified-inline-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.unclassified-inline-edit input,
+.unclassified-inline-edit select {
+  min-width: 170px;
+}
+
+.unclassified-inline-edit .small {
+  margin: 0;
+  color: #516d86;
 }
 
 .bank-statement-table th:nth-child(3),

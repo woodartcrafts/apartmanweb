@@ -6,6 +6,7 @@ const defaults = [
   { code: "SU", name: "Su" },
   { code: "ELEKTRIK", name: "Elektrik" },
   { code: "DIGER", name: "Diger" },
+  { code: "SINIFLANDIRILAMAYAN_TAHSILATLAR", name: "Siniflandirilamayan Tahsilatlar" },
 ];
 
 async function main() {
