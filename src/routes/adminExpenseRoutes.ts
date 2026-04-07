@@ -118,7 +118,7 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
     const querySchema = z.object({
       from: z.string().datetime().optional(),
       to: z.string().datetime().optional(),
-      source: z.enum(["MANUAL", "BANK_STATEMENT_UPLOAD", "CHARGE_DISTRIBUTION"]).optional(),
+      source: z.enum(["MANUAL", "BANK_STATEMENT_UPLOAD", "GMAIL", "CHARGE_DISTRIBUTION"]).optional(),
       expenseItemId: z.string().min(1).optional(),
       includeDistributed: z.coerce.boolean().optional(),
     });
@@ -147,7 +147,7 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
       include: {
         expenseItem: true,
         importBatch: {
-          select: { kind: true },
+          select: { kind: true, fileName: true },
         },
       },
       orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
@@ -188,8 +188,11 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
       : [];
     const creatorMap = new Map(creators.map((x) => [x.id, x]));
 
-    function detectSource(expense: (typeof expenses)[number]): "MANUAL" | "BANK_STATEMENT_UPLOAD" {
+    function detectSource(expense: (typeof expenses)[number]): "MANUAL" | "BANK_STATEMENT_UPLOAD" | "GMAIL" {
       if (expense.importBatch?.kind === ImportBatchType.BANK_STATEMENT_UPLOAD) {
+        if ((expense.importBatch.fileName ?? "").toLowerCase().startsWith("gmail:")) {
+          return "GMAIL";
+        }
         return "BANK_STATEMENT_UPLOAD";
       }
       return "MANUAL";

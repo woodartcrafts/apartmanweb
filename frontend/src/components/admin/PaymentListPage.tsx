@@ -57,6 +57,9 @@ function normalizeFilterText(value: string | null | undefined): string {
 }
 
 function toSourceLabel(source: PaymentListRow["source"]): string {
+  if (source === "GMAIL") {
+    return "Gmail";
+  }
   if (source === "BANK_STATEMENT_UPLOAD") {
     return "Banka Ekstresi Upload";
   }
@@ -227,6 +230,7 @@ export function PaymentListPage({
             >
               <option value="">Hepsi</option>
               <option value="MANUAL">Manuel</option>
+              <option value="GMAIL">Gmail</option>
               <option value="BANK_STATEMENT_UPLOAD">Banka Ekstresi Upload</option>
             </select>
           </label>
@@ -303,7 +307,9 @@ export function PaymentListPage({
                 onChange={(e) => setPaymentListEditForm((prev) => ({ ...prev, reference: e.target.value }))}
               />
             </label>
-            {(editingPaymentListSource === "BANK_STATEMENT_UPLOAD" || editingPaymentListSource === "PAYMENT_UPLOAD") && (
+            {(editingPaymentListSource === "BANK_STATEMENT_UPLOAD" ||
+              editingPaymentListSource === "PAYMENT_UPLOAD" ||
+              editingPaymentListSource === "GMAIL") && (
               <label className="checkbox-row">
                 <input
                   type="checkbox"

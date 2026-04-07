@@ -82,7 +82,12 @@ export function ExpenseReportPage({
   deleteExpenseReportRow,
   expenseReportError,
 }: ExpenseReportPageProps) {
-  const sourceValues: Array<Exclude<ExpenseSourceFilter, "">> = ["MANUAL", "BANK_STATEMENT_UPLOAD", "CHARGE_DISTRIBUTION"];
+  const sourceValues: Array<Exclude<ExpenseSourceFilter, "">> = [
+    "MANUAL",
+    "BANK_STATEMENT_UPLOAD",
+    "GMAIL",
+    "CHARGE_DISTRIBUTION",
+  ];
   const activeExpenseItems =
     expenseItemOptions.filter((x) => x.isActive).length > 0 ? expenseItemOptions.filter((x) => x.isActive) : expenseItemOptions;
 
@@ -107,7 +112,22 @@ export function ExpenseReportPage({
     if (value === "BANK_STATEMENT_UPLOAD") {
       return "Banka Ekstresi Upload";
     }
+    if (value === "GMAIL") {
+      return "Gmail";
+    }
     return "Tahakkuk (Gider)";
+  }
+
+  function openEditAndScroll(row: ExpenseReportRow): void {
+    startEditExpenseReportRow(row);
+
+    // Wait for state update/render, then bring the edit panel into view.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const form = document.getElementById("expense-report-edit-form");
+        form?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
   }
 
   return (
@@ -273,9 +293,11 @@ export function ExpenseReportPage({
         </section>
 
         {editingExpenseReportId && (
-          <form className="admin-form" onSubmit={submitExpenseReportRowEdit}>
-            <h4>Secili Gider Satirini Duzenle</h4>
-            <div className="compact-row">
+          <form id="expense-report-edit-form" className="admin-form expense-report-edit-form" onSubmit={submitExpenseReportRowEdit}>
+            <div className="section-head expense-report-edit-head">
+              <h3>Secili Gider Satirini Duzenle</h3>
+            </div>
+            <div className="expense-report-edit-row expense-report-edit-row-main">
               <label>
                 Gider Kalemi
                 <select
@@ -303,14 +325,13 @@ export function ExpenseReportPage({
                   required
                 />
               </label>
-            </div>
-            <div className="compact-row">
               <label>
                 Tutar
                 <input
-                  type="number"
-                  min="0"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
+                  className="expense-report-edit-amount"
+                  placeholder="0,00"
                   value={expenseReportEditForm.amount}
                   onChange={(e) => setExpenseReportEditForm((prev) => ({ ...prev, amount: e.target.value }))}
                   required
@@ -336,21 +357,23 @@ export function ExpenseReportPage({
                 </select>
               </label>
             </div>
-            <label>
-              Aciklama
-              <input
-                value={expenseReportEditForm.description}
-                onChange={(e) => setExpenseReportEditForm((prev) => ({ ...prev, description: e.target.value }))}
-              />
-            </label>
-            <label>
-              Referans
-              <input
-                value={expenseReportEditForm.reference}
-                onChange={(e) => setExpenseReportEditForm((prev) => ({ ...prev, reference: e.target.value }))}
-              />
-            </label>
-            <div className="compact-row">
+            <div className="expense-report-edit-row expense-report-edit-row-secondary">
+              <label className="expense-report-edit-description">
+                Aciklama
+                <input
+                  value={expenseReportEditForm.description}
+                  onChange={(e) => setExpenseReportEditForm((prev) => ({ ...prev, description: e.target.value }))}
+                />
+              </label>
+              <label className="expense-report-edit-reference">
+                Referans
+                <input
+                  value={expenseReportEditForm.reference}
+                  onChange={(e) => setExpenseReportEditForm((prev) => ({ ...prev, reference: e.target.value }))}
+                />
+              </label>
+            </div>
+            <div className="expense-report-edit-actions">
               <button className="btn btn-primary" type="submit" disabled={loading}>
                 Kaydet
               </button>
@@ -427,6 +450,7 @@ export function ExpenseReportPage({
                     </button>
                   </span>
                 </th>
+                <th>Kaynak</th>
                 <th>Islem</th>
               </tr>
             </thead>
@@ -441,8 +465,9 @@ export function ExpenseReportPage({
                     <td>{methodName}</td>
                     <td className="col-num">{formatTry(row.amount)}</td>
                     <td className="expense-report-description" title={row.description ?? "-"}>{row.description ?? "-"}</td>
+                    <td className="expense-report-source" title={sourceLabel(row.source)}>{sourceLabel(row.source)}</td>
                     <td className="actions-cell">
-                      <button className="btn btn-ghost" type="button" onClick={() => startEditExpenseReportRow(row)}>
+                      <button className="btn btn-ghost" type="button" onClick={() => openEditAndScroll(row)}>
                         Duzelt
                       </button>
                       <button className="btn btn-danger" type="button" onClick={() => void deleteExpenseReportRow(row)}>
@@ -454,7 +479,7 @@ export function ExpenseReportPage({
               })}
               {sortedExpenseReportRows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="empty">
+                  <td colSpan={7} className="empty">
                     {expenseReportError || "Gider kaydi yok"}
                   </td>
                 </tr>

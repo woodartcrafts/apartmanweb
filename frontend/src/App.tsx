@@ -3770,7 +3770,10 @@ function AdminPage() {
       if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
         throw new Error("Tutar formati gecersiz. Ornek: 1250,50");
       }
-      const isImported = editingPaymentListSource === "BANK_STATEMENT_UPLOAD" || editingPaymentListSource === "PAYMENT_UPLOAD";
+      const isImported =
+        editingPaymentListSource === "BANK_STATEMENT_UPLOAD" ||
+        editingPaymentListSource === "PAYMENT_UPLOAD" ||
+        editingPaymentListSource === "GMAIL";
 
       if (original && isImported && Math.abs(requestedAmount - original.totalAmount) > 0.0001) {
         const accepted = window.confirm(
@@ -4054,7 +4057,7 @@ function AdminPage() {
     setExpenseReportEditForm({
       expenseItemId: row.expenseItemId,
       spentAt: isoToDateInput(row.spentAt),
-      amount: String(row.amount),
+      amount: formatDecimalInput(row.amount),
       paymentMethod: row.paymentMethod,
       description: row.description ?? "",
       reference: row.reference ?? "",
@@ -4083,12 +4086,17 @@ function AdminPage() {
 
     setLoading(true);
     try {
+      const parsedAmount = parseDistDecimal(expenseReportEditForm.amount);
+      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        throw new Error("Tutar formati gecersiz. Ornek: 1.250,50");
+      }
+
       await authorizedRequest(`/api/admin/expenses/${editingExpenseReportId}`, {
         method: "PUT",
         payload: {
           expenseItemId: expenseReportEditForm.expenseItemId,
           spentAt: dateInputToIso(expenseReportEditForm.spentAt),
-          amount: Number(expenseReportEditForm.amount),
+          amount: parsedAmount,
           paymentMethod: expenseReportEditForm.paymentMethod,
           description: expenseReportEditForm.description || undefined,
           reference: expenseReportEditForm.reference || undefined,
@@ -8326,7 +8334,7 @@ function AdminPage() {
 
                       <article className="card table-card reports-home-panel">
                         <div className="section-head reports-home-panel-head">
-                          <h3>Gecikenlerde Ilk 5 Daire</h3>
+                          <h3>Gecikenlerde Ilk 10 Daire</h3>
                           <span className="small">Ekstre ekranina tikla ac</span>
                         </div>
                         <div className="table-wrap compact-row-top-gap">

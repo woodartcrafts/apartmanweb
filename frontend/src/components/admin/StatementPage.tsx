@@ -122,6 +122,39 @@ export function StatementPage({
     return "-";
   }
 
+  const lastAccountingCollection = sortedAccountingStatement.reduce<{ date: string; amount: number } | null>((latest, row) => {
+    if (row.credit <= 0) {
+      return latest;
+    }
+
+    if (!latest) {
+      return { date: row.date, amount: row.credit };
+    }
+
+    return new Date(row.date).getTime() > new Date(latest.date).getTime()
+      ? { date: row.date, amount: row.credit }
+      : latest;
+  }, null);
+
+  const lastClassicCollection = sortedStatement.reduce<{ date: string; amount: number } | null>((latest, row) => {
+    if (!row.paidAt || row.paidTotal <= 0) {
+      return latest;
+    }
+
+    if (!latest) {
+      return { date: row.paidAt, amount: row.paidTotal };
+    }
+
+    return new Date(row.paidAt).getTime() > new Date(latest.date).getTime()
+      ? { date: row.paidAt, amount: row.paidTotal }
+      : latest;
+  }, null);
+
+  const lastCollection = lastAccountingCollection ?? lastClassicCollection;
+  const lastCollectionText = lastCollection
+    ? `${formatDateTr(lastCollection.date)} - ${formatTry(lastCollection.amount)}`
+    : "-";
+
   return (
     <>
       <div className="card admin-tools">
@@ -163,37 +196,47 @@ export function StatementPage({
       <div className="stats-grid statement-stats-grid">
         {statementViewMode === "CLASSIC" ? (
           <>
-            <article className="card stat">
+            <article className="card stat statement-stat-card">
               <h4>Toplam Borc</h4>
               <p>{formatTry(totals.amount)}</p>
             </article>
-            <article className="card stat">
+            <article className="card stat statement-stat-card">
               <h4>Toplam Odenen</h4>
               <p>{formatTry(totals.paid)}</p>
             </article>
-            <article className="card stat">
+            <article className="card stat statement-stat-card">
               <h4>Kalan</h4>
               <p>{formatTry(totals.remaining)}</p>
             </article>
-            <article className="card stat">
+            <article className="card stat statement-stat-card statement-stat-card-overdue">
               <h4>Geciken Borc</h4>
               <p>{formatTry(overdueStatementTotals.remaining)}</p>
-              <span className="small">Satir sayisi: {overdueStatementTotals.count}</span>
+              {overdueStatementTotals.count > 0 ? (
+                <span className="small statement-stat-meta">Satir sayisi: {overdueStatementTotals.count}</span>
+              ) : null}
+            </article>
+            <article className="card stat statement-stat-card statement-stat-card-date">
+              <h4>Son Tahsilat Tarihi - Tutari</h4>
+              <p>{lastCollectionText}</p>
             </article>
           </>
         ) : (
           <>
-            <article className="card stat">
+            <article className="card stat statement-stat-card">
               <h4>Toplam Borc Hareketi</h4>
               <p>{formatTry(accountingTotals.debit)}</p>
             </article>
-            <article className="card stat">
+            <article className="card stat statement-stat-card">
               <h4>Toplam Alacak Hareketi</h4>
               <p>{formatTry(accountingTotals.credit)}</p>
             </article>
-            <article className="card stat">
+            <article className="card stat statement-stat-card">
               <h4>Bakiye</h4>
               <p>{formatTry(accountingTotals.balance)}</p>
+            </article>
+            <article className="card stat statement-stat-card statement-stat-card-date">
+              <h4>Son Tahsilat Tarihi - Tutari</h4>
+              <p>{lastCollectionText}</p>
             </article>
           </>
         )}

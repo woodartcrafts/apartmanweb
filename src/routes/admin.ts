@@ -4998,7 +4998,7 @@ router.get("/payments/list", async (req, res) => {
   const querySchema = z.object({
     from: z.string().datetime().optional(),
     to: z.string().datetime().optional(),
-    source: z.enum(["MANUAL", "BANK_STATEMENT_UPLOAD", "PAYMENT_UPLOAD"]).optional(),
+    source: z.enum(["MANUAL", "BANK_STATEMENT_UPLOAD", "PAYMENT_UPLOAD", "GMAIL"]).optional(),
   });
 
   const parsed = querySchema.safeParse(req.query);
@@ -5020,7 +5020,7 @@ router.get("/payments/list", async (req, res) => {
     },
     include: {
       importBatch: {
-        select: { kind: true },
+        select: { kind: true, fileName: true },
       },
       itemLinks: {
         include: {
@@ -5048,8 +5048,11 @@ router.get("/payments/list", async (req, res) => {
     : [];
   const creatorMap = new Map(creators.map((x) => [x.id, x]));
 
-  function detectSource(payment: (typeof payments)[number]): "MANUAL" | "BANK_STATEMENT_UPLOAD" | "PAYMENT_UPLOAD" {
+  function detectSource(payment: (typeof payments)[number]): "MANUAL" | "BANK_STATEMENT_UPLOAD" | "PAYMENT_UPLOAD" | "GMAIL" {
     if (payment.importBatch?.kind === ImportBatchType.BANK_STATEMENT_UPLOAD) {
+      if ((payment.importBatch.fileName ?? "").toLowerCase().startsWith("gmail:")) {
+        return "GMAIL";
+      }
       return "BANK_STATEMENT_UPLOAD";
     }
     if (payment.importBatch?.kind === ImportBatchType.PAYMENT_UPLOAD) {
@@ -5138,8 +5141,8 @@ router.get("/payments/list", async (req, res) => {
         createdAt: payment.createdAt,
         source: detectedSource,
         createdByUserId: payment.createdById,
-        createdByName: creator?.fullName ?? null,
-        createdByEmail: creator?.email ?? null,
+        createdByName: creator?.fullName ?? (detectedSource === "GMAIL" ? "Railway" : null),
+        createdByEmail: creator?.email ?? (detectedSource === "GMAIL" ? "system@railway" : null),
         apartments: apartmentDoorNos,
         apartmentId: apartmentIds.length === 1 ? apartmentIds[0] : null,
       };
@@ -7574,7 +7577,7 @@ router.get("/reports/summary", async (_req, res) => {
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
     .sort((a, b) => b.remainingTotal - a.remainingTotal)
-    .slice(0, 5);
+    .slice(0, 10);
 
   return res.json({
     snapshotAt: now,

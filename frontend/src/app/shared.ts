@@ -392,7 +392,7 @@ export type PaymentListRow = {
   reference: string | null;
   description: string | null;
   createdAt: string;
-  source: "MANUAL" | "BANK_STATEMENT_UPLOAD" | "PAYMENT_UPLOAD";
+  source: "MANUAL" | "BANK_STATEMENT_UPLOAD" | "PAYMENT_UPLOAD" | "GMAIL";
   createdByUserId: string | null;
   createdByName: string | null;
   createdByEmail: string | null;
@@ -418,7 +418,7 @@ export type ExpenseReportRow = {
   description: string | null;
   reference: string | null;
   createdAt: string;
-  source: "MANUAL" | "BANK_STATEMENT_UPLOAD" | "CHARGE_DISTRIBUTION";
+  source: "MANUAL" | "BANK_STATEMENT_UPLOAD" | "GMAIL" | "CHARGE_DISTRIBUTION";
   createdByUserId: string | null;
   createdByName: string | null;
   createdByEmail: string | null;
@@ -919,8 +919,8 @@ export type DescriptionExpenseRule = {
   updatedAt: string;
 };
 
-export type PaymentSourceFilter = "" | "MANUAL" | "BANK_STATEMENT_UPLOAD" | "PAYMENT_UPLOAD";
-export type ExpenseSourceFilter = "" | "MANUAL" | "BANK_STATEMENT_UPLOAD" | "CHARGE_DISTRIBUTION";
+export type PaymentSourceFilter = "" | "MANUAL" | "BANK_STATEMENT_UPLOAD" | "PAYMENT_UPLOAD" | "GMAIL";
+export type ExpenseSourceFilter = "" | "MANUAL" | "BANK_STATEMENT_UPLOAD" | "GMAIL" | "CHARGE_DISTRIBUTION";
 
 export type AdminMenuKey = "DR" | "TH" | "OD" | "EK" | "RP" | "GD" | "BN" | "SD";
 

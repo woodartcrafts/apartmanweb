@@ -3863,7 +3863,85 @@ button:active:not(:disabled) {
 }
 
 .statement-stats-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  perspective: 1200px;
+}
+
+.statement-stats-grid .statement-stat-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 64px;
+  padding: 5px 8px;
+  border: 1px solid #9caab8;
+  border-radius: 12px;
+  background:
+    linear-gradient(165deg, #f9fbfd 0%, #dbe2ea 52%, #c5d0dc 100%);
+  box-shadow:
+    0 8px 14px rgba(26, 37, 49, 0.22),
+    0 2px 0 rgba(255, 255, 255, 0.72) inset,
+    0 -2px 0 rgba(105, 121, 138, 0.28) inset,
+    0 0 0 1px rgba(244, 248, 252, 0.72) inset;
+  transform: translateZ(0);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.statement-stats-grid .statement-stat-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0) 45%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 58%);
+}
+
+.statement-stats-grid .statement-stat-card:hover {
+  transform: translate3d(0, -1px, 8px) rotateX(2deg);
+  box-shadow:
+    0 12px 18px rgba(18, 30, 44, 0.24),
+    0 2px 0 rgba(255, 255, 255, 0.8) inset,
+    0 -2px 0 rgba(94, 108, 124, 0.3) inset,
+    0 0 0 1px rgba(247, 250, 253, 0.8) inset;
+}
+
+.statement-stats-grid .statement-stat-card h4 {
+  font-size: 0.72rem;
+  line-height: 1.15;
+}
+
+.statement-stats-grid .statement-stat-card p {
+  margin-top: 2px;
+  font-size: 0.9rem;
+  line-height: 1.1;
+}
+
+.statement-stats-grid .statement-stat-card .statement-stat-meta {
+  margin-top: 3px;
+  font-size: 0.68rem !important;
+  line-height: 1.1;
+}
+
+.statement-stats-grid .statement-stat-card-overdue {
+  border-color: #b9ab86;
+  background: linear-gradient(165deg, #fffaf0 0%, #e6dcc4 58%, #cfbf98 100%);
+}
+
+.statement-stats-grid .statement-stat-card-date {
+  border-color: #9aa68b;
+  background: linear-gradient(165deg, #f7fbf2 0%, #dce6cf 56%, #c6d3b2 100%);
+}
+
+@media (max-width: 1200px) {
+  .statement-stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .statement-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .door-mismatch-stats-grid {
@@ -4432,6 +4510,9 @@ button:active:not(:disabled) {
   color: #1d4d7a;
   white-space: nowrap;
   font-size: 0.8rem;
+  text-align: right;
+  justify-self: end;
+  font-variant-numeric: tabular-nums;
 }
 
 .reports-home-banklog-desc {
@@ -6198,6 +6279,11 @@ details.cc-excluded-card[open] > .cc-excluded-summary::after {
 
 .expense-report-table th:nth-child(6),
 .expense-report-table td:nth-child(6) {
+  width: 118px;
+}
+
+.expense-report-table th:nth-child(7),
+.expense-report-table td:nth-child(7) {
   width: 142px;
 }
 
@@ -6205,6 +6291,101 @@ details.cc-excluded-card[open] > .cc-excluded-summary::after {
   max-width: none;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.expense-report-table .expense-report-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.expense-report-edit-amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.expense-report-edit-form {
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 2px solid #7ea1c7 !important;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, #f3f8ff 0%, #e8f0fb 100%) !important;
+  box-shadow:
+    0 10px 24px rgba(24, 52, 82, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.expense-report-edit-form .expense-report-edit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+  padding: 8px 10px;
+  min-height: 42px;
+  border: 1px solid #000000;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #eef1f5, #dfe5ec);
+  box-shadow: 0 8px 18px rgba(56, 66, 79, 0.14);
+}
+
+.expense-report-edit-form .expense-report-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.expense-report-edit-form .expense-report-edit-actions .btn {
+  width: auto;
+  min-width: 92px;
+}
+
+.expense-report-edit-form .expense-report-edit-head h3 {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.expense-report-edit-form .expense-report-edit-head h3::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid #6c90b6;
+  background: radial-gradient(circle at 35% 35%, #e8f4ff 0%, #8db2d8 55%, #5f88b2 100%);
+  box-shadow: 0 1px 2px rgba(39, 67, 97, 0.35);
+  flex: 0 0 14px;
+}
+
+.expense-report-edit-form .expense-report-edit-row {
+  display: grid;
+  gap: 8px;
+}
+
+.expense-report-edit-form .expense-report-edit-row-main {
+  grid-template-columns: 1.5fr 1fr 0.75fr 1fr;
+}
+
+.expense-report-edit-form .expense-report-edit-row-secondary {
+  grid-template-columns: 1.8fr 1fr;
+}
+
+.expense-report-edit-form .expense-report-edit-description,
+.expense-report-edit-form .expense-report-edit-reference {
+  min-width: 0;
+}
+
+@media (max-width: 1100px) {
+  .expense-report-edit-form .expense-report-edit-row-main,
+  .expense-report-edit-form .expense-report-edit-row-secondary {
+    grid-template-columns: 1fr;
+  }
 }
 
 .expense-report-table .expense-th-head {
@@ -6741,8 +6922,8 @@ details.cc-excluded-card[open] > .cc-excluded-summary::after {
 
 .payment-list-table th:nth-child(11),
 .payment-list-table td:nth-child(11),
-.expense-report-table th:nth-child(6),
-.expense-report-table td:nth-child(6),
+.expense-report-table th:nth-child(7),
+.expense-report-table td:nth-child(7),
 .reference-search-table th:nth-child(9),
 .reference-search-table td:nth-child(9) {
   position: sticky;
@@ -6752,13 +6933,13 @@ details.cc-excluded-card[open] > .cc-excluded-summary::after {
 }
 
 .payment-list-table tbody tr:nth-child(even) td:nth-child(11),
-.expense-report-table tbody tr:nth-child(even) td:nth-child(6),
+.expense-report-table tbody tr:nth-child(even) td:nth-child(7),
 .reference-search-table tbody tr:nth-child(even) td:nth-child(9) {
   background: #fbfdff;
 }
 
 .payment-list-table th:nth-child(11),
-.expense-report-table th:nth-child(6),
+.expense-report-table th:nth-child(7),
 .reference-search-table th:nth-child(9) {
   z-index: 26;
   background: #e8edf3;
@@ -8306,21 +8487,28 @@ td.empty {
 
   .resident-section-expense .expense-report-table th:nth-child(6),
   .resident-section-expense .expense-report-table td:nth-child(6) {
+    width: 88px;
+  }
+
+  .resident-section-expense .expense-report-table th:nth-child(7),
+  .resident-section-expense .expense-report-table td:nth-child(7) {
     width: 100px;
   }
 
   .resident-section-expense .expense-report-table td:nth-child(5),
   .resident-section-expense .expense-report-table td:nth-child(6),
+  .resident-section-expense .expense-report-table td:nth-child(7),
   .resident-section-expense .expense-report-table th:nth-child(5),
-  .resident-section-expense .expense-report-table th:nth-child(6) {
+  .resident-section-expense .expense-report-table th:nth-child(6),
+  .resident-section-expense .expense-report-table th:nth-child(7) {
     white-space: normal;
     word-break: break-word;
   }
 
   .resident-section-expense .expense-report-table th:nth-child(1),
   .resident-section-expense .expense-report-table td:nth-child(1),
-  .resident-section-expense .expense-report-table th:nth-child(6),
-  .resident-section-expense .expense-report-table td:nth-child(6) {
+  .resident-section-expense .expense-report-table th:nth-child(7),
+  .resident-section-expense .expense-report-table td:nth-child(7) {
     position: static;
   }
 
