@@ -1127,8 +1127,6 @@ type GmailAttachmentGetResponse = {
   data?: string;
 };
 
-const GMAIL_PDF_REFERENCE_FALLBACK_PREFIX = "e-mail ekindeki pdf den kayit";
-
 function normalizeBankDescriptionForDedup(description: string | undefined): string {
   return (description ?? "")
     .trim()
@@ -1143,7 +1141,7 @@ function buildGmailFallbackReference(row: BankStatementRow): string {
   const normalizedDescription = normalizeBankDescriptionForDedup(row.description);
   const dedupPayload = [occurredAt, signedAmount, txType, normalizedDescription].join("|");
   const digest = createHash("sha1").update(dedupPayload).digest("hex").slice(0, 16).toUpperCase();
-  return `${GMAIL_PDF_REFERENCE_FALLBACK_PREFIX}|${digest}`;
+  return digest;
 }
 
 function getExcelCellValue(value: ExcelJS.CellValue | undefined): unknown {
