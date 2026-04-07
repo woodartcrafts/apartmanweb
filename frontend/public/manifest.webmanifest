@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "ApartmanWeb MVP",
+  "short_name": "ApartmanWeb",
+  "description": "Apartman tahakkuk, tahsilat ve ekstre yonetim paneli",
+  "start_url": "/",
+  "scope": "/",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "display": "standalone",
+  "background_color": "#f2f8ff",
+  "theme_color": "#0f70d3",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    }
+  ]
+}
