@@ -4995,6 +4995,11 @@ td {
   min-width: 210px;
 }
 
+.expense-report-filter-row .apartment-edit-select-dropdown > .filter-dropdown-panel {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
 .bank-statement-filter-row {
   display: flex;
   gap: 10px;
