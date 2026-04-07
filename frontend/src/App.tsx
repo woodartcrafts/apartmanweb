@@ -640,6 +640,7 @@ function AdminPage() {
     to: "",
     sources: [] as Array<Exclude<ExpenseSourceFilter, "">>,
     expenseItemIds: [] as string[],
+    description: "",
   });
   const [expenseReportAutoRefreshEnabled, setExpenseReportAutoRefreshEnabled] = useState(false);
   const [expenseReportSort, setExpenseReportSort] = useState<{
@@ -3861,8 +3862,12 @@ function AdminPage() {
         filter.expenseItemIds.length > 0
           ? sourceFiltered.filter((row) => filter.expenseItemIds.includes(row.expenseItemId))
           : sourceFiltered;
+      const normalizedDescription = (filter.description ?? "").trim().toLocaleLowerCase("tr");
+      const descriptionFiltered = normalizedDescription
+        ? expenseItemFiltered.filter((row) => (row.description ?? "").toLocaleLowerCase("tr").includes(normalizedDescription))
+        : expenseItemFiltered;
 
-      setExpenseReportRows(expenseItemFiltered);
+      setExpenseReportRows(descriptionFiltered);
     } catch (err) {
       console.error(err);
       const text = err instanceof Error ? err.message : "Gider raporu alinamadi";
@@ -3894,6 +3899,7 @@ function AdminPage() {
       to: "",
       sources: [] as Array<Exclude<ExpenseSourceFilter, "">>,
       expenseItemIds: [] as string[],
+      description: "",
     };
     setExpenseReportAutoRefreshEnabled(false);
     skipNextExpenseReportAutoRefreshRef.current = true;
@@ -3909,6 +3915,7 @@ function AdminPage() {
       to: "",
       sources: [] as Array<Exclude<ExpenseSourceFilter, "">>,
       expenseItemIds: [expenseItemId],
+      description: "",
     };
 
     setLoading(true);
@@ -3953,6 +3960,7 @@ function AdminPage() {
         to: targetDate,
         sources: ["BANK_STATEMENT_UPLOAD"] as Array<Exclude<ExpenseSourceFilter, "">>,
         expenseItemIds: [] as string[],
+        description: "",
       };
 
       setExpenseReportFilter(nextExpenseFilter);
@@ -5258,6 +5266,7 @@ function AdminPage() {
         to: targetDate,
         sources: ["BANK_STATEMENT_UPLOAD"] as Array<Exclude<ExpenseSourceFilter, "">>,
         expenseItemIds: [] as string[],
+        description: "",
       };
 
       setExpenseReportFilter(nextExpenseFilter);

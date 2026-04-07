@@ -15,6 +15,7 @@ type ExpenseReportFilterState = {
   to: string;
   sources: Array<Exclude<ExpenseSourceFilter, "">>;
   expenseItemIds: string[];
+  description: string;
 };
 
 type ExpenseReportEditFormState = {
@@ -147,7 +148,7 @@ export function ExpenseReportPage({
             <button className="btn btn-ghost" type="button" onClick={() => void clearExpenseReportFilters()}>Temizle</button>
           </div>
         </div>
-        <div className="upload-batch-filter-row compact-row-top-gap">
+        <div className="upload-batch-filter-row compact-row-top-gap expense-report-filter-row">
           <label>
             Baslangic Tarihi
             <input
@@ -247,6 +248,15 @@ export function ExpenseReportPage({
                 })}
               </div>
             </details>
+          </label>
+          <label>
+            Aciklama
+            <input
+              type="text"
+              placeholder="Aciklamada ara"
+              value={expenseReportFilter.description}
+              onChange={(e) => setExpenseReportFilter((prev) => ({ ...prev, description: e.target.value }))}
+            />
           </label>
         </div>
 

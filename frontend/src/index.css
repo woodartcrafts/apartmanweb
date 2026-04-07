@@ -4977,6 +4977,24 @@ td {
   box-shadow: 0 10px 24px rgba(24, 44, 66, 0.2);
 }
 
+.expense-report-filter-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 10px;
+  overflow-x: auto;
+}
+
+.expense-report-filter-row > label {
+  flex: 0 0 210px;
+  min-width: 210px;
+}
+
+.expense-report-filter-row > label:last-child {
+  flex-basis: 260px;
+  min-width: 260px;
+}
+
 .bank-statement-filter-row {
   display: flex;
   gap: 10px;
