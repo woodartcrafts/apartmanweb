@@ -112,7 +112,7 @@ export function StaffOpenAidatReportPage({
                 <option value="">Daire secin</option>
                 {selectableApartments.map((apt) => (
                   <option key={apt.id} value={apt.id}>
-                    {apt.blockName} Blok - {apt.doorNo} ({resolveApartmentDisplayName(apt)})
+                    {apt.blockName} - {apt.doorNo} ({resolveApartmentDisplayName(apt)})
                   </option>
                 ))}
               </select>
