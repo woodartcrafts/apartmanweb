@@ -3833,6 +3833,15 @@ function AdminPage() {
   }
 
   async function fetchExpenseReport(filter = expenseReportFilter, options?: { silent?: boolean }): Promise<void> {
+    const normalizeSearchText = (value: string): string =>
+      value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/ı/g, "i")
+        .toLocaleLowerCase("tr")
+        .replace(/\s+/g, " ")
+        .trim();
+
     const silent = options?.silent ?? false;
     try {
       setExpenseReportError("");
@@ -3862,9 +3871,9 @@ function AdminPage() {
         filter.expenseItemIds.length > 0
           ? sourceFiltered.filter((row) => filter.expenseItemIds.includes(row.expenseItemId))
           : sourceFiltered;
-      const normalizedDescription = (filter.description ?? "").trim().toLocaleLowerCase("tr");
+      const normalizedDescription = normalizeSearchText(filter.description ?? "");
       const descriptionFiltered = normalizedDescription
-        ? expenseItemFiltered.filter((row) => (row.description ?? "").toLocaleLowerCase("tr").includes(normalizedDescription))
+        ? expenseItemFiltered.filter((row) => normalizeSearchText(row.description ?? "").includes(normalizedDescription))
         : expenseItemFiltered;
 
       setExpenseReportRows(descriptionFiltered);
