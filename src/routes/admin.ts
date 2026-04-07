@@ -2033,10 +2033,30 @@ function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] 
     .filter((line) => line.length > 0);
 
   const transactionStartRegex = /^\d{2}[./-]\d{2}[./-]\d{4}(?:\s+\d{2}:\d{2}(?::\d{2})?)?/;
+  const isStatementFooterLine = (line: string): boolean => {
+    const normalized = toAsciiLower(line);
+    return (
+      normalized.includes("islem saatleri turkiye saati ile gosterilmektedir") ||
+      normalized.includes("bu hesap ozeti") ||
+      normalized.includes("banka kayitlarinin uyusmamasi halinde") ||
+      normalized.includes("bizi tercih ettiginiz icin tesekkur") ||
+      normalized.includes("www.isbank.com.tr") ||
+      normalized.includes("0 850 724 0 724") ||
+      normalized.includes("-- 1 of 1 --")
+    );
+  };
   const mergedLines: string[] = [];
   let currentLine: string | null = null;
 
   for (const line of lines) {
+    if (isStatementFooterLine(line)) {
+      if (currentLine) {
+        mergedLines.push(currentLine);
+        currentLine = null;
+      }
+      continue;
+    }
+
     if (transactionStartRegex.test(line)) {
       if (currentLine) {
         mergedLines.push(currentLine);
@@ -2114,8 +2134,17 @@ function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] 
       signedAmount = -Math.abs(parsedAmount);
     }
 
-    let description = line.replace(dateMatch[1], " ");
-    description = description.replace(rawAmount, " ").replace(/\s+/g, " ").trim();
+    const secondAmount = amountCandidates[1];
+    const descriptionStartIndex = secondAmount
+      ? (secondAmount.index ?? -1) + secondAmount[0].length
+      : (amountCandidates[0].index ?? -1) + rawAmount.length;
+
+    let description =
+      descriptionStartIndex > 0 && descriptionStartIndex < line.length
+        ? line.slice(descriptionStartIndex)
+        : line.replace(dateMatch[1], " ").replace(rawAmount, " ");
+
+    description = description.replace(/^\s*(?:TRY|TL|YTL)\b[:\s-]*/i, "").replace(/\s+/g, " ").trim();
     if (!description) {
       description = line;
     }
