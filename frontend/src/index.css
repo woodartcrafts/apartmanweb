@@ -3690,6 +3690,35 @@ button:active:not(:disabled) {
     white-space: nowrap;
   }
 
+  .staff-open-aidat-page .staff-open-aidat-filter-grid select {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .staff-open-aidat-page .staff-open-aidat-filter-grid select option {
+    white-space: nowrap;
+  }
+
+  .staff-open-aidat-page .report-summary-grid .stat-card {
+    padding: 12px 10px;
+  }
+
+  .staff-open-aidat-page .report-summary-grid .stat-card .stat-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.78rem;
+    line-height: 1.2;
+  }
+
+  .staff-open-aidat-page .report-summary-grid .stat-card strong {
+    display: block;
+    font-size: 0.98rem;
+    line-height: 1.35;
+    white-space: normal;
+  }
+
   .staff-open-aidat-page .staff-open-aidat-apartment-card {
     border: 1px solid #000000;
     border-radius: 12px;

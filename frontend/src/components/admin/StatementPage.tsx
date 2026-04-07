@@ -190,7 +190,6 @@ export function StatementPage({
             ))}
           </select>
         </div>
-        <p className="small">Yuklenen daire sayisi: {apartmentOptions.length}</p>
       </div>
 
       <div className="stats-grid statement-stats-grid">
