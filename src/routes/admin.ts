@@ -186,7 +186,13 @@ interface SendStatementEmailParams {
 }
 
 async function sendStatementEmail(params: SendStatementEmailParams): Promise<void> {
-  const brevoApiKey = process.env.BREVO_API_KEY?.trim();
+  const brevoApiKeyRaw = process.env.BREVO_API_KEY?.trim();
+  const brevoApiKey = brevoApiKeyRaw
+    ? brevoApiKeyRaw
+        .replace(/^['\"]+|['\"]+$/g, "")
+        .replace(/[\u200B-\u200D\uFEFF]/g, "")
+        .trim()
+    : "";
 
   if (brevoApiKey) {
     if (brevoApiKey.startsWith("xkeysib-")) {
@@ -215,18 +221,16 @@ async function sendStatementEmail(params: SendStatementEmailParams): Promise<voi
       return;
     }
 
-    if (brevoApiKey.startsWith("xsmtpsib-")) {
-      // Brevo SMTP key yanlışlıkla BREVO_API_KEY'e girildiyse yine de gönderimi kurtar
-      const brevoSmtpLogin =
-        process.env.BREVO_SMTP_LOGIN?.trim() ||
-        process.env.STATEMENT_EMAIL_SMTP_USER?.trim() ||
-        "";
+    const brevoSmtpLogin =
+      process.env.BREVO_SMTP_LOGIN?.trim() ||
+      process.env.STATEMENT_EMAIL_SMTP_USER?.trim() ||
+      "";
+    const tryBrevoSmtp = async (): Promise<void> => {
       if (!brevoSmtpLogin) {
         throw new Error(
-          "BREVO_API_KEY icin SMTP anahtari (xsmtpsib-) kullaniliyor, BREVO_SMTP_LOGIN (ornek: a123456789@smtp-brevo.com) tanimli olmali"
+          "Brevo SMTP kullanimi icin BREVO_SMTP_LOGIN tanimli olmali (ornek: a123456789@smtp-brevo.com)"
         );
       }
-
       console.log(`[statement-email] Brevo SMTP ile gonderiliyor -> ${params.to.join(", ")}`);
       const transporter = nodemailer.createTransport({
         host: process.env.STATEMENT_EMAIL_SMTP_HOST?.trim() || "smtp-relay.brevo.com",
@@ -244,7 +248,6 @@ async function sendStatementEmail(params: SendStatementEmailParams): Promise<voi
           pass: brevoApiKey,
         },
       });
-
       await transporter.sendMail({
         from: `${params.fromName} <${params.from}>`,
         to: params.to.join(", "),
@@ -252,12 +255,41 @@ async function sendStatementEmail(params: SendStatementEmailParams): Promise<voi
         html: params.html,
         text: params.text,
       });
+    };
+
+    if (brevoApiKey.startsWith("xsmtpsib-") || (brevoSmtpLogin && !brevoApiKey.startsWith("xkeysib-"))) {
+      // SMTP key ya da API key formati belli degilse SMTP login varsa SMTP dene
+      await tryBrevoSmtp();
       return;
     }
 
-    throw new Error(
-      "BREVO_API_KEY formati taninmadi. API key icin xkeysib-..., SMTP key icin xsmtpsib-... beklenir"
-    );
+    // Format anlasilmiyorsa API dene; 401 alirsak SMTP login varsa SMTP fallback yap
+    console.log(`[statement-email] Brevo API format fallback ile deneniyor -> ${params.to.join(", ")}`);
+    const fallbackBody = JSON.stringify({
+      sender: { name: params.fromName, email: params.from },
+      to: params.to.map((email) => ({ email })),
+      subject: params.subject,
+      htmlContent: params.html,
+      textContent: params.text,
+    });
+    const fallbackResp = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": brevoApiKey,
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: fallbackBody,
+    });
+    if (fallbackResp.ok) {
+      return;
+    }
+    const fallbackDetail = await fallbackResp.text().catch(() => fallbackResp.statusText);
+    if (fallbackResp.status === 401 && brevoSmtpLogin) {
+      await tryBrevoSmtp();
+      return;
+    }
+    throw new Error(`Brevo API hatasi (${fallbackResp.status}): ${fallbackDetail}`);
   }
 
   const resendApiKey = process.env.RESEND_API_KEY?.trim();
