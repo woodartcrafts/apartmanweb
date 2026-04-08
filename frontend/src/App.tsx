@@ -7997,6 +7997,77 @@ function AdminPage() {
   ]);
 
   useEffect(() => {
+    const isMonthlyBalanceMatrixPage = location.pathname === "/admin/reports/monthly-balance-matrix";
+    if (!isMonthlyBalanceMatrixPage) {
+      return;
+    }
+
+    const styleId = "monthly-balance-route-print-style";
+    const existingStyle = document.getElementById(styleId);
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      @media print {
+        @page {
+          size: A4 landscape;
+          margin: 8mm 7mm;
+        }
+
+        body.monthly-balance-route-print-mode * {
+          visibility: hidden !important;
+        }
+
+        body.monthly-balance-route-print-mode .monthly-balance-report-page,
+        body.monthly-balance-route-print-mode .monthly-balance-report-page * {
+          visibility: visible !important;
+        }
+
+        body.monthly-balance-route-print-mode .monthly-balance-report-page {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        body.monthly-balance-route-print-mode .monthly-balance-report-page .report-filter-grid,
+        body.monthly-balance-route-print-mode .monthly-balance-report-page .admin-row,
+        body.monthly-balance-route-print-mode .monthly-balance-report-page .small,
+        body.monthly-balance-route-print-mode .monthly-balance-report-page .monthly-balance-meta {
+          display: none !important;
+        }
+
+        body.monthly-balance-route-print-mode .monthly-balance-report-page .table-card,
+        body.monthly-balance-route-print-mode .monthly-balance-report-page .table-wrap {
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+          margin: 0 !important;
+        }
+
+        body.monthly-balance-route-print-mode .monthly-balance-report-page .monthly-balance-matrix-table th,
+        body.monthly-balance-route-print-mode .monthly-balance-report-page .monthly-balance-matrix-table td {
+          font-size: 10px !important;
+          padding: 3px 4px !important;
+        }
+      }
+    `;
+
+    document.head.appendChild(style);
+    document.body.classList.add("monthly-balance-route-print-mode");
+
+    return () => {
+      document.body.classList.remove("monthly-balance-route-print-mode");
+      style.remove();
+    };
+  }, [location.pathname]);
+
+  useEffect(() => {
     const root = adminSubnavRef.current;
     if (!root) {
       return;
