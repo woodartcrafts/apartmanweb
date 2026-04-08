@@ -7281,14 +7281,14 @@ router.post("/apartments/:apartmentId/statement-email", async (req, res) => {
               const creditText = row.credit > 0.0001 ? tryCurrencyFormatter.format(row.credit) : "-";
 
               return `<tr>
-<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap;">${escapeHtml(String(year))}</td>
-<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap;">${escapeHtml(String(month).padStart(2, "0"))}</td>
-<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap;">${escapeHtml(row.date.toLocaleDateString("tr-TR"))}</td>
-<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap;">${escapeHtml(movementLabel)}</td>
-<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; font-size:11px; line-height:1.25;">${escapeHtml(description)}</td>
-<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; white-space:nowrap;">${escapeHtml(debitText)}</td>
-<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; white-space:nowrap;">${escapeHtml(creditText)}</td>
-<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; white-space:nowrap; font-weight:700; color:#184267;">${escapeHtml(tryCurrencyFormatter.format(row.balance))}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap; font-family:Arial,Helvetica,sans-serif; font-size:12px;">${escapeHtml(String(year))}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap; font-family:Arial,Helvetica,sans-serif; font-size:12px;">${escapeHtml(String(month).padStart(2, "0"))}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap; font-family:Arial,Helvetica,sans-serif; font-size:12px;">${escapeHtml(row.date.toLocaleDateString("tr-TR"))}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap; font-family:Arial,Helvetica,sans-serif; font-size:12px;">${escapeHtml(movementLabel)}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.25;">${escapeHtml(description)}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; white-space:nowrap; font-family:Arial,Helvetica,sans-serif; font-size:12px;">${escapeHtml(debitText)}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; white-space:nowrap; font-family:Arial,Helvetica,sans-serif; font-size:12px;">${escapeHtml(creditText)}</td>
+<td style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; white-space:nowrap; font-family:Arial,Helvetica,sans-serif; font-size:12px; font-weight:bold; color:#184267;">${escapeHtml(tryCurrencyFormatter.format(row.balance))}</td>
 </tr>`;
             })
             .join("")
@@ -7305,53 +7305,82 @@ router.post("/apartments/:apartmentId/statement-email", async (req, res) => {
     const apartmentLabel = `${apartment.block.name} - ${apartment.doorNo}`;
     const ownerLabel = apartment.ownerFullName?.trim() ? ` (${apartment.ownerFullName.trim()})` : "";
 
-    const html = `
-<div style="margin:0; padding:20px 0; background:#eef3f8; font-family: Arial, Helvetica, sans-serif; color:#1e2f40;">
-  <div style="max-width:900px; margin:0 auto; background:#ffffff; border:1px solid #dbe5f1; border-radius:14px; overflow:hidden; box-shadow:0 8px 24px rgba(30,47,64,0.08);">
-    <div style="background:linear-gradient(135deg,#1f4e79 0%,#2a6aa1 100%); padding:18px 20px; color:#ffffff;">
-      <table role="presentation" style="width:100%; border-collapse:collapse;">
+    const html = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ApartmanWeb Ekstre</title>
+</head>
+<body style="margin:0; padding:0; background-color:#eef3f8;">
+<!-- Outer wrapper -->
+<table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#eef3f8" style="background-color:#eef3f8;">
+  <tr>
+    <td align="center" style="padding:20px 10px;">
+      <!-- Container -->
+      <table cellpadding="0" cellspacing="0" border="0" width="620" style="width:620px; background-color:#ffffff; border:1px solid #dbe5f1;">
+        <!-- Header -->
         <tr>
-          <td style="vertical-align:top; padding-bottom:10px;">
-            <div style="width:44px; height:44px; border-radius:10px; background:#ffffff; color:#1f4e79; font-weight:700; font-size:18px; line-height:44px; text-align:center;">AW</div>
+          <td bgcolor="#1f4e79" style="background-color:#1f4e79; padding:18px 20px;">
+            <table cellpadding="0" cellspacing="0" border="0" width="100%">
+              <tr>
+                <td width="56" valign="middle" style="padding-right:14px;">
+                  <table cellpadding="0" cellspacing="0" border="0" width="44" height="44">
+                    <tr>
+                      <td width="44" height="44" align="center" bgcolor="#ffffff" style="background-color:#ffffff; font-family:Arial,Helvetica,sans-serif; font-size:18px; font-weight:bold; color:#1f4e79; line-height:44px;">AW</td>
+                    </tr>
+                  </table>
+                </td>
+                <td valign="middle">
+                  <p style="margin:0 0 4px 0; font-family:Arial,Helvetica,sans-serif; font-size:12px; color:#c8dcf0;">ApartmanWeb</p>
+                  <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:19px; font-weight:bold; color:#ffffff; line-height:1.25;">ApartmanWeb Ekstre Bilgilendirmesi</p>
+                </td>
+              </tr>
+            </table>
           </td>
         </tr>
+        <!-- Body -->
         <tr>
-          <td style="vertical-align:top;">
-            <div style="font-size:13px; opacity:0.9; margin-bottom:3px;">ApartmanWeb</div>
-            <h2 style="margin:0; font-size:20px; line-height:1.2; white-space:normal; word-break:break-word;">ApartmanWeb Ekstre Bilgilendirmesi</h2>
+          <td style="padding:20px 20px 18px;">
+            <!-- Info row -->
+            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:14px;">
+              <tr>
+                <td style="font-family:Arial,Helvetica,sans-serif; font-size:14px; color:#1e2f40; padding-bottom:8px;">Daire: <strong>${escapeHtml(apartmentLabel + ownerLabel)}</strong></td>
+                <td align="right" style="font-family:Arial,Helvetica,sans-serif; font-size:14px; color:#1e2f40; padding-bottom:8px; white-space:nowrap;">Geciken borc: <strong>${escapeHtml(tryCurrencyFormatter.format(overdueDebt))}</strong></td>
+              </tr>
+            </table>
+            <!-- Statement table -->
+            <table cellpadding="0" cellspacing="0" border="1" width="100%" bgcolor="#ffffff" style="background-color:#ffffff; border-collapse:collapse; border-color:#d2dbe5; font-family:Arial,Helvetica,sans-serif; font-size:12px;">
+              <thead>
+                <tr bgcolor="#e9f0f8" style="background-color:#e9f0f8;">
+                  <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap; font-family:Arial,Helvetica,sans-serif;">Yil</th>
+                  <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap; font-family:Arial,Helvetica,sans-serif;">Ay</th>
+                  <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap; font-family:Arial,Helvetica,sans-serif;">Tarih</th>
+                  <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; white-space:nowrap; font-family:Arial,Helvetica,sans-serif;">Hareket</th>
+                  <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; font-family:Arial,Helvetica,sans-serif;">Aciklama</th>
+                  <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; white-space:nowrap; font-family:Arial,Helvetica,sans-serif;">Borc</th>
+                  <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; white-space:nowrap; font-family:Arial,Helvetica,sans-serif;">Alacak</th>
+                  <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; white-space:nowrap; font-family:Arial,Helvetica,sans-serif;">Bakiye</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowMarkup}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td bgcolor="#f4f7fb" style="background-color:#f4f7fb; padding:12px 20px; border-top:1px solid #dbe5f1;">
+            <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:11px; color:#7a8fa6; text-align:center;">Bu e-posta ApartmanWeb sistemi tarafindan otomatik olarak gonderilmistir.</p>
           </td>
         </tr>
       </table>
-    </div>
-
-    <div style="padding:22px 20px 20px;">
-      <table role="presentation" style="width:100%; border-collapse:collapse; margin-bottom:14px;">
-        <tr>
-          <td style="font-size:14px; padding:0 0 8px;">Daire: <strong>${escapeHtml(apartmentLabel + ownerLabel)}</strong></td>
-          <td style="font-size:14px; padding:0 0 8px; text-align:right;">Geciken borc: <strong>${escapeHtml(tryCurrencyFormatter.format(overdueDebt))}</strong></td>
-        </tr>
-      </table>
-
-      <table style="border-collapse:collapse; width:100%; table-layout:fixed; font-size:12px; background:#ffffff; border:1px solid #d2dbe5;">
-        <thead>
-          <tr style="background:#e9f0f8;">
-            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; width:52px;">Yil</th>
-            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; width:42px;">Ay</th>
-            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; width:96px;">Tarih</th>
-            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; width:76px;">Hareket</th>
-            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left;">Aciklama</th>
-            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; width:96px;">Borc</th>
-            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; width:96px;">Alacak</th>
-            <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:right; width:96px;">Bakiye</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rowMarkup}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>`;
+    </td>
+  </tr>
+</table>
+</body>
+</html>`;
 
     const textLines = [
       "ApartmanWeb Ekstre Bilgilendirmesi",
