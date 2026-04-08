@@ -1602,10 +1602,13 @@ function parseFlexibleDate(raw: unknown): Date | null {
     }
   }
 
-  // Fallback for ISO-like strings after local dd/mm parsing attempts.
-  const iso = new Date(value);
-  if (!Number.isNaN(iso.getTime())) {
-    return iso;
+  // Keep ambiguous numeric formats strict (dd/mm/yyyy); only allow year-first ISO fallback.
+  const looksLikeNumericDate = /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}(?:\D.*)?$/.test(value);
+  if (!looksLikeNumericDate && /^\d{4}-\d{1,2}-\d{1,2}(?:[T\s].*)?$/.test(value)) {
+    const iso = new Date(value);
+    if (!Number.isNaN(iso.getTime())) {
+      return iso;
+    }
   }
 
   return null;
@@ -1855,11 +1858,13 @@ function parseOpeningBalanceNote(note: string | null | undefined): { bankName: s
 function parseFlexibleDateTime(raw: unknown): Date | null {
   if (typeof raw === "string") {
     const value = raw.trim();
-    const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[-\s](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    const match = value.match(
+      /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})(?:[\s-](\d{1,2})[:.](\d{2})(?::(\d{2}))?)?$/
+    );
     if (match) {
       const day = Number(match[1]);
       const month = Number(match[2]);
-      const year = Number(match[3]);
+      const year = Number(match[3].length === 2 ? `20${match[3]}` : match[3]);
       const hour = Number(match[4] ?? "0");
       const minute = Number(match[5] ?? "0");
       const second = Number(match[6] ?? "0");
@@ -5526,6 +5531,7 @@ router.get("/payments/list", async (req, res) => {
     from: z.string().datetime().optional(),
     to: z.string().datetime().optional(),
     source: z.enum(["MANUAL", "BANK_STATEMENT_UPLOAD", "PAYMENT_UPLOAD", "GMAIL"]).optional(),
+    description: z.string().trim().min(1).optional(),
   });
 
   const parsed = querySchema.safeParse(req.query);
@@ -5533,7 +5539,7 @@ router.get("/payments/list", async (req, res) => {
     return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
   }
 
-  const { from, to, source } = parsed.data;
+  const { from, to, source, description } = parsed.data;
 
   const payments = await prisma.payment.findMany({
     where: {
@@ -5544,6 +5550,12 @@ router.get("/payments/list", async (req, res) => {
               lte: to ? new Date(to) : undefined,
             }
           : undefined,
+      note: description
+        ? {
+            contains: description,
+            mode: "insensitive",
+          }
+        : undefined,
     },
     include: {
       importBatch: {
@@ -6320,6 +6332,52 @@ router.put("/payments/:paymentId", async (req, res) => {
   });
 });
 
+router.post("/payments/:paymentId/manual-review-dismiss", async (req, res) => {
+  const { paymentId } = req.params;
+
+  const existing = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    select: {
+      id: true,
+      note: true,
+    },
+  });
+
+  if (!existing) {
+    return res.status(404).json({ message: "Payment not found" });
+  }
+
+  const noteParts = parsePaymentNoteParts(existing.note);
+  const cleanedParts = noteParts.filter((part) => {
+    const upper = part.toUpperCase();
+    if (upper.startsWith("UNAPPLIED:MANUAL_REVIEW")) {
+      return false;
+    }
+    if (upper.startsWith("MANUAL_REVIEW:")) {
+      return false;
+    }
+    return true;
+  });
+
+  const nextNote = cleanedParts.length > 0 ? cleanedParts.join(" | ") : null;
+  const changed = nextNote !== existing.note;
+
+  if (changed) {
+    await prisma.payment.update({
+      where: { id: paymentId },
+      data: {
+        note: nextNote,
+      },
+    });
+  }
+
+  return res.json({
+    paymentId,
+    changed,
+    note: nextNote,
+  });
+});
+
 router.delete("/payments/:paymentId", async (req, res) => {
   const { paymentId } = req.params;
 
@@ -6609,6 +6667,53 @@ router.get("/upload-batches", async (req, res) => {
     skip: offset,
   });
 
+  const batchIds = batches.map((b) => b.id);
+  const [manualReviewGroups, unclassifiedPaymentGroups, unclassifiedExpenseGroups] = batchIds.length > 0
+    ? await Promise.all([
+        prisma.payment.groupBy({
+          by: ["importBatchId"],
+          where: {
+            importBatchId: { in: batchIds },
+            note: { contains: "UNAPPLIED:MANUAL_REVIEW" },
+          },
+          _count: { _all: true },
+        }),
+        prisma.payment.groupBy({
+          by: ["importBatchId"],
+          where: {
+            importBatchId: { in: batchIds },
+            note: { contains: "UNCLASSIFIED_COLLECTION:" },
+          },
+          _count: { _all: true },
+        }),
+        prisma.expense.groupBy({
+          by: ["importBatchId"],
+          where: {
+            importBatchId: { in: batchIds },
+            expenseItem: { code: "SINIFLANDIRILAMAYAN_GIDERLER" },
+          },
+          _count: { _all: true },
+        }),
+      ])
+    : [[], [], []];
+  const manualReviewCountMap: Record<string, number> = {};
+  for (const g of manualReviewGroups) {
+    if (g.importBatchId) {
+      manualReviewCountMap[g.importBatchId] = g._count._all;
+    }
+  }
+  const unclassifiedCountMap: Record<string, number> = {};
+  for (const g of unclassifiedPaymentGroups) {
+    if (g.importBatchId) {
+      unclassifiedCountMap[g.importBatchId] = (unclassifiedCountMap[g.importBatchId] ?? 0) + g._count._all;
+    }
+  }
+  for (const g of unclassifiedExpenseGroups) {
+    if (g.importBatchId) {
+      unclassifiedCountMap[g.importBatchId] = (unclassifiedCountMap[g.importBatchId] ?? 0) + g._count._all;
+    }
+  }
+
   return res.json(
     batches.map((batch) => ({
       id: batch.id,
@@ -6622,6 +6727,8 @@ router.get("/upload-batches", async (req, res) => {
       createdPaymentCount: batch.createdPaymentCount,
       createdExpenseCount: batch.createdExpenseCount,
       skippedCount: batch.skippedCount,
+      manualReviewCount: manualReviewCountMap[batch.id] ?? 0,
+      unclassifiedCount: unclassifiedCountMap[batch.id] ?? 0,
     }))
   );
 });
@@ -8295,6 +8402,59 @@ router.get("/reports/summary", async (_req, res) => {
     .sort((a, b) => b.remainingTotal - a.remainingTotal)
     .slice(0, 10);
 
+  const summaryBatchIds = latestUploadBatches.map((b) => b.id);
+  const [summaryManualReviewGroups, summaryUnclassifiedPaymentGroups, summaryUnclassifiedExpenseGroups] =
+    summaryBatchIds.length > 0
+    ? await Promise.all([
+        prisma.payment.groupBy({
+          by: ["importBatchId"],
+          where: {
+            importBatchId: { in: summaryBatchIds },
+            note: { contains: "UNAPPLIED:MANUAL_REVIEW" },
+          },
+          _count: { _all: true },
+        }),
+        prisma.payment.groupBy({
+          by: ["importBatchId"],
+          where: {
+            importBatchId: { in: summaryBatchIds },
+            note: { contains: "UNCLASSIFIED_COLLECTION:" },
+          },
+          _count: { _all: true },
+        }),
+        prisma.expense.groupBy({
+          by: ["importBatchId"],
+          where: {
+            importBatchId: { in: summaryBatchIds },
+            expenseItem: { code: "SINIFLANDIRILAMAYAN_GIDERLER" },
+          },
+          _count: { _all: true },
+        }),
+      ])
+    : [[], [], []];
+  const summaryManualReviewCountMap: Record<string, number> = {};
+  for (const g of summaryManualReviewGroups) {
+    if (g.importBatchId) {
+      summaryManualReviewCountMap[g.importBatchId] = g._count._all;
+    }
+  }
+  const summaryUnclassifiedCountMap: Record<string, number> = {};
+  for (const g of summaryUnclassifiedPaymentGroups) {
+    if (g.importBatchId) {
+      summaryUnclassifiedCountMap[g.importBatchId] = (summaryUnclassifiedCountMap[g.importBatchId] ?? 0) + g._count._all;
+    }
+  }
+  for (const g of summaryUnclassifiedExpenseGroups) {
+    if (g.importBatchId) {
+      summaryUnclassifiedCountMap[g.importBatchId] = (summaryUnclassifiedCountMap[g.importBatchId] ?? 0) + g._count._all;
+    }
+  }
+  const latestUploadBatchesWithReview = latestUploadBatches.map((b) => ({
+    ...b,
+    manualReviewCount: summaryManualReviewCountMap[b.id] ?? 0,
+    unclassifiedCount: summaryUnclassifiedCountMap[b.id] ?? 0,
+  }));
+
   return res.json({
     snapshotAt: now,
     bankBalance: {
@@ -8336,7 +8496,7 @@ router.get("/reports/summary", async (_req, res) => {
       dutyAssignments,
     },
     latestBankMovements,
-    latestUploadBatches,
+    latestUploadBatches: latestUploadBatchesWithReview,
     topExpenses: topExpenseGroups.map((item) => ({
       id: item.expenseItemId,
       expenseItemName: topExpenseItemNameMap.get(item.expenseItemId) ?? "Bilinmeyen Gider Kalemi",

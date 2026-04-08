@@ -305,7 +305,7 @@ export function MonthlyLedgerPrintPage() {
                         >
                           <div className="section-head">
                             <h3>{monthLabels[monthData.month - 1]} {data.criteria.year} - Gelir Tarafi</h3>
-                            <span className="small">
+                            <span className="small ledger-page-counter">
                               {incomePages.length > 1 ? `Sayfa ${pageIndex + 1}/${incomePages.length}` : ""}
                             </span>
                           </div>
@@ -390,7 +390,7 @@ export function MonthlyLedgerPrintPage() {
                         >
                           <div className="section-head">
                             <h3>{monthLabels[monthData.month - 1]} {data.criteria.year} - Gider Tarafi</h3>
-                            <span className="small">
+                            <span className="small ledger-page-counter">
                               {expensePages.length > 1 ? `Sayfa ${pageIndex + 1}/${expensePages.length}` : ""}
                             </span>
                           </div>

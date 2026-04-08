@@ -15,6 +15,7 @@ type PaymentListFilterState = {
   from: string;
   to: string;
   source: PaymentSourceFilter;
+  description: string;
 };
 
 type PaymentListEditFormState = {
@@ -203,7 +204,7 @@ export function PaymentListPage({
             <button className="btn btn-ghost" type="button" onClick={() => void clearPaymentListFilters()}>Temizle</button>
           </div>
         </div>
-        <div className="payment-list-filter-row compact-row-top-gap">
+        <div className="payment-list-filter-row compact-row-top-gap payment-list-filter-row-single-line">
           <label>
             Baslangic Tarihi
             <input
@@ -233,6 +234,15 @@ export function PaymentListPage({
               <option value="GMAIL">Gmail</option>
               <option value="BANK_STATEMENT_UPLOAD">Banka Ekstresi Upload</option>
             </select>
+          </label>
+          <label>
+            Aciklama
+            <input
+              type="text"
+              value={paymentListFilter.description}
+              onChange={(e) => setPaymentListFilter((prev) => ({ ...prev, description: e.target.value }))}
+              placeholder="Aciklamada ara"
+            />
           </label>
         </div>
         {editingPaymentListId && (

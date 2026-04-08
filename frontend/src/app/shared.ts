@@ -458,6 +458,8 @@ export type UploadBatchRow = {
   createdPaymentCount: number;
   createdExpenseCount: number;
   skippedCount: number;
+  manualReviewCount: number;
+  unclassifiedCount: number;
 };
 
 export type UploadBatchUploader = {
@@ -573,6 +575,8 @@ export type ReportsSummaryResponse = {
     createdPaymentCount: number;
     createdExpenseCount: number;
     skippedCount: number;
+    manualReviewCount: number;
+    unclassifiedCount: number;
   }>;
   topExpenses: Array<{
     id: string;

@@ -16,6 +16,8 @@ type ManualReviewMatchesPageProps = {
   setFilter: Dispatch<SetStateAction<ManualReviewMatchesFilter>>;
   runQuery: () => Promise<void>;
   clearFilters: () => void;
+  clearingPaymentId: string | null;
+  clearWarningRow: (row: ManualReviewMatchRow) => Promise<void>;
 };
 
 function reasonLabel(row: ManualReviewMatchRow): string {
@@ -49,6 +51,8 @@ export function ManualReviewMatchesPage({
   setFilter,
   runQuery,
   clearFilters,
+  clearingPaymentId,
+  clearWarningRow,
 }: ManualReviewMatchesPageProps) {
   return (
     <section className="dashboard report-page">
@@ -107,12 +111,13 @@ export function ManualReviewMatchesPage({
                 <th>Kaynak</th>
                 <th>Yukleme Dosyasi</th>
                 <th>Not</th>
+                <th>Islem</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="empty">
+                  <td colSpan={10} className="empty">
                     Manuel inceleme gerektiren kayit bulunmuyor. Listelemek icin Calistir butonunu kullanin.
                   </td>
                 </tr>
@@ -128,6 +133,16 @@ export function ManualReviewMatchesPage({
                     <td>{sourceLabel(row.source)}</td>
                     <td>{row.importFileName ?? "-"}</td>
                     <td>{row.note ?? "-"}</td>
+                    <td className="actions-cell">
+                      <button
+                        className="btn btn-ghost"
+                        type="button"
+                        disabled={loading || reportLoading || clearingPaymentId === row.paymentId}
+                        onClick={() => void clearWarningRow(row)}
+                      >
+                        {clearingPaymentId === row.paymentId ? "Temizleniyor..." : "Uyariyi Temizle"}
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}

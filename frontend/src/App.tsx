@@ -648,6 +648,7 @@ function AdminPage() {
     from: "",
     to: "",
     source: "" as PaymentSourceFilter,
+    description: "",
   });
   const [editingPaymentListId, setEditingPaymentListId] = useState<string | null>(null);
   const [editingPaymentListSource, setEditingPaymentListSource] = useState<PaymentListRow["source"] | null>(null);
@@ -751,6 +752,7 @@ function AdminPage() {
   const [manualReviewMatchesRows, setManualReviewMatchesRows] = useState<ManualReviewMatchRow[]>([]);
   const [manualReviewMatchesTotalCount, setManualReviewMatchesTotalCount] = useState(0);
   const [manualReviewMatchesLoading, setManualReviewMatchesLoading] = useState(false);
+  const [manualReviewClearingPaymentId, setManualReviewClearingPaymentId] = useState<string | null>(null);
   const [manualReviewMatchesFilter, setManualReviewMatchesFilter] = useState({
     from: "",
     to: "",
@@ -3723,6 +3725,9 @@ function AdminPage() {
       if (filter.source) {
         params.set("source", filter.source);
       }
+      if (filter.description.trim()) {
+        params.set("description", filter.description.trim());
+      }
 
       const endpoint = `/api/admin/payments/list${params.toString() ? `?${params.toString()}` : ""}`;
       const data = await authorizedRequest<PaymentListRow[]>(endpoint);
@@ -3750,7 +3755,7 @@ function AdminPage() {
   }
 
   async function clearPaymentListFilters(): Promise<void> {
-    const reset = { from: "", to: "", source: "" as PaymentSourceFilter };
+    const reset = { from: "", to: "", source: "" as PaymentSourceFilter, description: "" };
     setPaymentListFilter(reset);
     setPaymentListRows([]);
     setPaymentListError("");
@@ -4771,6 +4776,27 @@ function AdminPage() {
     setManualReviewMatchesRows([]);
     setManualReviewMatchesTotalCount(0);
     setMessage("Manuel inceleme filtresi temizlendi. Listelemek icin Calistir butonuna basin");
+  }
+
+  async function clearManualReviewMatchWarning(row: ManualReviewMatchRow): Promise<void> {
+    const accepted = window.confirm("Bu kayitta sadece manuel inceleme uyarisini temizlemek istiyor musun?");
+    if (!accepted) {
+      return;
+    }
+
+    setLoading(true);
+    setManualReviewClearingPaymentId(row.paymentId);
+    try {
+      await authorizedRequest(`/api/admin/payments/${row.paymentId}/manual-review-dismiss`, { method: "POST" });
+      await Promise.all([fetchManualReviewMatchesReport({ silent: true }), fetchActionLogs()]);
+      setMessage("Manuel inceleme uyarisi temizlendi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Manuel inceleme uyarisi temizlenemedi");
+    } finally {
+      setManualReviewClearingPaymentId(null);
+      setLoading(false);
+    }
   }
 
   async function runOverduePaymentsQuery(): Promise<void> {
@@ -8741,6 +8767,8 @@ function AdminPage() {
                                 <th className="col-num">Tahsilat</th>
                                 <th className="col-num">Gider</th>
                                 <th className="col-num">Atlanan</th>
+                                <th className="col-num">Incelenmesi Gereken</th>
+                                <th className="col-num">Siniflandirilamayanlar</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -8763,6 +8791,8 @@ function AdminPage() {
                                     <td className="col-num">{row.createdPaymentCount}</td>
                                     <td className="col-num">{row.createdExpenseCount}</td>
                                     <td className="col-num">{row.skippedCount}</td>
+                                    <td className="col-num">{row.manualReviewCount > 0 ? row.manualReviewCount : "-"}</td>
+                                    <td className="col-num">{row.unclassifiedCount > 0 ? row.unclassifiedCount : "-"}</td>
                                   </tr>
                                 );
                               })}
@@ -8791,7 +8821,7 @@ function AdminPage() {
                   Bu ekran, bankadan aldiginiz ekstre satirlari ile sistemde kayitli banka hareketlerini karsilastirmaniza yardimci olur.
                 </p>
 
-                <div className="upload-batch-filter-row compact-row-top-gap report-filter-grid">
+                <div className="upload-batch-filter-row compact-row-top-gap report-filter-grid overdue-payments-filter-row">
                   <label>
                     Baslangic
                     <input
@@ -9972,6 +10002,8 @@ function AdminPage() {
                 setFilter={setManualReviewMatchesFilter}
                 runQuery={runManualReviewMatchesQuery}
                 clearFilters={clearManualReviewMatchesFilters}
+                clearingPaymentId={manualReviewClearingPaymentId}
+                clearWarningRow={clearManualReviewMatchWarning}
               />
             </Suspense>
           }
