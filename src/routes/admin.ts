@@ -1,5 +1,6 @@
 import { ApartmentType, ImportBatchType, OccupancyType, PaymentMethod, Prisma, UserRole } from "@prisma/client";
 import { createHash } from "crypto";
+import { setDefaultResultOrder } from "dns";
 import { Router } from "express";
 import multer from "multer";
 import nodemailer, { type Transporter } from "nodemailer";
@@ -31,6 +32,7 @@ import {
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 let statementEmailTransporter: Transporter | null = null;
+let statementEmailDnsOrderInitialized = false;
 
 const tryCurrencyFormatter = new Intl.NumberFormat("tr-TR", {
   style: "currency",
@@ -96,10 +98,34 @@ function trimEmailStatementDescription(value: string, maxLength = 96): string {
   return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
 }
 
+function applyStatementEmailDnsPreference(): void {
+  if (statementEmailDnsOrderInitialized) {
+    return;
+  }
+
+  statementEmailDnsOrderInitialized = true;
+
+  const preferredOrderRaw = process.env.STATEMENT_EMAIL_DNS_RESULT_ORDER?.trim().toLowerCase();
+  if (!preferredOrderRaw) {
+    return;
+  }
+
+  if (preferredOrderRaw !== "ipv4first" && preferredOrderRaw !== "verbatim") {
+    console.warn(
+      `[statement-email] STATEMENT_EMAIL_DNS_RESULT_ORDER gecersiz: ${preferredOrderRaw}. Desteklenen degerler: ipv4first, verbatim`
+    );
+    return;
+  }
+
+  setDefaultResultOrder(preferredOrderRaw);
+}
+
 function getStatementEmailTransporter(): Transporter {
   if (statementEmailTransporter) {
     return statementEmailTransporter;
   }
+
+  applyStatementEmailDnsPreference();
 
   const smtpHost = process.env.STATEMENT_EMAIL_SMTP_HOST?.trim() || "smtp.gmail.com";
   const smtpPort = Number(process.env.STATEMENT_EMAIL_SMTP_PORT ?? "465");

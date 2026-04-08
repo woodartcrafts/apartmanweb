@@ -148,6 +148,9 @@ Gmail otomatik banka ekstresi (opsiyonel):
 - `GMAIL_BANK_SYNC_SCHEDULE_MINUTE` (default `0`)
 - `GMAIL_BANK_SYNC_TIMEZONE` (default `Europe/Istanbul`)
 
+Ekstre e-mail SMTP (opsiyonel):
+- `STATEMENT_EMAIL_DNS_RESULT_ORDER` (`ipv4first` veya `verbatim`; Railway gibi IPv6 cikisi olmayan ortamlarda `ipv4first` onerilir)
+
 Opsiyonel seed degiskenleri:
 - `ADMIN_EMAIL`
 - `ADMIN_PASSWORD`
