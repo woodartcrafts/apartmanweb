@@ -7294,40 +7294,6 @@ router.post("/apartments/:apartmentId/statement-email", async (req, res) => {
             .join("")
         : "<tr><td colspan=\"8\" style=\"border:1px solid #d2dbe5; padding:10px; text-align:left;\">Muhasebe ekstre kaydi bulunmuyor.</td></tr>";
 
-    const mobileRowMarkup =
-      accountingStatement.length > 0
-        ? accountingStatement
-            .map((row) => {
-              const movementLabel = row.movementType === "BORC" ? "BORC" : "ALACAK";
-              const year = row.periodYear ?? row.date.getFullYear();
-              const month = row.periodMonth ?? row.date.getMonth() + 1;
-              const description = trimEmailStatementDescription(formatAccountingEmailDescription(row.description), 76);
-              const debitText = row.debit > 0.0001 ? tryCurrencyFormatter.format(row.debit) : "-";
-              const creditText = row.credit > 0.0001 ? tryCurrencyFormatter.format(row.credit) : "-";
-
-              return `<div style="border:1px solid #d6e0eb; border-radius:12px; background:#fff; padding:10px; margin-bottom:10px; box-shadow:0 2px 8px rgba(24,66,103,0.08);">
-  <div style="font-size:10px; color:#325b82; font-weight:700; letter-spacing:0.3px; margin-bottom:6px;">${escapeHtml(movementLabel)}</div>
-  <div style="font-size:11px; color:#5a6b7c; margin-bottom:6px;">${escapeHtml(String(year))}/${escapeHtml(String(month).padStart(2, "0"))} - ${escapeHtml(row.date.toLocaleDateString("tr-TR"))}</div>
-  <div style="font-size:11px; line-height:1.35; color:#1f2f40; margin-bottom:8px;">${escapeHtml(description)}</div>
-  <table role="presentation" style="width:100%; border-collapse:collapse; font-size:11px; background:#f7f9fc; border:1px solid #e1e8f0; border-radius:8px;">
-    <tr>
-      <td style="color:#5a6b7c; padding:6px 7px 4px;">Borc</td>
-      <td style="text-align:right; padding:6px 7px 4px; white-space:nowrap;">${escapeHtml(debitText)}</td>
-    </tr>
-    <tr>
-      <td style="color:#5a6b7c; padding:0 7px 4px;">Alacak</td>
-      <td style="text-align:right; padding:0 7px 4px; white-space:nowrap;">${escapeHtml(creditText)}</td>
-    </tr>
-    <tr>
-      <td style="color:#184267; padding:0 7px 6px; font-weight:700;">Bakiye</td>
-      <td style="text-align:right; padding:0 7px 6px; white-space:nowrap; font-weight:700; color:#184267;">${escapeHtml(tryCurrencyFormatter.format(row.balance))}</td>
-    </tr>
-  </table>
-</div>`;
-            })
-            .join("")
-        : "<div style=\"border:1px solid #d2dbe5; border-radius:10px; background:#fff; padding:10px; font-size:12px;\">Muhasebe ekstre kaydi bulunmuyor.</div>";
-
     const now = new Date();
     const overdueDebt = Number(
       statement
@@ -7341,51 +7307,7 @@ router.post("/apartments/:apartmentId/statement-email", async (req, res) => {
 
     const html = `
 <div style="margin:0; padding:20px 0; background:#eef3f8; font-family: Arial, Helvetica, sans-serif; color:#1e2f40;">
-  <style>
-    @media only screen and (max-width: 600px) {
-      .statement-email-shell {
-        margin: 0 10px !important;
-      }
-      .statement-email-title {
-        font-size: 15px !important;
-        white-space: normal !important;
-        word-break: break-word !important;
-      }
-      .statement-email-body {
-        padding: 18px 14px !important;
-      }
-      .statement-meta-table {
-        table-layout: fixed !important;
-      }
-      .statement-apartment-cell {
-        width: 72% !important;
-      }
-      .statement-debt-cell {
-        width: 28% !important;
-      }
-      .statement-apartment-line {
-        display: block !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        white-space: nowrap !important;
-      }
-      .statement-desktop-only {
-        display: none !important;
-      }
-      .statement-mobile-only {
-        display: block !important;
-      }
-      .statement-email-table th,
-      .statement-email-table td {
-        padding: 6px 5px !important;
-        font-size: 10.5px !important;
-      }
-      .statement-email-meta {
-        font-size: 12px !important;
-      }
-    }
-  </style>
-  <div class="statement-email-shell" style="max-width:900px; margin:0 auto; background:#ffffff; border:1px solid #dbe5f1; border-radius:14px; overflow:hidden; box-shadow:0 8px 24px rgba(30,47,64,0.08);">
+  <div style="max-width:900px; margin:0 auto; background:#ffffff; border:1px solid #dbe5f1; border-radius:14px; overflow:hidden; box-shadow:0 8px 24px rgba(30,47,64,0.08);">
     <div style="background:linear-gradient(135deg,#1f4e79 0%,#2a6aa1 100%); padding:18px 20px; color:#ffffff;">
       <table role="presentation" style="width:100%; border-collapse:collapse;">
         <tr>
@@ -7396,21 +7318,21 @@ router.post("/apartments/:apartmentId/statement-email", async (req, res) => {
         <tr>
           <td style="vertical-align:top;">
             <div style="font-size:13px; opacity:0.9; margin-bottom:3px;">ApartmanWeb</div>
-            <h2 class="statement-email-title" style="margin:0; font-size:20px; line-height:1.2; white-space:normal; word-break:break-word;">ApartmanWeb Ekstre Bilgilendirmesi</h2>
+            <h2 style="margin:0; font-size:20px; line-height:1.2; white-space:normal; word-break:break-word;">ApartmanWeb Ekstre Bilgilendirmesi</h2>
           </td>
         </tr>
       </table>
     </div>
 
-    <div class="statement-email-body" style="padding:22px 20px 20px;">
-      <table role="presentation" class="statement-meta-table" style="width:100%; border-collapse:collapse; margin-bottom:14px;">
+    <div style="padding:22px 20px 20px;">
+      <table role="presentation" style="width:100%; border-collapse:collapse; margin-bottom:14px;">
         <tr>
-          <td class="statement-email-meta statement-apartment-cell" style="font-size:14px; padding:0 0 8px;">Daire: <strong class="statement-apartment-line">${escapeHtml(apartmentLabel + ownerLabel)}</strong></td>
-          <td class="statement-email-meta statement-debt-cell" style="font-size:14px; padding:0 0 8px; text-align:right;">Geciken borc: <strong>${escapeHtml(tryCurrencyFormatter.format(overdueDebt))}</strong></td>
+          <td style="font-size:14px; padding:0 0 8px;">Daire: <strong>${escapeHtml(apartmentLabel + ownerLabel)}</strong></td>
+          <td style="font-size:14px; padding:0 0 8px; text-align:right;">Geciken borc: <strong>${escapeHtml(tryCurrencyFormatter.format(overdueDebt))}</strong></td>
         </tr>
       </table>
 
-      <table class="statement-email-table statement-desktop-only" style="border-collapse:collapse; width:100%; table-layout:fixed; font-size:12px; background:#ffffff; border:1px solid #d2dbe5;">
+      <table style="border-collapse:collapse; width:100%; table-layout:fixed; font-size:12px; background:#ffffff; border:1px solid #d2dbe5;">
         <thead>
           <tr style="background:#e9f0f8;">
             <th style="border:1px solid #d2dbe5; padding:7px 6px; text-align:left; width:52px;">Yil</th>
@@ -7427,9 +7349,6 @@ router.post("/apartments/:apartmentId/statement-email", async (req, res) => {
           ${rowMarkup}
         </tbody>
       </table>
-      <div class="statement-mobile-only" style="display:none;">
-        ${mobileRowMarkup}
-      </div>
     </div>
   </div>
 </div>`;
