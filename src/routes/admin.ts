@@ -4,6 +4,7 @@ import { setDefaultResultOrder } from "dns";
 import { Router } from "express";
 import multer from "multer";
 import nodemailer, { type Transporter } from "nodemailer";
+import { Resend } from "resend";
 import { PDFParse } from "pdf-parse";
 import ExcelJS from "exceljs";
 import { ImapFlow } from "imapflow";
@@ -136,7 +137,7 @@ function getStatementEmailTransporter(): Transporter {
   applyStatementEmailDnsPreference();
 
   const smtpHost = process.env.STATEMENT_EMAIL_SMTP_HOST?.trim() || "smtp.gmail.com";
-  const smtpPort = Number(process.env.STATEMENT_EMAIL_SMTP_PORT ?? "465");
+  const smtpPort = Number(process.env.STATEMENT_EMAIL_SMTP_PORT ?? "587");
   const smtpSecure = parseBooleanEnv(process.env.STATEMENT_EMAIL_SMTP_SECURE, smtpPort === 465);
   const smtpRequireTls = parseBooleanEnv(process.env.STATEMENT_EMAIL_SMTP_REQUIRE_TLS, false);
   const connectionTimeoutMs = parsePositiveIntEnv(process.env.STATEMENT_EMAIL_CONNECTION_TIMEOUT_MS, 20_000);
@@ -173,6 +174,47 @@ function getStatementEmailTransporter(): Transporter {
   });
 
   return statementEmailTransporter;
+}
+
+interface SendStatementEmailParams {
+  from: string;
+  fromName: string;
+  to: string[];
+  subject: string;
+  html: string;
+  text: string;
+}
+
+async function sendStatementEmail(params: SendStatementEmailParams): Promise<void> {
+  const resendApiKey = process.env.RESEND_API_KEY?.trim();
+
+  if (resendApiKey) {
+    // Resend HTTP API - SMTP port gerektirmez, Railway dahil her ortamda calısır
+    console.log(`[statement-email] Resend API ile gonderiliyor -> ${params.to.join(", ")}`);
+    const resend = new Resend(resendApiKey);
+    const { error } = await resend.emails.send({
+      from: `${params.fromName} <${params.from}>`,
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+      text: params.text,
+    });
+    if (error) {
+      throw new Error(`Resend API hatasi: ${(error as { message?: string }).message ?? JSON.stringify(error)}`);
+    }
+    return;
+  }
+
+  // Resend API key yoksa nodemailer SMTP kullan (port 587 varsayilan)
+  console.log(`[statement-email] SMTP ile gonderiliyor (port ${process.env.STATEMENT_EMAIL_SMTP_PORT ?? "587"}) -> ${params.to.join(", ")}`);
+  const transporter = getStatementEmailTransporter();
+  await transporter.sendMail({
+    from: `${params.fromName} <${params.from}>`,
+    to: params.to.join(", "),
+    subject: params.subject,
+    html: params.html,
+    text: params.text,
+  });
 }
 
 function collectApartmentStatementRecipients(apartment: {
@@ -7298,7 +7340,6 @@ router.post("/apartments/:apartmentId/statement-email", async (req, res) => {
       ),
     ];
 
-    const transporter = getStatementEmailTransporter();
     const fromAddress =
       process.env.STATEMENT_EMAIL_FROM?.trim() ||
       process.env.STATEMENT_EMAIL_SMTP_USER?.trim() ||
@@ -7310,9 +7351,10 @@ router.post("/apartments/:apartmentId/statement-email", async (req, res) => {
 
     const fromName = process.env.STATEMENT_EMAIL_FROM_NAME?.trim() || "ApartmanWeb";
 
-    await transporter.sendMail({
-      from: `${fromName} <${fromAddress}>`,
-      to: recipients.join(", "),
+    await sendStatementEmail({
+      from: fromAddress,
+      fromName,
+      to: recipients,
       subject: `ApartmanWeb Muhasebe Ekstresi - ${apartmentLabel}`,
       html,
       text: textLines.join("\n"),
