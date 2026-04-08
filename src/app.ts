@@ -4,6 +4,7 @@ import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
 import helmet from "helmet";
 import morgan from "morgan";
+import path from "path";
 import { config } from "./config";
 import authRoutes from "./routes/auth";
 import adminRoutes from "./routes/admin";
@@ -35,6 +36,7 @@ app.use(cookieParser());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(morgan("dev"));
+app.use(express.static(path.resolve(process.cwd(), "public"), { index: false }));
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
