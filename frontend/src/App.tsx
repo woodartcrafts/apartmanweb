@@ -8744,18 +8744,28 @@ function AdminPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {staffOpenAidatLatestUploadRows.map((row) => (
-                                <tr key={row.id}>
-                                  <td>{formatDateTimeTr(row.uploadedAt)}</td>
-                                  <td>{row.uploadedByName ?? row.uploadedByEmail ?? (row.kind === "GMAIL_AUTO" ? "Otomatik (Gmail)" : "-")}</td>
-                                  <td>{row.kind === "BANK" ? "Banka" : row.kind === "PAYMENT" ? "Tahsilat" : row.kind === "EXPENSE" ? "Gider" : row.kind === "GMAIL_AUTO" ? "Otomatik" : row.kind}</td>
-                                  <td>{row.fileName}</td>
-                                  <td className="col-num">{row.totalRows}</td>
-                                  <td className="col-num">{row.createdPaymentCount}</td>
-                                  <td className="col-num">{row.createdExpenseCount}</td>
-                                  <td className="col-num">{row.skippedCount}</td>
-                                </tr>
-                              ))}
+                              {staffOpenAidatLatestUploadRows.map((row) => {
+                                const isGmail = row.kind === "BANK_STATEMENT_UPLOAD" && row.fileName.toLowerCase().startsWith("gmail:");
+                                const sourceLabel = row.uploadedByName ?? row.uploadedByEmail ?? (isGmail ? "Otomatik (Gmail)" : "-");
+                                const kindLabel = isGmail
+                                  ? "Gmail"
+                                  : row.kind === "BANK_STATEMENT_UPLOAD"
+                                    ? "Banka Ekstresi Upload"
+                                    : "Toplu Odeme Upload";
+
+                                return (
+                                  <tr key={row.id}>
+                                    <td>{formatDateTimeTr(row.uploadedAt)}</td>
+                                    <td>{sourceLabel}</td>
+                                    <td>{kindLabel}</td>
+                                    <td>{row.fileName}</td>
+                                    <td className="col-num">{row.totalRows}</td>
+                                    <td className="col-num">{row.createdPaymentCount}</td>
+                                    <td className="col-num">{row.createdExpenseCount}</td>
+                                    <td className="col-num">{row.skippedCount}</td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
