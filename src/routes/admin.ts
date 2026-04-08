@@ -189,29 +189,75 @@ async function sendStatementEmail(params: SendStatementEmailParams): Promise<voi
   const brevoApiKey = process.env.BREVO_API_KEY?.trim();
 
   if (brevoApiKey) {
-    // Brevo Transactional Email HTTP API - SMTP port gerektirmez
-    console.log(`[statement-email] Brevo API ile gonderiliyor -> ${params.to.join(", ")}`);
-    const body = JSON.stringify({
-      sender: { name: params.fromName, email: params.from },
-      to: params.to.map((email) => ({ email })),
-      subject: params.subject,
-      htmlContent: params.html,
-      textContent: params.text,
-    });
-    const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        "api-key": brevoApiKey,
-        "content-type": "application/json",
-        accept: "application/json",
-      },
-      body,
-    });
-    if (!resp.ok) {
-      const detail = await resp.text().catch(() => resp.statusText);
-      throw new Error(`Brevo API hatasi (${resp.status}): ${detail}`);
+    if (brevoApiKey.startsWith("xkeysib-")) {
+      // Brevo Transactional Email HTTP API key
+      console.log(`[statement-email] Brevo API ile gonderiliyor -> ${params.to.join(", ")}`);
+      const body = JSON.stringify({
+        sender: { name: params.fromName, email: params.from },
+        to: params.to.map((email) => ({ email })),
+        subject: params.subject,
+        htmlContent: params.html,
+        textContent: params.text,
+      });
+      const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "api-key": brevoApiKey,
+          "content-type": "application/json",
+          accept: "application/json",
+        },
+        body,
+      });
+      if (!resp.ok) {
+        const detail = await resp.text().catch(() => resp.statusText);
+        throw new Error(`Brevo API hatasi (${resp.status}): ${detail}`);
+      }
+      return;
     }
-    return;
+
+    if (brevoApiKey.startsWith("xsmtpsib-")) {
+      // Brevo SMTP key yanlışlıkla BREVO_API_KEY'e girildiyse yine de gönderimi kurtar
+      const brevoSmtpLogin =
+        process.env.BREVO_SMTP_LOGIN?.trim() ||
+        process.env.STATEMENT_EMAIL_SMTP_USER?.trim() ||
+        "";
+      if (!brevoSmtpLogin) {
+        throw new Error(
+          "BREVO_API_KEY icin SMTP anahtari (xsmtpsib-) kullaniliyor, BREVO_SMTP_LOGIN (ornek: a123456789@smtp-brevo.com) tanimli olmali"
+        );
+      }
+
+      console.log(`[statement-email] Brevo SMTP ile gonderiliyor -> ${params.to.join(", ")}`);
+      const transporter = nodemailer.createTransport({
+        host: process.env.STATEMENT_EMAIL_SMTP_HOST?.trim() || "smtp-relay.brevo.com",
+        port: Number(process.env.STATEMENT_EMAIL_SMTP_PORT ?? "587"),
+        secure: parseBooleanEnv(process.env.STATEMENT_EMAIL_SMTP_SECURE, false),
+        requireTLS: parseBooleanEnv(process.env.STATEMENT_EMAIL_SMTP_REQUIRE_TLS, true),
+        connectionTimeout: parsePositiveIntEnv(process.env.STATEMENT_EMAIL_CONNECTION_TIMEOUT_MS, 20_000),
+        greetingTimeout: parsePositiveIntEnv(process.env.STATEMENT_EMAIL_GREETING_TIMEOUT_MS, 10_000),
+        socketTimeout: parsePositiveIntEnv(process.env.STATEMENT_EMAIL_SOCKET_TIMEOUT_MS, 20_000),
+        tls: {
+          servername: process.env.STATEMENT_EMAIL_SMTP_HOST?.trim() || "smtp-relay.brevo.com",
+        },
+        auth: {
+          user: brevoSmtpLogin,
+          pass: brevoApiKey,
+        },
+      });
+
+      await transporter.sendMail({
+        from: `${params.fromName} <${params.from}>`,
+        to: params.to.join(", "),
+        subject: params.subject,
+        html: params.html,
+        text: params.text,
+      });
+      return;
+    }
+
+    throw new Error(
+      "BREVO_API_KEY formati taninmadi. API key icin xkeysib-..., SMTP key icin xsmtpsib-... beklenir"
+    );
   }
 
   const resendApiKey = process.env.RESEND_API_KEY?.trim();
