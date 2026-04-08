@@ -150,6 +150,12 @@ Gmail otomatik banka ekstresi (opsiyonel):
 
 Ekstre e-mail SMTP (opsiyonel):
 - `STATEMENT_EMAIL_DNS_RESULT_ORDER` (`ipv4first` veya `verbatim`; Railway gibi IPv6 cikisi olmayan ortamlarda `ipv4first` onerilir)
+- `STATEMENT_EMAIL_SMTP_PORT` (`465` yerine timeout alinirse `587` onerilir)
+- `STATEMENT_EMAIL_SMTP_SECURE` (`465` icin `true`, `587` icin `false`)
+- `STATEMENT_EMAIL_SMTP_REQUIRE_TLS` (`587` kullaniminda `true` onerilir)
+- `STATEMENT_EMAIL_CONNECTION_TIMEOUT_MS` (default `20000`)
+- `STATEMENT_EMAIL_GREETING_TIMEOUT_MS` (default `10000`)
+- `STATEMENT_EMAIL_SOCKET_TIMEOUT_MS` (default `20000`)
 
 Opsiyonel seed degiskenleri:
 - `ADMIN_EMAIL`

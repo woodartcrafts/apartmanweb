@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from "react";
 import {
+  formatDateTimeTr,
   formatDateTr,
   formatTry,
   type ApartmentOption,
   type StaffOpenAidatReportResponse,
   type StaffOpenAidatReportRow,
+  type UploadBatchRow,
 } from "../../app/shared";
 
 type StaffOpenAidatReportPageProps = {
@@ -16,6 +18,7 @@ type StaffOpenAidatReportPageProps = {
   totals: StaffOpenAidatReportResponse["totals"] | null;
   apartmentSummary: StaffOpenAidatReportResponse["apartment"] | null;
   reportLoading: boolean;
+  latestUploadBatches: UploadBatchRow[];
   runQuery: (apartmentId: string, options?: { silent?: boolean }) => Promise<void>;
   sendStatementEmail: (apartmentId: string) => Promise<void>;
   clearFilters: () => void;
@@ -38,6 +41,22 @@ function normalizeBlockLabel(blockName: string): string {
   return blockName.replace(/\s*blok\s*$/i, "").trim();
 }
 
+function resolveUploadKindLabel(row: UploadBatchRow): string {
+  const isGmail = row.kind === "BANK_STATEMENT_UPLOAD" && row.fileName.toLowerCase().startsWith("gmail:");
+  if (isGmail) {
+    return "Gmail";
+  }
+  return row.kind === "BANK_STATEMENT_UPLOAD" ? "Banka Ekstresi Upload" : "Toplu Odeme Upload";
+}
+
+function resolveUploadSourceLabel(row: UploadBatchRow): string {
+  const isGmail = row.kind === "BANK_STATEMENT_UPLOAD" && row.fileName.toLowerCase().startsWith("gmail:");
+  if (isGmail) {
+    return "Railway";
+  }
+  return row.uploadedByName?.trim() || row.uploadedByEmail?.trim() || "-";
+}
+
 export function StaffOpenAidatReportPage({
   loading,
   apartmentOptions,
@@ -46,6 +65,7 @@ export function StaffOpenAidatReportPage({
   rows,
   apartmentSummary,
   reportLoading,
+  latestUploadBatches,
   runQuery,
   sendStatementEmail,
   clearFilters,
@@ -183,6 +203,46 @@ export function StaffOpenAidatReportPage({
                   </dl>
                 </article>
               ))
+            )}
+          </div>
+
+          <div className="card table-card compact-row-top-gap staff-open-aidat-upload-card">
+            <div className="section-head">
+              <h4>Son 10 Yukleme Kaydi</h4>
+            </div>
+            {latestUploadBatches.length === 0 ? (
+              <p className="small">Yukleme kaydi bulunmuyor.</p>
+            ) : (
+              <div className="table-wrap staff-open-aidat-upload-table-wrap">
+                <table className="apartment-list-table staff-open-aidat-upload-table">
+                  <thead>
+                    <tr>
+                      <th>Yukleme Zamani</th>
+                      <th>Yukleyen</th>
+                      <th>Yukleme Tipi</th>
+                      <th>Dosya</th>
+                      <th className="col-num">Toplam Satir</th>
+                      <th className="col-num">Tahsilat</th>
+                      <th className="col-num">Gider</th>
+                      <th className="col-num">Atlanan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {latestUploadBatches.map((row) => (
+                      <tr key={row.id}>
+                        <td>{formatDateTimeTr(row.uploadedAt)}</td>
+                        <td>{resolveUploadSourceLabel(row)}</td>
+                        <td>{resolveUploadKindLabel(row)}</td>
+                        <td>{row.fileName}</td>
+                        <td className="col-num">{row.totalRows}</td>
+                        <td className="col-num">{row.createdPaymentCount}</td>
+                        <td className="col-num">{row.createdExpenseCount}</td>
+                        <td className="col-num">{row.skippedCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>

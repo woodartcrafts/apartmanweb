@@ -746,6 +746,7 @@ function AdminPage() {
     useState<StaffOpenAidatReportResponse["totals"] | null>(null);
   const [staffOpenAidatApartment, setStaffOpenAidatApartment] =
     useState<StaffOpenAidatReportResponse["apartment"] | null>(null);
+  const [staffOpenAidatLatestUploadRows, setStaffOpenAidatLatestUploadRows] = useState<UploadBatchRow[]>([]);
   const [staffOpenAidatLoading, setStaffOpenAidatLoading] = useState(false);
   const [manualReviewMatchesRows, setManualReviewMatchesRows] = useState<ManualReviewMatchRow[]>([]);
   const [manualReviewMatchesTotalCount, setManualReviewMatchesTotalCount] = useState(0);
@@ -4829,6 +4830,20 @@ function AdminPage() {
     }
   }
 
+  async function fetchStaffOpenAidatLatestUploads(options?: { silent?: boolean }): Promise<void> {
+    const silent = options?.silent ?? false;
+    try {
+      const endpoint = "/api/admin/upload-batches?limit=10&offset=0";
+      const data = await authorizedRequest<UploadBatchRow[]>(endpoint);
+      setStaffOpenAidatLatestUploadRows(data.slice(0, 10));
+    } catch (err) {
+      console.error(err);
+      if (!silent) {
+        setMessage("Son yukleme kayitlari alinamadi");
+      }
+    }
+  }
+
   async function runStaffOpenAidatQuery(
     apartmentId: string,
     options?: { silent?: boolean }
@@ -7801,7 +7816,9 @@ function AdminPage() {
     }
 
     if (path === "/admin/reports/staff-open-aidat") {
-      // Manual-run page: user triggers with button.
+      if (staffOpenAidatLatestUploadRows.length === 0) {
+        void fetchStaffOpenAidatLatestUploads({ silent: true });
+      }
       return;
     }
 
@@ -7946,6 +7963,7 @@ function AdminPage() {
     location.pathname,
     location.search,
     paymentMethodOptions.length,
+    staffOpenAidatLatestUploadRows.length,
     uploadBatchUploaders.length,
   ]);
 
@@ -9883,6 +9901,7 @@ function AdminPage() {
                 totals={staffOpenAidatTotals}
                 apartmentSummary={staffOpenAidatApartment}
                 reportLoading={staffOpenAidatLoading}
+                latestUploadBatches={staffOpenAidatLatestUploadRows}
                 runQuery={runStaffOpenAidatQuery}
                 sendStatementEmail={sendStaffOpenAidatStatementEmail}
                 clearFilters={clearStaffOpenAidatFilters}

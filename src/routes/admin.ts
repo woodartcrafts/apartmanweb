@@ -56,6 +56,14 @@ function parseBooleanEnv(raw: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
+function parsePositiveIntEnv(raw: string | undefined, fallback: number): number {
+  const value = Number(raw ?? fallback);
+  if (!Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return Math.floor(value);
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -130,6 +138,10 @@ function getStatementEmailTransporter(): Transporter {
   const smtpHost = process.env.STATEMENT_EMAIL_SMTP_HOST?.trim() || "smtp.gmail.com";
   const smtpPort = Number(process.env.STATEMENT_EMAIL_SMTP_PORT ?? "465");
   const smtpSecure = parseBooleanEnv(process.env.STATEMENT_EMAIL_SMTP_SECURE, smtpPort === 465);
+  const smtpRequireTls = parseBooleanEnv(process.env.STATEMENT_EMAIL_SMTP_REQUIRE_TLS, false);
+  const connectionTimeoutMs = parsePositiveIntEnv(process.env.STATEMENT_EMAIL_CONNECTION_TIMEOUT_MS, 20_000);
+  const greetingTimeoutMs = parsePositiveIntEnv(process.env.STATEMENT_EMAIL_GREETING_TIMEOUT_MS, 10_000);
+  const socketTimeoutMs = parsePositiveIntEnv(process.env.STATEMENT_EMAIL_SOCKET_TIMEOUT_MS, 20_000);
   const smtpUser =
     process.env.STATEMENT_EMAIL_SMTP_USER?.trim() ||
     config.gmailBankSync.gmailUser?.trim() ||
@@ -147,6 +159,13 @@ function getStatementEmailTransporter(): Transporter {
     host: smtpHost,
     port: Number.isFinite(smtpPort) && smtpPort > 0 ? smtpPort : 465,
     secure: smtpSecure,
+    requireTLS: smtpRequireTls,
+    connectionTimeout: connectionTimeoutMs,
+    greetingTimeout: greetingTimeoutMs,
+    socketTimeout: socketTimeoutMs,
+    tls: {
+      servername: smtpHost,
+    },
     auth: {
       user: smtpUser,
       pass: smtpPass,

@@ -3693,6 +3693,31 @@ button:active:not(:disabled) {
   color: #b33b2f;
 }
 
+.staff-open-aidat-upload-card {
+  width: 100%;
+}
+
+.staff-open-aidat-upload-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.staff-open-aidat-upload-table {
+  min-width: 940px;
+}
+
+.staff-open-aidat-upload-table td,
+.staff-open-aidat-upload-table th {
+  white-space: nowrap;
+}
+
+.staff-open-aidat-upload-table td:nth-child(4),
+.staff-open-aidat-upload-table th:nth-child(4) {
+  white-space: normal;
+  min-width: 260px;
+}
+
 @media (max-width: 760px) {
   .page-mobile-staff-open-aidat .hero,
   .page-mobile-staff-open-aidat .admin-subnav,
