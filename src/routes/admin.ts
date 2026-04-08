@@ -186,10 +186,38 @@ interface SendStatementEmailParams {
 }
 
 async function sendStatementEmail(params: SendStatementEmailParams): Promise<void> {
+  const brevoApiKey = process.env.BREVO_API_KEY?.trim();
+
+  if (brevoApiKey) {
+    // Brevo Transactional Email HTTP API - SMTP port gerektirmez
+    console.log(`[statement-email] Brevo API ile gonderiliyor -> ${params.to.join(", ")}`);
+    const body = JSON.stringify({
+      sender: { name: params.fromName, email: params.from },
+      to: params.to.map((email) => ({ email })),
+      subject: params.subject,
+      htmlContent: params.html,
+      textContent: params.text,
+    });
+    const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": brevoApiKey,
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body,
+    });
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => resp.statusText);
+      throw new Error(`Brevo API hatasi (${resp.status}): ${detail}`);
+    }
+    return;
+  }
+
   const resendApiKey = process.env.RESEND_API_KEY?.trim();
 
   if (resendApiKey) {
-    // Resend HTTP API - SMTP port gerektirmez, Railway dahil her ortamda calısır
+    // Resend HTTP API - SMTP port gerektirmez
     console.log(`[statement-email] Resend API ile gonderiliyor -> ${params.to.join(", ")}`);
     const resend = new Resend(resendApiKey);
     const { error } = await resend.emails.send({
@@ -205,7 +233,7 @@ async function sendStatementEmail(params: SendStatementEmailParams): Promise<voi
     return;
   }
 
-  // Resend API key yoksa nodemailer SMTP kullan (port 587 varsayilan)
+  // API key yoksa nodemailer SMTP kullan (port 587 varsayilan)
   console.log(`[statement-email] SMTP ile gonderiliyor (port ${process.env.STATEMENT_EMAIL_SMTP_PORT ?? "587"}) -> ${params.to.join(", ")}`);
   const transporter = getStatementEmailTransporter();
   await transporter.sendMail({
