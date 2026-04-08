@@ -7788,6 +7788,7 @@ function AdminPage() {
       if (bankTermDepositRows.length === 0) {
         void fetchBankTermDeposits({ silent: true });
       }
+      void fetchStaffOpenAidatLatestUploads({ silent: true });
       return;
     }
 
@@ -8719,6 +8720,46 @@ function AdminPage() {
                           )}
                         </div>
                       </article>
+                    </div>
+
+                    <div className="card table-card compact-row-top-gap staff-open-aidat-upload-card">
+                      <div className="section-head">
+                        <h4>Son 10 Yukleme Kaydi</h4>
+                      </div>
+                      {staffOpenAidatLatestUploadRows.length === 0 ? (
+                        <p className="small">Yukleme kaydi bulunmuyor.</p>
+                      ) : (
+                        <div className="table-wrap staff-open-aidat-upload-table-wrap">
+                          <table className="apartment-list-table staff-open-aidat-upload-table">
+                            <thead>
+                              <tr>
+                                <th>Yukleme Zamani</th>
+                                <th>Yukleyen</th>
+                                <th>Yukleme Tipi</th>
+                                <th>Dosya</th>
+                                <th className="col-num">Toplam Satir</th>
+                                <th className="col-num">Tahsilat</th>
+                                <th className="col-num">Gider</th>
+                                <th className="col-num">Atlanan</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {staffOpenAidatLatestUploadRows.map((row) => (
+                                <tr key={row.id}>
+                                  <td>{formatDateTimeTr(row.uploadedAt)}</td>
+                                  <td>{row.uploadedByName ?? row.uploadedByEmail ?? (row.kind === "GMAIL_AUTO" ? "Otomatik (Gmail)" : "-")}</td>
+                                  <td>{row.kind === "BANK" ? "Banka" : row.kind === "PAYMENT" ? "Tahsilat" : row.kind === "EXPENSE" ? "Gider" : row.kind === "GMAIL_AUTO" ? "Otomatik" : row.kind}</td>
+                                  <td>{row.fileName}</td>
+                                  <td className="col-num">{row.totalRows}</td>
+                                  <td className="col-num">{row.createdPaymentCount}</td>
+                                  <td className="col-num">{row.createdExpenseCount}</td>
+                                  <td className="col-num">{row.skippedCount}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
 
                   </>
@@ -9901,7 +9942,6 @@ function AdminPage() {
                 totals={staffOpenAidatTotals}
                 apartmentSummary={staffOpenAidatApartment}
                 reportLoading={staffOpenAidatLoading}
-                latestUploadBatches={staffOpenAidatLatestUploadRows}
                 runQuery={runStaffOpenAidatQuery}
                 sendStatementEmail={sendStaffOpenAidatStatementEmail}
                 clearFilters={clearStaffOpenAidatFilters}
