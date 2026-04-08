@@ -3589,6 +3589,15 @@ button:active:not(:disabled) {
   text-align: center;
 }
 
+.staff-open-aidat-page .report-summary-grid .stat-card .stat-label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.staff-open-aidat-page .report-summary-grid .stat-card strong {
+  display: block;
+}
+
 .staff-open-aidat-email-trigger:disabled {
   cursor: not-allowed;
   opacity: 0.72;
