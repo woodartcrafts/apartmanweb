@@ -4125,6 +4125,7 @@ function AdminPage() {
           from: targetDate,
           to: targetDate,
           source: "BANK_STATEMENT_UPLOAD" as PaymentSourceFilter,
+          description: "",
         };
 
         setPaymentListFilter(nextFilter);
@@ -5473,6 +5474,7 @@ function AdminPage() {
           from: targetDate,
           to: targetDate,
           source: "BANK_STATEMENT_UPLOAD" as PaymentSourceFilter,
+          description: "",
         };
 
         setPaymentListFilter(nextFilter);
