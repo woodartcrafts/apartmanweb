@@ -8824,6 +8824,7 @@ function AdminPage() {
                     <div className="card table-card compact-row-top-gap staff-open-aidat-upload-card">
                       <div className="section-head">
                         <h4>Son 10 Yukleme Kaydi</h4>
+                        <NavLink to="/upload-batches" className="btn btn-ghost btn-sm">Tüm Kayıtlar →</NavLink>
                       </div>
                       {staffOpenAidatLatestUploadRows.length === 0 ? (
                         <p className="small">Yukleme kaydi bulunmuyor.</p>
@@ -8836,12 +8837,12 @@ function AdminPage() {
                                 <th>Yukleyen</th>
                                 <th>Yukleme Tipi</th>
                                 <th>Dosya</th>
-                                <th className="col-num">Toplam Satir</th>
-                                <th className="col-num">Tahsilat</th>
-                                <th className="col-num">Gider</th>
-                                <th className="col-num">Atlanan</th>
-                                <th className="col-num">Incelenmesi Gereken</th>
-                                <th className="col-num">Siniflandirilamayanlar</th>
+                                <th className="col-num" title="Toplam Satir">Sat.</th>
+                                <th className="col-num" title="Tahsilat">Tah.</th>
+                                <th className="col-num" title="Gider">Gid.</th>
+                                <th className="col-num" title="Atlanan">Atl.</th>
+                                <th className="col-num" title="Incelenmesi Gereken">İnc.</th>
+                                <th className="col-num" title="Siniflandirilamayanlar">Snf.</th>
                               </tr>
                             </thead>
                             <tbody>

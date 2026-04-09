@@ -3738,6 +3738,13 @@ button:active:not(:disabled) {
   width: 100%;
 }
 
+.staff-open-aidat-upload-card .section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .staff-open-aidat-upload-table-wrap {
   width: 100%;
   max-width: 100%;
@@ -3745,7 +3752,7 @@ button:active:not(:disabled) {
 }
 
 .staff-open-aidat-upload-table {
-  min-width: 940px;
+  min-width: 700px;
 }
 
 .staff-open-aidat-upload-table td,

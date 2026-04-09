@@ -21,6 +21,8 @@
     "test:e2e:prepare": "npm run test:e2e:safety && npm run seed:admin && npm run seed:charge-types && npm run seed:expense-items && npm run seed:payment-methods && npm run seed:residents",
     "test:e2e": "npm run test:e2e:safety && npm run test:e2e:prepare && npm run kill:3000 && npm --prefix frontend run kill:5173 && playwright test",
     "test:e2e:headed": "playwright test --headed",
+    "visual:tour": "playwright test --config=playwright.visual.config.ts",
+    "visual:tour:headed": "playwright test --config=playwright.visual.config.ts --headed",
     "test:critical": "npm run test && npm run test:e2e",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
