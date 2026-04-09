@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -748,6 +748,9 @@ function AdminPage() {
   const [staffOpenAidatApartment, setStaffOpenAidatApartment] =
     useState<StaffOpenAidatReportResponse["apartment"] | null>(null);
   const [staffOpenAidatLatestUploadRows, setStaffOpenAidatLatestUploadRows] = useState<UploadBatchRow[]>([]);
+  const [dashUploadExpandedId, setDashUploadExpandedId] = useState<string | null>(null);
+  const [dashUploadDetailsByBatchId, setDashUploadDetailsByBatchId] = useState<Record<string, UploadBatchDetailsResponse>>({});
+  const [dashUploadLoadingId, setDashUploadLoadingId] = useState<string | null>(null);
   const [staffOpenAidatLoading, setStaffOpenAidatLoading] = useState(false);
   const [manualReviewMatchesRows, setManualReviewMatchesRows] = useState<ManualReviewMatchRow[]>([]);
   const [manualReviewMatchesTotalCount, setManualReviewMatchesTotalCount] = useState(0);
@@ -8854,22 +8857,87 @@ function AdminPage() {
                                   : row.kind === "BANK_STATEMENT_UPLOAD"
                                     ? "Banka Ekstresi Upload"
                                     : "Toplu Odeme Upload";
-                                const shortFileName = row.fileName.length > 28 ? row.fileName.slice(0, 26) + "..." : row.fileName;
+
+                                const isExpanded = dashUploadExpandedId === row.id;
+                                const isLoadingThis = dashUploadLoadingId === row.id;
+                                const detail = dashUploadDetailsByBatchId[row.id];
+
+                                async function toggleDashBatch() {
+                                  if (isExpanded) { setDashUploadExpandedId(null); return; }
+                                  setDashUploadExpandedId(row.id);
+                                  if (dashUploadDetailsByBatchId[row.id]) return;
+                                  setDashUploadLoadingId(row.id);
+                                  try {
+                                    const d = await fetchUploadBatchDetails(row.id);
+                                    setDashUploadDetailsByBatchId((prev) => ({ ...prev, [row.id]: d }));
+                                  } finally {
+                                    setDashUploadLoadingId((c) => c === row.id ? null : c);
+                                  }
+                                }
 
                                 return (
-                                  <tr key={row.id}>
-                                    <td>{formatDateTimeTr(row.uploadedAt)}</td>
-                                    <td>{sourceLabel}</td>
-                                    <td>{kindLabel}</td>
-                                    <td title={row.fileName}>{shortFileName}</td>
-                                    <td className="col-num">{row.totalRows}</td>
-                                    <td className="col-num">{row.createdPaymentCount}</td>
-                                    <td className="col-num">{row.createdExpenseCount}</td>
-                                    <td className="col-num">{row.skippedCount}</td>
-                                    <td className="col-num">{row.manualReviewCount > 0 ? row.manualReviewCount : "-"}</td>
-                                    <td className="col-num">{row.unclassifiedCount > 0 ? row.unclassifiedCount : "-"}</td>
-                                    <td className="col-num"><NavLink to={`/upload-batches?highlight=${row.id}`} className="btn btn-ghost upload-row-goto-btn">→</NavLink></td>
-                                  </tr>
+                                  <Fragment key={row.id}>
+                                    <tr>
+                                      <td>{formatDateTimeTr(row.uploadedAt)}</td>
+                                      <td>{sourceLabel}</td>
+                                      <td>{kindLabel}</td>
+                                      <td className="dash-upload-filename" title={row.fileName}>{row.fileName}</td>
+                                      <td className="col-num">{row.totalRows}</td>
+                                      <td className="col-num">{row.createdPaymentCount}</td>
+                                      <td className="col-num">{row.createdExpenseCount}</td>
+                                      <td className="col-num">{row.skippedCount}</td>
+                                      <td className="col-num">{row.manualReviewCount > 0 ? row.manualReviewCount : "-"}</td>
+                                      <td className="col-num">{row.unclassifiedCount > 0 ? row.unclassifiedCount : "-"}</td>
+                                      <td className="col-num">
+                                        <button type="button" className="btn btn-ghost upload-row-goto-btn" disabled={isLoadingThis} onClick={() => void toggleDashBatch()}>
+                                          {isLoadingThis ? "..." : isExpanded ? "▲" : "▼"}
+                                        </button>
+                                      </td>
+                                    </tr>
+                                    {isExpanded && (
+                                      <tr>
+                                        <td colSpan={11} className="dash-upload-detail-cell">
+                                          {isLoadingThis && <p className="small">Yukleniyor...</p>}
+                                          {!isLoadingThis && detail && (() => {
+                                            const payments = [...detail.payments].sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+                                            const expenses = [...detail.expenses].sort((a, b) => new Date(b.spentAt).getTime() - new Date(a.spentAt).getTime());
+                                            const combined = [
+                                              ...payments.map(p => ({ type: "P" as const, id: p.id, date: p.paidAt, amount: p.totalAmount, main: p.apartmentLabels.join(" | ") || "-", ref: p.reference, desc: p.note ?? "-" })),
+                                              ...expenses.map(e => ({ type: "E" as const, id: e.id, date: e.spentAt, amount: -e.amount, main: e.expenseItemName, ref: e.reference, desc: e.description ?? "-" })),
+                                            ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                                            return (
+                                              <div className="table-wrap">
+                                                <table className="apartment-list-table upload-batch-detail-table">
+                                                  <thead>
+                                                    <tr>
+                                                      <th>Tarih</th>
+                                                      <th>Tip</th>
+                                                      <th className="col-num">Tutar</th>
+                                                      <th>Detay</th>
+                                                      <th>Referans</th>
+                                                      <th>Aciklama</th>
+                                                    </tr>
+                                                  </thead>
+                                                  <tbody>
+                                                    {combined.map((e) => (
+                                                      <tr key={`${e.type}-${e.id}`} className={e.type === "E" ? "upload-batch-detail-expense-row" : undefined}>
+                                                        <td>{formatDateTr(e.date)}</td>
+                                                        <td>{e.type === "P" ? "Tahsilat" : "Gider"}</td>
+                                                        <td className="col-num">{formatTry(e.amount)}</td>
+                                                        <td>{e.main}</td>
+                                                        <td><span className="truncate-cell truncate-reference" title={e.ref ?? "-"}>{e.ref ?? "-"}</span></td>
+                                                        <td><span className="truncate-cell truncate-description" title={e.desc}>{e.desc}</span></td>
+                                                      </tr>
+                                                    ))}
+                                                  </tbody>
+                                                </table>
+                                              </div>
+                                            );
+                                          })()}
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </Fragment>
                                 );
                               })}
                             </tbody>
