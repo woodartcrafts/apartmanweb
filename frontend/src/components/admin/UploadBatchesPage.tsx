@@ -1,4 +1,5 @@
-import { Fragment, useState, type Dispatch, type SetStateAction } from "react";
+import { Fragment, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   formatDateTr,
   formatTry,
@@ -63,6 +64,33 @@ export function UploadBatchesPage({
   const [detailsByBatchId, setDetailsByBatchId] = useState<Record<string, UploadBatchDetailsResponse>>({});
   const [detailsErrorByBatchId, setDetailsErrorByBatchId] = useState<Record<string, string>>({});
   const [deletingMovementKey, setDeletingMovementKey] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // ?highlight=<id> → ilgili batch'i otomatik aç ve scrolla
+  useEffect(() => {
+    const highlightId = searchParams.get("highlight");
+    if (!highlightId || uploadBatchRows.length === 0) return;
+    const row = uploadBatchRows.find((r) => r.id === highlightId);
+    if (!row) return;
+    setExpandedBatchId(highlightId);
+    if (!detailsByBatchId[highlightId]) {
+      setDetailsLoadingBatchId(highlightId);
+      fetchUploadBatchDetails(highlightId)
+        .then((details) => setDetailsByBatchId((prev) => ({ ...prev, [highlightId]: details })))
+        .catch((err) => {
+          const text = err instanceof Error ? err.message : "Detaylar alinamadi";
+          setDetailsErrorByBatchId((prev) => ({ ...prev, [highlightId]: text }));
+        })
+        .finally(() => setDetailsLoadingBatchId((c) => (c === highlightId ? null : c)));
+    }
+    // query param'ı temizle (bir kez çalışsın)
+    setSearchParams((p) => { p.delete("highlight"); return p; }, { replace: true });
+    // scroll
+    setTimeout(() => {
+      const el = document.getElementById(`batch-row-${highlightId}`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 300);
+  }, [uploadBatchRows]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function toggleBatchDetails(row: UploadBatchRow): Promise<void> {
     if (expandedBatchId === row.id) {
@@ -229,7 +257,7 @@ export function UploadBatchesPage({
             <tbody>
               {uploadBatchRows.map((row) => (
                 <Fragment key={row.id}>
-                  <tr>
+                  <tr id={`batch-row-${row.id}`}>
                     <td>{formatDateTr(row.uploadedAt)}</td>
                     <td>{isGmailBatch(row) ? "Railway" : row.uploadedByName ?? row.uploadedByEmail ?? "-"}</td>
                     <td>

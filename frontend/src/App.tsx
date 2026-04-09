@@ -8824,7 +8824,6 @@ function AdminPage() {
                     <div className="card table-card compact-row-top-gap staff-open-aidat-upload-card">
                       <div className="section-head">
                         <h4>Son 10 Yukleme Kaydi</h4>
-                        <NavLink to="/upload-batches" className="btn btn-ghost btn-sm">Tüm Kayıtlar →</NavLink>
                       </div>
                       {staffOpenAidatLatestUploadRows.length === 0 ? (
                         <p className="small">Yukleme kaydi bulunmuyor.</p>
@@ -8843,6 +8842,7 @@ function AdminPage() {
                                 <th className="col-num" title="Atlanan">Atl.</th>
                                 <th className="col-num" title="Incelenmesi Gereken">İnc.</th>
                                 <th className="col-num" title="Siniflandirilamayanlar">Snf.</th>
+                                <th className="col-num"></th>
                               </tr>
                             </thead>
                             <tbody>
@@ -8854,19 +8854,21 @@ function AdminPage() {
                                   : row.kind === "BANK_STATEMENT_UPLOAD"
                                     ? "Banka Ekstresi Upload"
                                     : "Toplu Odeme Upload";
+                                const shortFileName = row.fileName.length > 28 ? row.fileName.slice(0, 26) + "..." : row.fileName;
 
                                 return (
                                   <tr key={row.id}>
                                     <td>{formatDateTimeTr(row.uploadedAt)}</td>
                                     <td>{sourceLabel}</td>
                                     <td>{kindLabel}</td>
-                                    <td>{row.fileName}</td>
+                                    <td title={row.fileName}>{shortFileName}</td>
                                     <td className="col-num">{row.totalRows}</td>
                                     <td className="col-num">{row.createdPaymentCount}</td>
                                     <td className="col-num">{row.createdExpenseCount}</td>
                                     <td className="col-num">{row.skippedCount}</td>
                                     <td className="col-num">{row.manualReviewCount > 0 ? row.manualReviewCount : "-"}</td>
                                     <td className="col-num">{row.unclassifiedCount > 0 ? row.unclassifiedCount : "-"}</td>
+                                    <td className="col-num"><NavLink to={`/upload-batches?highlight=${row.id}`} className="btn btn-ghost upload-row-goto-btn">→</NavLink></td>
                                   </tr>
                                 );
                               })}
