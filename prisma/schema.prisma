@@ -422,6 +422,7 @@ model ImportBatch {
   id                  String          @id @default(cuid())
   kind                ImportBatchType
   fileName            String
+  statementClosingBalance Decimal?     @db.Decimal(14, 2)
   uploadedById        String?
   uploadedAt          DateTime        @default(now())
   totalRows           Int             @default(0)

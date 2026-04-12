@@ -515,6 +515,7 @@ function AdminPage() {
   const [expenseDistUploadInputKey, setExpenseDistUploadInputKey] = useState(0);
   const [bankPreviewRows, setBankPreviewRows] = useState<BankStatementPreviewRow[]>([]);
   const [bankPreviewFileName, setBankPreviewFileName] = useState<string>("");
+  const [bankPreviewStatementClosingBalance, setBankPreviewStatementClosingBalance] = useState<number | null>(null);
   const [bankPreviewFilterMissingOnly, setBankPreviewFilterMissingOnly] = useState(false);
   const [bankPreviewFilterSplitOnly, setBankPreviewFilterSplitOnly] = useState(false);
   const [activeBankPreviewFilterKey, setActiveBankPreviewFilterKey] = useState<BankPreviewHeaderFilterKey | null>(null);
@@ -2970,6 +2971,7 @@ function AdminPage() {
     setBankStatementFileInputKey((prev) => prev + 1);
     setBankPreviewRows([]);
     setBankPreviewFileName("");
+    setBankPreviewStatementClosingBalance(null);
     setBankPreviewFilterMissingOnly(false);
     setBankPreviewFilterSplitOnly(false);
     resetBankPreviewHeaderFilters();
@@ -6704,6 +6706,7 @@ function AdminPage() {
     setLastImportInfos([]);
     setLastImportInfoTitle("");
     setLastImportSummary(null);
+    setBankPreviewStatementClosingBalance(null);
     setMessage("Banka ekstresi onizleme icin isleniyor...");
 
     try {
@@ -6724,6 +6727,7 @@ function AdminPage() {
       const result = (await res.json()) as {
         fileName: string;
         totalRows: number;
+        statementClosingBalance: number | null;
         rows: BankStatementPreviewRow[];
       };
 
@@ -6732,6 +6736,7 @@ function AdminPage() {
       setBankPreviewFilterSplitOnly(false);
       resetBankPreviewHeaderFilters();
       setBankPreviewFileName(result.fileName || bankStatementFile.name);
+      setBankPreviewStatementClosingBalance(result.statementClosingBalance ?? null);
 
       const occurredAtTimes = result.rows
         .map((row) => new Date(row.occurredAt).getTime())
@@ -6926,6 +6931,7 @@ function AdminPage() {
     try {
       const payload = {
         fileName: bankPreviewFileName || bankStatementFile?.name || "bank-statement-review",
+        statementClosingBalance: bankPreviewStatementClosingBalance,
         rows: rowsToCommit.map((row) => ({
           occurredAt: row.occurredAt,
           amount: Number(row.amount),
@@ -6974,6 +6980,7 @@ function AdminPage() {
 
       setBankPreviewRows([]);
       setBankPreviewFileName("");
+      setBankPreviewStatementClosingBalance(null);
       setBankStatementFile(null);
       await fetchPaymentList();
       if (activeApartmentId) {
@@ -8549,7 +8556,27 @@ function AdminPage() {
                         }}
                       >
                         <h4>Banka Bakiyesi</h4>
-                        <p>{formatTry(reportsSummary.bankBalance.estimatedBalance)}</p>
+                        <p className="reports-home-balance-value">
+                          <span>{formatTry(reportsSummary.bankBalance.estimatedBalance)}</span>
+                          {reportsSummary.bankBalance.isEstimatedBalanceMatchingLatestStatement === true && (
+                            <span
+                              className="reports-home-balance-match-icon reports-home-balance-match-icon-ok"
+                              title="Ekstre bakiyesi ile uyumlu"
+                              aria-label="Ekstre bakiyesi ile uyumlu"
+                            >
+                              ✓
+                            </span>
+                          )}
+                          {reportsSummary.bankBalance.isEstimatedBalanceMatchingLatestStatement === false && (
+                            <span
+                              className="reports-home-balance-match-icon reports-home-balance-match-icon-bad"
+                              title="Ekstre bakiyesi ile uyumsuz"
+                              aria-label="Ekstre bakiyesi ile uyumsuz"
+                            >
+                              ✕
+                            </span>
+                          )}
+                        </p>
                         <span className="small">
                           Son hareket: {reportsSummary.bankBalance.latestMovementAt ? formatDateTr(reportsSummary.bankBalance.latestMovementAt) : "-"}
                         </span>
@@ -8631,17 +8658,23 @@ function AdminPage() {
 
                     <div className="reports-home-focus-grid compact-row-top-gap">
                       <article className="card table-card reports-home-panel">
-                        <div className="section-head reports-home-panel-head">
+                        <div className="section-head reports-home-panel-head reports-home-expense-panel-head">
                           <h3>En Yuksek 10 Gider Kalemi</h3>
                           <span className="small">Gider Raporuna tikla ac</span>
                         </div>
                         <div className="table-wrap compact-row-top-gap">
-                          <table className="apartment-list-table report-compact-table reports-home-table">
+                          <table className="apartment-list-table report-compact-table reports-home-table reports-home-expense-table">
                             <thead>
                               <tr>
                                 <th>Gider Kalemi</th>
-                                <th>Son Gider Tarihi</th>
-                                <th className="col-num">Islem Adedi</th>
+                                <th>
+                                  <span className="reports-home-expense-date-label-full">Son Gider Tarihi</span>
+                                  <span className="reports-home-expense-date-label-short">Tarih</span>
+                                </th>
+                                <th className="col-num">
+                                  <span className="reports-home-expense-count-label-full">Islem Adedi</span>
+                                  <span className="reports-home-expense-count-label-short">Adet</span>
+                                </th>
                                 <th className="col-num">Toplam Tutar</th>
                               </tr>
                             </thead>
@@ -8681,16 +8714,19 @@ function AdminPage() {
                       </article>
 
                       <article className="card table-card reports-home-panel">
-                        <div className="section-head reports-home-panel-head">
+                        <div className="section-head reports-home-panel-head reports-home-overdue-panel-head">
                           <h3>Gecikenlerde Ilk 10 Daire</h3>
                           <span className="small">Ekstre ekranina tikla ac</span>
                         </div>
                         <div className="table-wrap compact-row-top-gap">
-                          <table className="apartment-list-table report-compact-table reports-home-table">
+                          <table className="apartment-list-table report-compact-table reports-home-table reports-home-overdue-table">
                             <thead>
                               <tr>
                                 <th>Daire</th>
-                                <th className="col-num">Geciken Borc Adedi</th>
+                                <th className="col-num reports-home-overdue-count-col">
+                                  <span className="reports-home-overdue-count-label-full">Geciken Borc Adedi</span>
+                                  <span className="reports-home-overdue-count-label-short">Adet</span>
+                                </th>
                                 <th className="col-num">Toplam Geciken</th>
                               </tr>
                             </thead>
@@ -8832,10 +8868,13 @@ function AdminPage() {
                         <p className="small">Yukleme kaydi bulunmuyor.</p>
                       ) : (
                         <div className="table-wrap staff-open-aidat-upload-table-wrap">
-                          <table className="apartment-list-table staff-open-aidat-upload-table">
+                          <table className="apartment-list-table staff-open-aidat-upload-table reports-home-uploads-table">
                             <thead>
                               <tr>
-                                <th>Yukleme Zamani</th>
+                                <th>
+                                  <span className="reports-home-upload-time-label-full">Yukleme Zamani</span>
+                                  <span className="reports-home-upload-time-label-short">Tarih</span>
+                                </th>
                                 <th>Yukleyen</th>
                                 <th>Yukleme Tipi</th>
                                 <th>Dosya</th>
@@ -8878,9 +8917,14 @@ function AdminPage() {
                                 return (
                                   <Fragment key={row.id}>
                                     <tr>
-                                      <td>{formatDateTimeTr(row.uploadedAt)}</td>
+                                      <td>
+                                        <span className="reports-home-upload-date-full">{formatDateTimeTr(row.uploadedAt)}</span>
+                                        <span className="reports-home-upload-date-short">{formatDateTr(row.uploadedAt)}</span>
+                                      </td>
                                       <td>{sourceLabel}</td>
-                                      <td>{kindLabel}</td>
+                                      <td>
+                                        <span className="reports-home-upload-kind" title={kindLabel}>{kindLabel}</span>
+                                      </td>
                                       <td className="dash-upload-filename" title={row.fileName}>{row.fileName}</td>
                                       <td className="col-num">{row.totalRows}</td>
                                       <td className="col-num">{row.createdPaymentCount}</td>
@@ -8910,23 +8954,23 @@ function AdminPage() {
                                                 <table className="apartment-list-table upload-batch-detail-table">
                                                   <thead>
                                                     <tr>
-                                                      <th>Tarih</th>
-                                                      <th>Tip</th>
-                                                      <th className="col-num">Tutar</th>
-                                                      <th>Detay</th>
-                                                      <th>Referans</th>
-                                                      <th>Aciklama</th>
+                                                      <th className="upload-detail-col-date">Tarih</th>
+                                                      <th className="upload-detail-col-type">Tip</th>
+                                                      <th className="col-num upload-detail-col-amount">Tutar</th>
+                                                      <th className="upload-detail-col-detail">Detay</th>
+                                                      <th className="upload-detail-col-reference">Referans</th>
+                                                      <th className="upload-detail-col-description">Aciklama</th>
                                                     </tr>
                                                   </thead>
                                                   <tbody>
                                                     {combined.map((e) => (
                                                       <tr key={`${e.type}-${e.id}`} className={e.type === "E" ? "upload-batch-detail-expense-row" : undefined}>
-                                                        <td>{formatDateTr(e.date)}</td>
-                                                        <td>{e.type === "P" ? "Tahsilat" : "Gider"}</td>
-                                                        <td className="col-num">{formatTry(e.amount)}</td>
-                                                        <td>{e.main}</td>
-                                                        <td><span className="truncate-cell truncate-reference" title={e.ref ?? "-"}>{e.ref ?? "-"}</span></td>
-                                                        <td><span className="truncate-cell truncate-description" title={e.desc}>{e.desc}</span></td>
+                                                        <td className="upload-detail-col-date">{formatDateTr(e.date)}</td>
+                                                        <td className="upload-detail-col-type">{e.type === "P" ? "Tahsilat" : "Gider"}</td>
+                                                        <td className="col-num upload-detail-col-amount">{formatTry(e.amount)}</td>
+                                                        <td className="upload-detail-col-detail"><span className="truncate-cell truncate-detail" title={e.main}>{e.main}</span></td>
+                                                        <td className="upload-detail-col-reference"><span className="truncate-cell truncate-reference" title={e.ref ?? "-"}>{e.ref ?? "-"}</span></td>
+                                                        <td className="upload-detail-col-description"><span className="truncate-cell truncate-description" title={e.desc}>{e.desc}</span></td>
                                                       </tr>
                                                     ))}
                                                   </tbody>
@@ -14294,7 +14338,7 @@ function App() {
                 Kullanim Kilavuzu
               </NavLink>
             )}
-            <button className="btn btn-ghost" type="button" onClick={openCurrentScreenInNewTab}>
+            <button className="btn btn-ghost hero-new-screen-btn" type="button" onClick={openCurrentScreenInNewTab}>
               Yeni Ekran Ac
             </button>
             <span className={user.role === "RESIDENT" ? "resident-user-line" : "small"}>

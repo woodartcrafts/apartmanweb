@@ -519,6 +519,8 @@ export type ReportsSummaryResponse = {
   snapshotAt: string;
   bankBalance: {
     estimatedBalance: number;
+    latestStatementClosingBalance: number | null;
+    isEstimatedBalanceMatchingLatestStatement: boolean | null;
     totalBankIn: number;
     totalBankOut: number;
     latestMovementAt: string | null;

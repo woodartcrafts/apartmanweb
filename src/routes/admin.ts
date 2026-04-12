@@ -1391,6 +1391,7 @@ type UploadPaymentRow = {
 type BankStatementRow = {
   occurredAt: Date;
   amount: number;
+  runningBalance?: number;
   description: string;
   reference?: string;
   txType?: string;
@@ -2003,6 +2004,12 @@ async function parseBankStatementRows(file: Express.Multer.File): Promise<BankSt
     "deposit",
     "tahsilat",
   ]);
+  const balanceHeaderKeys = new Set([
+    "bakiye",
+    "balance",
+    "kalanbakiye",
+    "hesapbakiyesi",
+  ]);
 
   const headerIndex = rows.findIndex((row) => {
     const cells = row.map((cell) => normalizeHeader(String(cell ?? "")));
@@ -2023,6 +2030,7 @@ async function parseBankStatementRows(file: Express.Multer.File): Promise<BankSt
   const debitCol = headerRow.findIndex((h) => debitHeaderKeys.has(h));
   const creditCol = headerRow.findIndex((h) => creditHeaderKeys.has(h));
   const descCol = headerRow.findIndex((h) => descriptionHeaderKeys.has(h));
+  const balanceCol = headerRow.findIndex((h) => balanceHeaderKeys.has(h) || h.includes("bakiye"));
   const refCol = headerRow.findIndex(
     (h) => h === "referans" || h === "reference" || h === "dekontno" || h === "islemno" || h === "fisno"
   );
@@ -2048,6 +2056,7 @@ async function parseBankStatementRows(file: Express.Multer.File): Promise<BankSt
       amount = Math.abs(net) > 0.0001 ? net : null;
     }
     const description = String(row[descCol] ?? "").trim();
+    const runningBalance = balanceCol >= 0 ? parseSignedAmount(row[balanceCol]) : null;
     const reference = refCol >= 0 ? String(row[refCol] ?? "").trim() : "";
     const txType = txTypeCol >= 0 ? String(row[txTypeCol] ?? "").trim() : "";
 
@@ -2058,6 +2067,7 @@ async function parseBankStatementRows(file: Express.Multer.File): Promise<BankSt
     parsedRows.push({
       occurredAt,
       amount,
+      runningBalance: runningBalance ?? undefined,
       description,
       reference: reference || undefined,
       txType: txType || undefined,
@@ -2065,6 +2075,28 @@ async function parseBankStatementRows(file: Express.Multer.File): Promise<BankSt
   }
 
   return parsedRows;
+}
+
+function extractStatementClosingBalance(rows: Array<{ occurredAt: Date; runningBalance?: number }>): number | null {
+  let latestTime = -1;
+  let latestIndex = -1;
+  let latestBalance: number | null = null;
+
+  for (let idx = 0; idx < rows.length; idx += 1) {
+    const row = rows[idx];
+    if (!Number.isFinite(row.runningBalance)) {
+      continue;
+    }
+
+    const rowTime = row.occurredAt.getTime();
+    if (rowTime > latestTime || (rowTime === latestTime && idx > latestIndex)) {
+      latestTime = rowTime;
+      latestIndex = idx;
+      latestBalance = Number(Number(row.runningBalance).toFixed(2));
+    }
+  }
+
+  return latestBalance;
 }
 
 function derivePaymentMethod(txType?: string): PaymentMethod {
@@ -2455,6 +2487,7 @@ function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] 
     }
 
     const secondAmount = amountCandidates[1];
+    const runningBalance = secondAmount ? parseSignedAmount(secondAmount[0]) : null;
     const descriptionStartIndex = secondAmount
       ? (secondAmount.index ?? -1) + secondAmount[0].length
       : (amountCandidates[0].index ?? -1) + rawAmount.length;
@@ -2472,6 +2505,7 @@ function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] 
     rows.push({
       occurredAt,
       amount: signedAmount,
+      runningBalance: runningBalance ?? undefined,
       description,
     });
   }
@@ -2911,6 +2945,7 @@ export async function runGmailBankSync(uploadedById?: string): Promise<{
       }
 
       const parsedRows = await parseBankStatementRowsFromPdfBuffer(attachment.data);
+      const statementClosingBalance = extractStatementClosingBalance(parsedRows);
       const filteredRows = config.gmailBankSync.importOnlyIncoming
         ? parsedRows.filter((row) => row.amount > 0)
         : parsedRows;
@@ -2935,6 +2970,7 @@ export async function runGmailBankSync(uploadedById?: string): Promise<{
       const result = await processBankStatementImport({
         rows: commitRows,
         fileName: importFileName,
+        statementClosingBalance,
         uploadedById,
       });
 
@@ -2966,9 +3002,10 @@ export async function runGmailBankSync(uploadedById?: string): Promise<{
 async function processBankStatementImport(params: {
   rows: BankStatementCommitRow[];
   fileName: string;
+  statementClosingBalance?: number | null;
   uploadedById?: string;
 }) {
-  const { rows, fileName, uploadedById } = params;
+  const { rows, fileName, statementClosingBalance, uploadedById } = params;
   const uncategorizedExpenseCode = "SINIFLANDIRILAMAYAN_GIDERLER";
   const uncategorizedExpenseName = "Siniflandirilamayan Giderler";
   const uncategorizedCollectionCode = "SINIFLANDIRILAMAYAN_TAHSILATLAR";
@@ -2978,6 +3015,10 @@ async function processBankStatementImport(params: {
     data: {
       kind: ImportBatchType.BANK_STATEMENT_UPLOAD,
       fileName,
+      statementClosingBalance:
+        Number.isFinite(statementClosingBalance) && statementClosingBalance !== null
+          ? Number(statementClosingBalance.toFixed(2))
+          : null,
       uploadedById,
       totalRows: rows.length,
     },
@@ -7083,6 +7124,7 @@ router.post("/bank-statement/preview", upload.single("file"), async (req, res) =
   }
 
   const rows = await parseBankStatementRows(req.file);
+  const statementClosingBalance = extractStatementClosingBalance(rows);
   if (rows.length === 0) {
     return res.status(400).json({ message: "No valid bank statement rows found" });
   }
@@ -7143,6 +7185,7 @@ router.post("/bank-statement/preview", upload.single("file"), async (req, res) =
   return res.json({
     fileName: req.file.originalname,
     totalRows: rows.length,
+    statementClosingBalance,
     rows: previewRows,
   });
 });
@@ -7194,6 +7237,7 @@ router.post("/bank-statement/commit", async (req, res) => {
 
     const commitSchema = z.object({
       fileName: z.string().min(1).optional(),
+      statementClosingBalance: z.number().finite().optional().nullable(),
       rows: z
         .array(
           z.object({
@@ -7235,6 +7279,7 @@ router.post("/bank-statement/commit", async (req, res) => {
     const result = await processBankStatementImport({
       rows: commitRows,
       fileName: parsed.data.fileName ?? "bank-statement-review",
+      statementClosingBalance: parsed.data.statementClosingBalance,
       uploadedById: req.user?.userId,
     });
 
@@ -7259,6 +7304,7 @@ router.post("/bank-statement/import", upload.single("file"), async (req, res) =>
     await ensurePaymentMethodDefinitions();
 
     const rows = await parseBankStatementRows(req.file);
+    const statementClosingBalance = extractStatementClosingBalance(rows);
     if (rows.length === 0) {
       return res.status(400).json({ message: "No valid bank statement rows found" });
     }
@@ -7276,6 +7322,7 @@ router.post("/bank-statement/import", upload.single("file"), async (req, res) =>
     const result = await processBankStatementImport({
       rows: commitRows,
       fileName: req.file.originalname,
+      statementClosingBalance,
       uploadedById: req.user?.userId,
     });
 
@@ -8073,6 +8120,51 @@ router.get("/reports/summary", async (_req, res) => {
   const next30Days = new Date(now);
   next30Days.setDate(next30Days.getDate() + 30);
 
+  const fetchLatestUploadBatchesForSummary = async () => {
+    try {
+      return await prisma.importBatch.findMany({
+        orderBy: [{ uploadedAt: "desc" }],
+        take: 10,
+        select: {
+          id: true,
+          kind: true,
+          fileName: true,
+          statementClosingBalance: true,
+          uploadedAt: true,
+          totalRows: true,
+          createdPaymentCount: true,
+          createdExpenseCount: true,
+          skippedCount: true,
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      const missingBalanceColumn =
+        message.includes("statementClosingBalance") || message.includes("P2022") || message.includes("column");
+      if (!missingBalanceColumn) {
+        throw err;
+      }
+
+      console.warn("[reports-summary] statementClosingBalance column unavailable, falling back", err);
+      const legacyRows = await prisma.importBatch.findMany({
+        orderBy: [{ uploadedAt: "desc" }],
+        take: 10,
+        select: {
+          id: true,
+          kind: true,
+          fileName: true,
+          uploadedAt: true,
+          totalRows: true,
+          createdPaymentCount: true,
+          createdExpenseCount: true,
+          skippedCount: true,
+        },
+      });
+
+      return legacyRows.map((row) => ({ ...row, statementClosingBalance: null }));
+    }
+  };
+
   const [
     apartmentCount,
     residentCount,
@@ -8135,20 +8227,7 @@ router.get("/reports/summary", async (_req, res) => {
       orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
       select: { spentAt: true },
     }),
-    prisma.importBatch.findMany({
-      orderBy: [{ uploadedAt: "desc" }],
-      take: 10,
-      select: {
-        id: true,
-        kind: true,
-        fileName: true,
-        uploadedAt: true,
-        totalRows: true,
-        createdPaymentCount: true,
-        createdExpenseCount: true,
-        skippedCount: true,
-      },
-    }),
+    fetchLatestUploadBatchesForSummary(),
     prisma.expense.groupBy({
       by: ["expenseItemId"],
       _sum: { amount: true },
@@ -8455,10 +8534,25 @@ router.get("/reports/summary", async (_req, res) => {
     unclassifiedCount: summaryUnclassifiedCountMap[b.id] ?? 0,
   }));
 
+  const latestBankStatementBatch = latestUploadBatchesWithReview.find(
+    (batch) => batch.kind === ImportBatchType.BANK_STATEMENT_UPLOAD
+  );
+  const latestStatementClosingBalance =
+    latestBankStatementBatch && latestBankStatementBatch.statementClosingBalance !== null
+      ? Number(Number(latestBankStatementBatch.statementClosingBalance).toFixed(2))
+      : null;
+  const estimatedBankBalanceRounded = Number(estimatedBankBalance.toFixed(2));
+  const isEstimatedBalanceMatchingLatestStatement =
+    latestStatementClosingBalance !== null
+      ? Math.abs(estimatedBankBalanceRounded - latestStatementClosingBalance) <= 0.01
+      : null;
+
   return res.json({
     snapshotAt: now,
     bankBalance: {
-      estimatedBalance: Number(estimatedBankBalance.toFixed(2)),
+      estimatedBalance: estimatedBankBalanceRounded,
+      latestStatementClosingBalance,
+      isEstimatedBalanceMatchingLatestStatement,
       totalBankIn: Number(bankInTotal.toFixed(2)),
       totalBankOut: Number(bankOutTotal.toFixed(2)),
       latestMovementAt: latestBankMovementAt,
