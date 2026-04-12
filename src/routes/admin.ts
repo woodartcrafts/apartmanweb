@@ -3006,6 +3006,10 @@ async function processBankStatementImport(params: {
   uploadedById?: string;
 }) {
   const { rows, fileName, statementClosingBalance, uploadedById } = params;
+  const normalizedStatementClosingBalance =
+    typeof statementClosingBalance === "number" && Number.isFinite(statementClosingBalance)
+      ? Number(statementClosingBalance.toFixed(2))
+      : null;
   const uncategorizedExpenseCode = "SINIFLANDIRILAMAYAN_GIDERLER";
   const uncategorizedExpenseName = "Siniflandirilamayan Giderler";
   const uncategorizedCollectionCode = "SINIFLANDIRILAMAYAN_TAHSILATLAR";
@@ -3015,10 +3019,7 @@ async function processBankStatementImport(params: {
     data: {
       kind: ImportBatchType.BANK_STATEMENT_UPLOAD,
       fileName,
-      statementClosingBalance:
-        Number.isFinite(statementClosingBalance) && statementClosingBalance !== null
-          ? Number(statementClosingBalance.toFixed(2))
-          : null,
+      statementClosingBalance: normalizedStatementClosingBalance,
       uploadedById,
       totalRows: rows.length,
     },
