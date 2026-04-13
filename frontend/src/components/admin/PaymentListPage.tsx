@@ -1,4 +1,4 @@
-import { useMemo, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import {
   formatDateTimeTr,
   formatDateTr,
@@ -134,6 +134,15 @@ export function PaymentListPage({
   deletePaymentListRow,
 }: PaymentListPageProps) {
   const [headerFilters, setHeaderFilters] = useState<PaymentListHeaderFilterState>(initialHeaderFilters);
+  const editFormRef = useRef<HTMLFormElement | null>(null);
+
+  useEffect(() => {
+    if (!editingPaymentListId || !editFormRef.current) {
+      return;
+    }
+
+    editFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [editingPaymentListId]);
 
   const headerFilterOptions = useMemo(() => {
     const paidAtOptions = buildSortedUniqueOptions(paymentListRows.map((row) => formatDateTr(row.paidAt)));
@@ -246,7 +255,7 @@ export function PaymentListPage({
           </label>
         </div>
         {editingPaymentListId && (
-          <form className="admin-form" onSubmit={submitPaymentListRowEdit}>
+          <form ref={editFormRef} className="admin-form" onSubmit={submitPaymentListRowEdit}>
             <h4>Secili Tahsilat Satirini Duzenle</h4>
             <div className="compact-row">
               <label>

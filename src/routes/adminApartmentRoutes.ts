@@ -1115,5 +1115,60 @@ export function createAdminApartmentRoutes(deps: ApartmentRoutesDeps): Router {
     return res.status(204).send();
   });
 
+  // PATCH /apartments/:apartmentId/contact — sadece iletisim bilgilerini guncelle
+  router.patch("/apartments/:apartmentId/contact", async (req, res) => {
+    const { apartmentId } = req.params;
+
+    const contactSchema = z.object({
+      email1: z.string().max(120).nullable().optional(),
+      email2: z.string().max(120).nullable().optional(),
+      email3: z.string().max(120).nullable().optional(),
+      email4: z.string().max(120).nullable().optional(),
+      phone1: z.string().max(40).nullable().optional(),
+      phone2: z.string().max(40).nullable().optional(),
+      phone3: z.string().max(40).nullable().optional(),
+      phone4: z.string().max(40).nullable().optional(),
+    });
+
+    const parsed = contactSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Gecersiz veri", errors: parsed.error.issues });
+    }
+
+    const existing = await prisma.apartment.findUnique({
+      where: { id: apartmentId },
+      select: { id: true },
+    });
+    if (!existing) {
+      return res.status(404).json({ message: "Daire bulunamadi" });
+    }
+
+    const data: Record<string, string | null> = {};
+    for (const [key, val] of Object.entries(parsed.data)) {
+      if (val !== undefined) {
+        data[key] = val?.trim() || null;
+      }
+    }
+
+    const updated = await prisma.apartment.update({
+      where: { id: apartmentId },
+      data,
+      select: {
+        id: true,
+        doorNo: true,
+        email1: true,
+        email2: true,
+        email3: true,
+        email4: true,
+        phone1: true,
+        phone2: true,
+        phone3: true,
+        phone4: true,
+      },
+    });
+
+    return res.json(updated);
+  });
+
   return router;
 }

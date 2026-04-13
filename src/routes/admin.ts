@@ -853,6 +853,16 @@ function withManualReconcileLock(note: string | null | undefined, locked: boolea
   return base.join(" | ");
 }
 
+function isSystemPreallocatedManualReview(note: string | null | undefined): boolean {
+  if (!note) {
+    return false;
+  }
+
+  return parsePaymentNoteParts(note).some(
+    (part) => part.trim().toUpperCase() === "MANUAL_REVIEW:PREALLOCATED_TO_APARTMENT"
+  );
+}
+
 type MixedPaymentReportRow = {
   paymentId: string;
   paidAt: Date;
@@ -1026,7 +1036,7 @@ async function reconcileApartmentPaymentLinks(apartmentId: string): Promise<Reco
   let skippedLockedPaymentCount = 0;
 
   for (const payment of linkedPayments) {
-    if (hasManualReconcileLock(payment.note)) {
+    if (hasManualReconcileLock(payment.note) && !isSystemPreallocatedManualReview(payment.note)) {
       skippedLockedPaymentCount += 1;
       continue;
     }
@@ -1061,7 +1071,7 @@ async function reconcileApartmentPaymentLinks(apartmentId: string): Promise<Reco
 
   const linkedPaymentIdSet = new Set(paymentSources.map((x) => x.paymentId));
   for (const payment of unappliedDoorPayments) {
-    if (hasManualReconcileLock(payment.note)) {
+    if (hasManualReconcileLock(payment.note) && !isSystemPreallocatedManualReview(payment.note)) {
       skippedLockedPaymentCount += 1;
       continue;
     }
@@ -9972,6 +9982,8 @@ router.put("/charges/:chargeId", async (req, res) => {
     },
     include: { chargeType: true },
   });
+
+  await reconcileApartmentPaymentLinks(updated.apartmentId);
 
   return res.json({
     id: updated.id,

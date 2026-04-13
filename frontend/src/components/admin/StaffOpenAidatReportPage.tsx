@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from "react";
+import { NavLink } from "react-router-dom";
 import {
   formatDateTr,
   formatTry,
@@ -102,6 +103,12 @@ export function StaffOpenAidatReportPage({
 
   return (
     <section className="dashboard report-page staff-open-aidat-page">
+      <div className="mobile-app-name-bar">ApartmanWeb MVP</div>
+      <div className="mobile-return-nav">
+        <NavLink className="btn btn-ghost" to="/admin/reports/staff-mobile-home">
+          Mobil Ana Sayfaya Don
+        </NavLink>
+      </div>
       <div className="card table-card report-page-card staff-open-aidat-card-shell" aria-busy={reportLoading}>
         <div className="section-head report-toolbar">
           <h3>Gorevli Mobil Acik Borc Raporu</h3>
