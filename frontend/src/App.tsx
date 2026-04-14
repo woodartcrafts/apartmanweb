@@ -8735,9 +8735,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <NavLink className="btn btn-ghost" to="/admin/payments/list">
               Tahsilat Raporu
             </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/reports/apartments/list">
-              Daire Listesi
-            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/overdue-payments">
               Gecikmis Odemeler
             </NavLink>
