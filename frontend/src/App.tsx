@@ -3512,8 +3512,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       }
       if (res.status === 403) {
         const deniedMessage = errorBody.message ?? "Bu sayfa veya islem icin yetkiniz yok";
-        setToastMessage(deniedMessage);
-        setMessage(deniedMessage);
 
         const currentPermissionKey = menuPathToPermissionKey(location.pathname);
         const currentPageVisible = currentPermissionKey
@@ -3528,6 +3526,12 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
           }
         }
 
+        if (method === "GET") {
+          throw new Silent403Error(deniedMessage);
+        }
+
+        setToastMessage(deniedMessage);
+        setMessage(deniedMessage);
         throw new Error(deniedMessage);
       }
       if (res.status === 413) {
@@ -3608,6 +3612,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         return { ...prev, blockName: sorted[0].name };
       });
     } catch (err) {
+      if (err instanceof Silent403Error) return;
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Blok listesi alinamadi");
     }
@@ -3645,6 +3650,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       const sorted = [...data].sort((a, b) => a.name.localeCompare(b.name, "tr"));
       setApartmentTypeOptions(sorted);
     } catch (err) {
+      if (err instanceof Silent403Error) return;
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Daire tipleri alinamadi");
     }
@@ -3671,6 +3677,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         };
       });
     } catch (err) {
+      if (err instanceof Silent403Error) return;
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Daire gorevleri alinamadi");
     }
@@ -3731,6 +3738,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         }));
       }
     } catch (err) {
+      if (err instanceof Silent403Error) return;
       console.error(err);
       setMessage("Tahakkuk tipleri alinamadi");
     }
@@ -3746,6 +3754,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         // Payment form defaults are managed in PaymentEntryPage local state.
       }
     } catch (err) {
+      if (err instanceof Silent403Error) return;
       console.error(err);
       setMessage("Odeme araclari alinamadi");
     }
@@ -3756,6 +3765,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       const data = await authorizedRequest<{ buildingName: string | null }>("/api/admin/building-profile");
       setWelcomeBuildingName((data.buildingName ?? "").trim());
     } catch (err) {
+      if (err instanceof Silent403Error) return;
       console.error(err);
       setWelcomeBuildingName("");
     }
@@ -3771,6 +3781,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         // Expense form defaults are managed in ExpenseEntryPage local state.
       }
     } catch (err) {
+      if (err instanceof Silent403Error) return;
       console.error(err);
       setMessage("Gider kalemleri alinamadi");
     }
@@ -4675,6 +4686,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       const data = await authorizedRequest<UploadBatchUploader[]>("/api/admin/upload-batches/uploaders");
       setUploadBatchUploaders(data);
     } catch (err) {
+      if (err instanceof Silent403Error) return;
       console.error(err);
       setMessage("Yukleme yapan kullanicilar alinamadi");
     }
@@ -4710,6 +4722,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       const data = await authorizedRequest<UploadBatchRow[]>(endpoint);
       setUploadBatchRows(data);
     } catch (err) {
+      if (err instanceof Silent403Error) return;
       console.error(err);
       if (!silent) {
         setMessage("Yukleme kayitlari alinamadi");
@@ -14587,6 +14600,14 @@ function ResidentPage({
       <footer className="status-bar status-bar-fixed">{message}</footer>
     </section>
   );
+}
+
+class Silent403Error extends Error {
+  readonly isSilent403 = true;
+  constructor(message?: string) {
+    super(message);
+    this.name = "Silent403Error";
+  }
 }
 
 function App() {
