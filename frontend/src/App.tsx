@@ -1071,7 +1071,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/expenses/new": "EXPENSES_NEW_CREATE",
       "/admin/expenses/report": "EXPENSES_REPORT_LIST",
       "/admin/reports": "REPORTS_SUMMARY",
-      "/admin/reports/staff-mobile-home": "REPORTS_STAFF_MOBILE_HOME",
       "/admin/reports/overdue-payments": "REPORTS_OVERDUE",
       "/admin/reports/staff-open-aidat": "REPORTS_STAFF_OPEN_AIDAT",
       "/admin/reports/staff-contact-edit": "APT_EDIT",
@@ -1113,7 +1112,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
     const candidates: Array<{ path: string; key: AdminPageKey }> = [
       { path: "/admin/reports", key: "REPORTS_SUMMARY" },
-      { path: "/admin/reports/staff-mobile-home", key: "REPORTS_STAFF_MOBILE_HOME" },
       { path: "/admin/reports/overdue-payments", key: "REPORTS_OVERDUE" },
       { path: "/admin/reports/staff-open-aidat", key: "REPORTS_STAFF_OPEN_AIDAT" },
       { path: "/admin/reports/staff-contact-edit", key: "APT_EDIT" },
@@ -8720,9 +8718,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <NavLink className="btn btn-ghost" to="/admin/reports">
               Rapor Ana Sayfa
             </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/reports/staff-mobile-home">
-              Gorevli ve Yonetici Mobil
-            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/expenses/report">
               Gider Raporu
             </NavLink>
@@ -8856,9 +8851,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
           element={
             <section className="dashboard report-page reports-home">
               <div className="mobile-return-nav">
-                <NavLink className="btn btn-ghost" to="/admin/reports/staff-mobile-home">
-                  Mobil Ana Sayfaya Don
-                </NavLink>
               </div>
               <div className="card table-card report-page-card">
                 <div className="section-head report-toolbar">
@@ -10491,30 +10483,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 </div>
               </div>
 
-            </section>
-          }
-        />
-        <Route
-          path="/reports/staff-mobile-home"
-          element={
-            <section className="dashboard report-page staff-mobile-links-page">
-              <div className="mobile-app-name-bar">ApartmanWeb MVP</div>
-              <div className="card table-card report-page-card staff-mobile-links-card">
-                <div className="section-head report-toolbar">
-                  <h3>Gorevli ve Yonetici Mobil</h3>
-                </div>
-                <div className="staff-mobile-links-actions">
-                  <NavLink className="btn btn-primary staff-mobile-link-btn" to="/admin/reports">
-                    Genel Rapor
-                  </NavLink>
-                  <NavLink className="btn btn-primary staff-mobile-link-btn" to="/admin/reports/staff-open-aidat">
-                    Daire Acik Borc
-                  </NavLink>
-                  <NavLink className="btn btn-primary staff-mobile-link-btn" to="/admin/reports/staff-contact-edit">
-                    Daire Iletisim
-                  </NavLink>
-                </div>
-              </div>
             </section>
           }
         />
@@ -14755,9 +14723,8 @@ function App() {
   }
 
   const isStaffOpenAidatRoute = location.pathname === "/admin/reports/staff-open-aidat";
-  const isStaffMobileHomeRoute = location.pathname === "/admin/reports/staff-mobile-home";
   const isStaffContactEditRoute = location.pathname === "/admin/reports/staff-contact-edit";
-  const isMobileStaffRoute = isStaffOpenAidatRoute || isStaffMobileHomeRoute || isStaffContactEditRoute;
+  const isMobileStaffRoute = isStaffOpenAidatRoute || isStaffContactEditRoute;
 
   return (
     <div className={`page${isMobileStaffRoute ? " page-mobile-staff-open-aidat" : ""}`}>
