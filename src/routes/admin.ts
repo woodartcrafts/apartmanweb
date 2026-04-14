@@ -374,6 +374,24 @@ router.use(async (req, res, next) => {
       return next();
     }
 
+    // GET lookup endpoints: dropdown verisi olarak her sayfa tarafından kullanılır,
+    // yönetim izninden bağımsız olarak tüm adminlere açık olmalı.
+    const LOOKUP_PREFIXES = [
+      "/apartment-duties",
+      "/apartment-classes",
+      "/apartment-types",
+      "/blocks",
+      "/building-profile",
+      "/building-info",
+      "/payment-methods",
+      "/expense-items",
+      "/charge-types",
+      "/upload-batches/uploaders",
+    ];
+    if (req.method === "GET" && LOOKUP_PREFIXES.some((p) => req.path.startsWith(p))) {
+      return next();
+    }
+
     const permissionMap = normalizeAdminPermissionMap(actor.adminPagePermissions);
     const pageKey = mapRequestPathToAdminPage(req.path, req.method);
     const action = mapRequestMethodToAdminAction(req.method);
