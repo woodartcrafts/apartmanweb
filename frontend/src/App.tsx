@@ -14678,7 +14678,10 @@ function App() {
 
       const data = (await res.json()) as LoginResponse;
       setUser(data.user);
-      localStorage.setItem(userStorageKey, JSON.stringify(data.user));
+      // adminPagePermissions localStorage'a yazılmaz: backend her istekte zaten
+      // DB'den kontrol eder; istemci tarafında izin yapısını açığa çıkarmaya gerek yok.
+      const { adminPagePermissions: _dropped, ...userForStorage } = data.user;
+      localStorage.setItem(userStorageKey, JSON.stringify(userForStorage));
       setAuthMessage(`Hos geldin ${data.user.fullName}`);
       navigate(data.user.role === "ADMIN" ? "/admin/reports" : "/resident");
     } catch (err) {

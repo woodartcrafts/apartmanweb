@@ -127,11 +127,13 @@ router.post("/login", loginRateLimiter, async (req, res) => {
   }
 
   if (!user) {
+    console.warn(`[auth] Basarisiz giris: kullanici bulunamadi ip=${req.ip ?? "-"} at=${new Date().toISOString()}`);
     return res.status(401).json({ message: "Invalid credentials" });
   }
 
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) {
+    console.warn(`[auth] Basarisiz giris: yanlis sifre ip=${req.ip ?? "-"} at=${new Date().toISOString()}`);
     return res.status(401).json({ message: "Invalid credentials" });
   }
 

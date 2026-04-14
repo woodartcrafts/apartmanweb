@@ -37,7 +37,19 @@ import {
 } from "./adminNoteUtils";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const ALLOWED_UPLOAD_EXTENSIONS = [".xlsx", ".xls", ".csv", ".txt", ".pdf"] as const;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const lower = file.originalname.toLowerCase();
+    if (ALLOWED_UPLOAD_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+      cb(null, true);
+    } else {
+      cb(new Error("Gecersiz dosya tipi. Kabul edilen uzantilar: xlsx, xls, csv, txt, pdf"));
+    }
+  },
+});
 let statementEmailTransporter: Transporter | null = null;
 let statementEmailDnsOrderInitialized = false;
 

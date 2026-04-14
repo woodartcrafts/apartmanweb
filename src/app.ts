@@ -18,7 +18,12 @@ app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) {
-        callback(null, true);
+        // Origin header'siz istekler (curl, server-side): sadece dev ortamında izin ver
+        if (process.env.NODE_ENV !== "production") {
+          callback(null, true);
+        } else {
+          callback(new Error("CORS origin is not allowed"));
+        }
         return;
       }
 
@@ -33,8 +38,8 @@ app.use(
   })
 );
 app.use(cookieParser());
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(morgan("dev"));
 app.use(express.static(path.resolve(process.cwd(), "public"), { index: false }));
 

@@ -315,7 +315,19 @@ async function parseApartmentUploadRows(file: Express.Multer.File): Promise<Apar
 
 export function createAdminApartmentUploadRoutes(deps: ApartmentUploadRoutesDeps): Router {
   const router = Router();
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+  const ALLOWED_UPLOAD_EXTENSIONS = [".xlsx", ".xls", ".csv", ".txt", ".pdf"] as const;
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const lower = file.originalname.toLowerCase();
+      if (ALLOWED_UPLOAD_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+        cb(null, true);
+      } else {
+        cb(new Error("Gecersiz dosya tipi. Kabul edilen uzantilar: xlsx, xls, csv, txt, pdf"));
+      }
+    },
+  });
 
   router.get("/apartments/upload-template", async (_req, res) => {
     const workbook = new ExcelJS.Workbook();

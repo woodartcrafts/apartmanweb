@@ -40,7 +40,7 @@ router.get("/me/statement", async (req, res) => {
   });
 });
 
-router.get("/me/expenses-report", async (req, res) => {
+router.get("/me/expenses-report", requireRole([UserRole.ADMIN]), async (req, res) => {
   const querySchema = z.object({
     from: z.string().datetime().optional(),
     to: z.string().datetime().optional(),
