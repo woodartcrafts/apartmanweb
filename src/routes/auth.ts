@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { config } from "../config";
 import { prisma } from "../db";
 import { normalizeAdminPermissionMap } from "../utils/adminPermissions";
@@ -89,7 +90,8 @@ router.post("/login", loginRateLimiter, async (req, res) => {
   const rawIdentifier = (parsed.data.identifier ?? parsed.data.email ?? "").trim();
   const normalizedIdentifier = rawIdentifier.toLowerCase();
 
-  let user: Awaited<ReturnType<typeof prisma.user.findFirst>> | null = null;
+  type UserWithApartment = Prisma.UserGetPayload<{ include: { apartment: { select: { doorNo: true } } } }>;
+  let user: UserWithApartment | null = null;
 
   if (normalizedIdentifier.includes("@")) {
     user = await prisma.user.findFirst({
