@@ -14569,6 +14569,14 @@ class Silent403Error extends Error {
   }
 }
 
+// Silent403Error console'a yazılmasın — bu hatalar izin eksikliğinden kaynaklanır, kullanıcıya gösterilmez
+const _origConsoleError = console.error.bind(console);
+// eslint-disable-next-line no-console
+console.error = (...args: unknown[]) => {
+  if (args.length > 0 && args[0] instanceof Silent403Error) return;
+  _origConsoleError(...args);
+};
+
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
