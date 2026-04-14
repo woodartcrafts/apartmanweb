@@ -8678,9 +8678,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <NavLink className="btn btn-ghost" to="/admin/payments/new">
               Tahsilat Gir
             </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/payments/list">
-              Tahsilat Raporu
-            </NavLink>
           </div>
         </details>
 
@@ -8710,9 +8707,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/expenses/new">
               Gider Giris
-            </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/expenses/report">
-              Gider Raporu
             </NavLink>
           </div>
         </details>
