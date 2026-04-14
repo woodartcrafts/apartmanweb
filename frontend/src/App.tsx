@@ -8604,9 +8604,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             >
               Daire Ekle
             </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/apartments/list">
-              Daire Listesi
-            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/apartments/edit">
               Daire Degistir
             </NavLink>
@@ -8717,6 +8714,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
             <NavLink className="btn btn-ghost" to="/admin/reports">
               Rapor Ana Sayfa
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/apartments/list">
+              Daire Listesi
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/expenses/report">
               Gider Raporu
