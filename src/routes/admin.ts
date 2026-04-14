@@ -386,7 +386,8 @@ router.use(async (req, res, next) => {
       "/payment-methods",
       "/expense-items",
       "/charge-types",
-      "/upload-batches/uploaders",
+      "/upload-batches",
+      "/banks",
     ];
     if (req.method === "GET" && LOOKUP_PREFIXES.some((p) => req.path.startsWith(p))) {
       return next();
