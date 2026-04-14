@@ -156,7 +156,7 @@ export function StatementPage({
     : "-";
 
   return (
-    <>
+    <section className="statement-page">
       <div className="card admin-tools">
         <div className="section-head">
           <h3>Admin Ekstre Sorgu</h3>
@@ -365,6 +365,6 @@ export function StatementPage({
           )}
         </div>
       </div>
-    </>
+    </section>
   );
 }

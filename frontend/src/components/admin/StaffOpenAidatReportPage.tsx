@@ -19,6 +19,7 @@ type StaffOpenAidatReportPageProps = {
   reportLoading: boolean;
   runQuery: (apartmentId: string, options?: { silent?: boolean }) => Promise<void>;
   sendStatementEmail: (apartmentId: string) => Promise<void>;
+  canSendStatementEmail: boolean;
   clearFilters: () => void;
 };
 
@@ -49,6 +50,7 @@ export function StaffOpenAidatReportPage({
   reportLoading,
   runQuery,
   sendStatementEmail,
+  canSendStatementEmail,
   clearFilters,
 }: StaffOpenAidatReportPageProps) {
   const selectableApartments = useMemo(
@@ -109,7 +111,7 @@ export function StaffOpenAidatReportPage({
           Mobil Ana Sayfaya Don
         </NavLink>
       </div>
-      <div className="card table-card report-page-card staff-open-aidat-card-shell" aria-busy={reportLoading}>
+      <div className="card table-card report-page-card staff-open-aidat-card-shell">
         <div className="section-head report-toolbar">
           <h3>Gorevli Mobil Acik Borc Raporu</h3>
         </div>
@@ -141,18 +143,28 @@ export function StaffOpenAidatReportPage({
           {apartmentSummary ? (
             <div className="stats-grid report-summary-grid compact-row-top-gap">
               <article className="stat-card staff-open-aidat-apartment-card">
-                <button
-                  className="staff-open-aidat-email-trigger"
-                  type="button"
-                  onClick={() => void sendStatementEmail(selectedApartmentId)}
-                  disabled={!selectedApartmentId || loading || reportLoading}
-                >
-                  <span className="stat-label">Ekstre E-mail Gonder</span>
-                  <strong>
-                    Daire {normalizeBlockLabel(apartmentSummary.blockName)} - {apartmentSummary.apartmentDoorNo}
-                    {summaryName ? ` (${summaryName})` : ""}
-                  </strong>
-                </button>
+                {canSendStatementEmail ? (
+                  <button
+                    className="staff-open-aidat-email-trigger"
+                    type="button"
+                    onClick={() => void sendStatementEmail(selectedApartmentId)}
+                    disabled={!selectedApartmentId || loading || reportLoading}
+                  >
+                    <span className="stat-label">Ekstre E-mail Gonder</span>
+                    <strong>
+                      Daire {normalizeBlockLabel(apartmentSummary.blockName)} - {apartmentSummary.apartmentDoorNo}
+                      {summaryName ? ` (${summaryName})` : ""}
+                    </strong>
+                  </button>
+                ) : (
+                  <div className="staff-open-aidat-email-trigger" aria-disabled="true">
+                    <span className="stat-label">Daire</span>
+                    <strong>
+                      {normalizeBlockLabel(apartmentSummary.blockName)} - {apartmentSummary.apartmentDoorNo}
+                      {summaryName ? ` (${summaryName})` : ""}
+                    </strong>
+                  </div>
+                )}
               </article>
               {overdueRows.length > 0 ? (
                 <article className="stat-card">

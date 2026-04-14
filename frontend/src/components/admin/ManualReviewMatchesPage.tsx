@@ -1,5 +1,5 @@
 import { type Dispatch, type SetStateAction } from "react";
-import { formatDateTimeTr, formatTry, type ManualReviewMatchRow } from "../../app/shared";
+import { formatDateTr, formatTry, type ManualReviewMatchRow } from "../../app/shared";
 
 type ManualReviewMatchesFilter = {
   from: string;
@@ -32,16 +32,6 @@ function reasonLabel(row: ManualReviewMatchRow): string {
   return "Manuel inceleme";
 }
 
-function sourceLabel(source: ManualReviewMatchRow["source"]): string {
-  if (source === "BANK_STATEMENT_UPLOAD") {
-    return "Banka Ekstresi Upload";
-  }
-  if (source === "PAYMENT_UPLOAD") {
-    return "Toplu Tahsilat Upload";
-  }
-  return "Manuel";
-}
-
 export function ManualReviewMatchesPage({
   loading,
   reportLoading,
@@ -55,7 +45,7 @@ export function ManualReviewMatchesPage({
   clearWarningRow,
 }: ManualReviewMatchesPageProps) {
   return (
-    <section className="dashboard report-page">
+    <section className="dashboard report-page manual-review-matches-page">
       <div className="card table-card report-page-card">
         <div className="section-head report-toolbar">
           <h3>Manuel Inceleme Gerektiren Eslesmeler</h3>
@@ -99,17 +89,14 @@ export function ManualReviewMatchesPage({
         </div>
 
         <div className="table-wrap compact-row-top-gap">
-          <table className="apartment-list-table report-compact-table">
+          <table className="apartment-list-table report-compact-table manual-review-table">
             <thead>
               <tr>
                 <th>Odeme Tarihi</th>
                 <th>Daire</th>
                 <th>Neden</th>
                 <th className="col-num">Tutar</th>
-                <th>Referans</th>
                 <th>Aciklama</th>
-                <th>Kaynak</th>
-                <th>Yukleme Dosyasi</th>
                 <th>Not</th>
                 <th>Islem</th>
               </tr>
@@ -117,21 +104,18 @@ export function ManualReviewMatchesPage({
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="empty">
+                  <td colSpan={7} className="empty">
                     Manuel inceleme gerektiren kayit bulunmuyor. Listelemek icin Calistir butonunu kullanin.
                   </td>
                 </tr>
               ) : (
                 rows.map((row) => (
                   <tr key={row.paymentId}>
-                    <td>{formatDateTimeTr(row.paidAt)}</td>
+                    <td>{formatDateTr(row.paidAt)}</td>
                     <td>{row.doorNo ?? (row.apartmentLabels.length > 0 ? row.apartmentLabels.join(" | ") : "-")}</td>
                     <td>{reasonLabel(row)}</td>
                     <td className="col-num">{formatTry(row.totalAmount)}</td>
-                    <td>{row.reference ?? "-"}</td>
                     <td>{row.description ?? "-"}</td>
-                    <td>{sourceLabel(row.source)}</td>
-                    <td>{row.importFileName ?? "-"}</td>
                     <td>{row.note ?? "-"}</td>
                     <td className="actions-cell">
                       <button

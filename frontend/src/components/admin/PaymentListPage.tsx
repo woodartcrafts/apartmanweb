@@ -91,6 +91,8 @@ function buildSortedUniqueOptions(values: string[]): string[] {
 }
 
 type PaymentListPageProps = {
+  canEdit: boolean;
+  canDelete: boolean;
   loading: boolean;
   apartmentOptions: ApartmentOption[];
   paymentMethodOptions: PaymentMethodDefinition[];
@@ -113,6 +115,8 @@ type PaymentListPageProps = {
 };
 
 export function PaymentListPage({
+  canEdit,
+  canDelete,
   loading,
   apartmentOptions,
   paymentMethodOptions,
@@ -202,11 +206,11 @@ export function PaymentListPage({
   }, [apartmentOptions, headerFilters, paymentListRows, paymentMethodOptions]);
 
   return (
-    <section className="dashboard">
+    <section className="dashboard payment-list-page">
       <div className="card table-card">
-        <div className="section-head">
+        <div className="section-head payment-list-head">
           <h3>Tahsilat Raporu</h3>
-          <div className="admin-row">
+          <div className="admin-row payment-list-head-actions">
             <button className="btn btn-primary btn-run" type="button" onClick={() => void runPaymentListQuery()}>
               Calistir
             </button>
@@ -254,7 +258,7 @@ export function PaymentListPage({
             />
           </label>
         </div>
-        {editingPaymentListId && (
+        {canEdit && editingPaymentListId && (
           <form ref={editFormRef} className="admin-form" onSubmit={submitPaymentListRowEdit}>
             <h4>Secili Tahsilat Satirini Duzenle</h4>
             <div className="compact-row">
@@ -360,7 +364,7 @@ export function PaymentListPage({
                 <th>Kaynak</th>
                 <th>Kim Girdi</th>
                 <th>Giris Zamani</th>
-                <th>Islem</th>
+                {(canEdit || canDelete) && <th>Islem</th>}
               </tr>
               <tr>
                 <th>
@@ -502,15 +506,17 @@ export function PaymentListPage({
                     ))}
                   </select>
                 </th>
-                <th>
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    onClick={() => setHeaderFilters(initialHeaderFilters)}
-                  >
-                    Sifirla
-                  </button>
-                </th>
+                {(canEdit || canDelete) && (
+                  <th>
+                    <button
+                      className="btn btn-ghost"
+                      type="button"
+                      onClick={() => setHeaderFilters(initialHeaderFilters)}
+                    >
+                      Sifirla
+                    </button>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -531,20 +537,26 @@ export function PaymentListPage({
                     <td title={sourceLabel}>{sourceLabel}</td>
                     <td title={row.createdByName ?? "-"}>{row.createdByName ?? "-"}</td>
                     <td>{formatDateTimeTr(row.createdAt)}</td>
-                    <td className="actions-cell">
-                      <button className="btn btn-ghost" type="button" onClick={() => startEditPaymentListRow(row)}>
-                        Duzelt
-                      </button>
-                      <button className="btn btn-danger" type="button" onClick={() => void deletePaymentListRow(row)}>
-                        Sil
-                      </button>
-                    </td>
+                    {(canEdit || canDelete) && (
+                      <td className="actions-cell">
+                        {canEdit && (
+                          <button className="btn btn-ghost" type="button" onClick={() => startEditPaymentListRow(row)}>
+                            Duzelt
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button className="btn btn-danger" type="button" onClick={() => void deletePaymentListRow(row)}>
+                            Sil
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
               {filteredRows.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="empty">
+                  <td colSpan={canEdit || canDelete ? 11 : 10} className="empty">
                     {paymentListError || "Filtreye uygun tahsilat kaydi yok"}
                   </td>
                 </tr>

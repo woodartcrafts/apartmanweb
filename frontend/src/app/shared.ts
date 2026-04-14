@@ -1,5 +1,112 @@
 export type Role = "ADMIN" | "RESIDENT";
 
+export type AdminPageKey =
+  | "APT_NEW"
+  | "APT_LIST"
+  | "APT_EDIT"
+  | "APT_PASSWORDS"
+  | "APT_UPLOAD"
+  | "APT_BULK_UPDATE"
+  | "APT_HISTORY"
+  | "BUILDING_INFO"
+  | "BLOCKS"
+  | "APT_CLASSES"
+  | "APT_TYPES"
+  | "APT_DUTIES"
+  | "CHARGE_TYPES_LIST"
+  | "CHARGE_TYPES_CREATE"
+  | "CHARGE_TYPES_EDIT"
+  | "CHARGE_TYPES_DELETE"
+  | "CHARGES_NEW_CREATE"
+  | "CHARGES_BULK_CREATE"
+  | "CHARGES_BULK_CORRECT_EDIT"
+  | "CHARGES_GAS_CALC_CREATE"
+  | "PAYMENT_METHODS_LIST"
+  | "PAYMENT_METHODS_CREATE"
+  | "PAYMENT_METHODS_EDIT"
+  | "PAYMENT_METHODS_DELETE"
+  | "PAYMENTS_NEW_CREATE"
+  | "PAYMENTS_LIST_LIST"
+  | "PAYMENTS_LIST_EDIT"
+  | "PAYMENTS_LIST_DELETE"
+  | "STATEMENT_VIEW"
+  | "STATEMENT_ALL_VIEW"
+  | "EXPENSE_ITEMS_LIST"
+  | "EXPENSE_ITEMS_CREATE"
+  | "EXPENSE_ITEMS_EDIT"
+  | "EXPENSE_ITEMS_DELETE"
+  | "EXPENSES_NEW_CREATE"
+  | "EXPENSES_REPORT_LIST"
+  | "EXPENSES_REPORT_EDIT"
+  | "EXPENSES_REPORT_DELETE"
+  | "REPORTS_SUMMARY"
+  | "REPORTS_STAFF_MOBILE_HOME"
+  | "REPORTS_OVERDUE"
+  | "REPORTS_STAFF_OPEN_AIDAT"
+  | "REPORTS_STAFF_OPEN_AIDAT_SEND_EMAIL"
+  | "REPORTS_MONTHLY_BALANCE"
+  | "REPORTS_MONTHLY_LEDGER"
+  | "REPORTS_FRACTIONAL"
+  | "REPORTS_REFERENCE_SEARCH"
+  | "REPORTS_BANK_MOVEMENTS"
+  | "BANKS"
+  | "BANK_INITIAL_BALANCES"
+  | "BANK_TERM_DEPOSITS_LIST"
+  | "BANK_TERM_DEPOSITS_CREATE"
+  | "BANK_TERM_DEPOSITS_EDIT"
+  | "BANK_TERM_DEPOSITS_DELETE"
+  | "BANK_STATEMENT_IMPORT"
+  | "BANK_STATEMENT_VIEW"
+  | "UPLOAD_BATCHES"
+  | "CHECK_CHARGE_CONSISTENCY"
+  | "CHECK_DOOR_MISMATCH"
+  | "CHECK_BANK_STATEMENT"
+  | "CHECK_MANUAL_REVIEW"
+  | "SETTINGS_DESC_DOOR"
+  | "SETTINGS_DESC_EXPENSE"
+  | "RESIDENT_CONTENT"
+  | "CORRECTIONS"
+  | "UNCLASSIFIED"
+  | "MANUAL_CLOSURES"
+  | "AUDIT_LOGS"
+  | "MEETING"
+  | "GUIDE_MANUAL"
+  | "USER_ACCESS";
+
+export type AdminPagePermission = {
+  visible: boolean;
+  read: boolean;
+  write: boolean;
+  delete: boolean;
+};
+
+export type AdminPagePermissionMap = Record<AdminPageKey, AdminPagePermission>;
+
+export type AdminPageDefinition = {
+  key: AdminPageKey;
+  label: string;
+};
+
+export type AdminUserAccessRow = {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  role: Role;
+  createdAt: string;
+  updatedAt: string;
+  permissions: AdminPagePermissionMap | null;
+};
+
+export type AdminUserAccessListResponse = {
+  rows: AdminUserAccessRow[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type UiMessageType = "success" | "error" | "info";
+
 export type LoginResponse = {
   token: string;
   user: {
@@ -10,6 +117,7 @@ export type LoginResponse = {
     role: Role;
     apartmentId: string | null;
     apartmentDoorNo: string | null;
+    adminPagePermissions?: AdminPagePermissionMap | null;
   };
 };
 

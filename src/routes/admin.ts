@@ -23,6 +23,12 @@ import { createAdminExpenseRoutes } from "./adminExpenseRoutes";
 import { createAdminPaymentMethodRoutes } from "./adminPaymentMethodRoutes";
 import { createAdminApartmentDefinitionRoutes } from "./adminApartmentDefinitionRoutes";
 import { createAdminMeetingRoutes } from "./adminMeetingRoutes";
+import adminUserAccessRoutes from "./adminUserAccessRoutes";
+import {
+  mapRequestMethodToAdminAction,
+  mapRequestPathToAdminPage,
+  normalizeAdminPermissionMap,
+} from "../utils/adminPermissions";
 import {
   buildPaymentNote,
   extractDoorNoTagFromPaymentNote,
@@ -348,9 +354,45 @@ function collectApartmentStatementRecipients(apartment: {
 }
 
 router.use(requireAuth, requireRole([UserRole.ADMIN]));
+router.use(async (req, res, next) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const actor = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, adminPagePermissions: true },
+    });
+
+    if (!actor || actor.role !== UserRole.ADMIN) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    if (!actor.adminPagePermissions) {
+      return next();
+    }
+
+    const permissionMap = normalizeAdminPermissionMap(actor.adminPagePermissions);
+    const pageKey = mapRequestPathToAdminPage(req.path, req.method);
+    const action = mapRequestMethodToAdminAction(req.method);
+    const pagePermission = permissionMap[pageKey];
+
+    if (!pagePermission.visible || !pagePermission[action]) {
+      return res.status(403).json({ message: "Bu sayfa veya islem icin yetkiniz yok" });
+    }
+
+    return next();
+  } catch (error) {
+    console.error("Admin permission middleware failed", error);
+    return res.status(500).json({ message: "Yetki kontrolu yapilamadi" });
+  }
+});
 router.use(blockRoutes);
 router.use(definitionRoutes);
 router.use(descriptionRuleRoutes);
+router.use(adminUserAccessRoutes);
 router.use(
   createAdminExpenseRoutes({
     ensurePaymentMethodDefinitions,

@@ -13,6 +13,9 @@ type PaymentMethodFormState = {
 
 type PaymentMethodManagementPageProps = {
   loading: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   editingPaymentMethodId: string | null;
   paymentMethodForm: PaymentMethodFormState;
   setPaymentMethodForm: Dispatch<SetStateAction<PaymentMethodFormState>>;
@@ -25,6 +28,9 @@ type PaymentMethodManagementPageProps = {
 
 export function PaymentMethodManagementPage({
   loading,
+  canCreate,
+  canEdit,
+  canDelete,
   editingPaymentMethodId,
   paymentMethodForm,
   setPaymentMethodForm,
@@ -34,13 +40,16 @@ export function PaymentMethodManagementPage({
   startEditPaymentMethod,
   deletePaymentMethod,
 }: PaymentMethodManagementPageProps) {
+  const canSeeActions = canEdit || canDelete;
+
   return (
     <section className="dashboard compact-management-page">
+      {(canCreate || (canEdit && !!editingPaymentMethodId)) && (
       <form className="card admin-form" onSubmit={onSubmitPaymentMethod}>
         <div className="section-head">
           <h3>{editingPaymentMethodId ? "Tahsilat Tipi Degistir" : "Tahsilat Tipi Ekle"}</h3>
           <div className="admin-row">
-            <button className="btn btn-primary" type="submit" disabled={loading}>
+            <button className="btn btn-primary" type="submit" disabled={loading || (!editingPaymentMethodId && !canCreate)}>
               {editingPaymentMethodId ? "Degisiklikleri Kaydet" : "Tip Ekle"}
             </button>
             <button className="btn btn-ghost" type="button" onClick={cancelEditPaymentMethod}>Temizle</button>
@@ -79,6 +88,7 @@ export function PaymentMethodManagementPage({
           </label>
         </div>
       </form>
+      )}
 
       <div className="card table-card">
         <h3>Tahsilat Tipi Listesi</h3>
@@ -89,7 +99,7 @@ export function PaymentMethodManagementPage({
                 <th>Kod</th>
                 <th>Ad</th>
                 <th>Durum</th>
-                <th>Islem</th>
+                {canSeeActions && <th>Islem</th>}
               </tr>
             </thead>
             <tbody>
@@ -98,19 +108,25 @@ export function PaymentMethodManagementPage({
                   <td>{item.code}</td>
                   <td>{item.name}</td>
                   <td>{item.isActive ? "Aktif" : "Pasif"}</td>
-                  <td className="actions-cell">
-                    <button className="btn btn-ghost" type="button" onClick={() => startEditPaymentMethod(item)}>
-                      Degistir
-                    </button>
-                    <button className="btn btn-danger" type="button" onClick={() => void deletePaymentMethod(item)}>
-                      Sil
-                    </button>
-                  </td>
+                  {canSeeActions && (
+                    <td className="actions-cell">
+                      {canEdit && (
+                        <button className="btn btn-ghost" type="button" onClick={() => startEditPaymentMethod(item)}>
+                          Degistir
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button className="btn btn-danger" type="button" onClick={() => void deletePaymentMethod(item)}>
+                          Sil
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
               {paymentMethodOptions.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="empty">
+                  <td colSpan={canSeeActions ? 4 : 3} className="empty">
                     Tahsilat tipi yok
                   </td>
                 </tr>

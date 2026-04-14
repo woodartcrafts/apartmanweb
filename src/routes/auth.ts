@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { config } from "../config";
 import { prisma } from "../db";
+import { normalizeAdminPermissionMap } from "../utils/adminPermissions";
 
 const router = Router();
 const AUTH_COOKIE_NAME = "auth_token";
@@ -88,32 +89,40 @@ router.post("/login", loginRateLimiter, async (req, res) => {
   const rawIdentifier = (parsed.data.identifier ?? parsed.data.email ?? "").trim();
   const normalizedIdentifier = rawIdentifier.toLowerCase();
 
-  const user = normalizedIdentifier.includes("@")
-    ? await prisma.user.findFirst({
-        where: {
-          email: {
-            equals: rawIdentifier,
-            mode: "insensitive",
+  let user: Awaited<ReturnType<typeof prisma.user.findFirst>> | null = null;
+
+  if (normalizedIdentifier.includes("@")) {
+    user = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: rawIdentifier,
+          mode: "insensitive",
+        },
+      },
+      include: {
+        apartment: {
+          select: {
+            doorNo: true,
           },
         },
-        include: {
-          apartment: {
-            select: {
-              doorNo: true,
-            },
+      },
+    });
+  } else {
+    const normalizedPhone = normalizePhone(normalizedIdentifier);
+    if (!normalizedPhone) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+    user = await prisma.user.findFirst({
+      where: { phone: normalizedPhone },
+      include: {
+        apartment: {
+          select: {
+            doorNo: true,
           },
         },
-      })
-    : await prisma.user.findFirst({
-        where: { phone: normalizePhone(normalizedIdentifier) ?? "" },
-        include: {
-          apartment: {
-            select: {
-              doorNo: true,
-            },
-          },
-        },
-      });
+      },
+    });
+  }
 
   if (!user) {
     return res.status(401).json({ message: "Invalid credentials" });
@@ -148,6 +157,10 @@ router.post("/login", loginRateLimiter, async (req, res) => {
       role: user.role,
       apartmentId: user.apartmentId,
       apartmentDoorNo: user.apartment?.doorNo ?? null,
+      adminPagePermissions:
+        user.role === "ADMIN" && user.adminPagePermissions
+          ? normalizeAdminPermissionMap(user.adminPagePermissions)
+          : null,
     },
   });
 });

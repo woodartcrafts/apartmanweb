@@ -29,6 +29,7 @@ type ExpenseReportEditFormState = {
 
 type ExpenseReportSummary = {
   rows: Array<{
+    expenseItemId: string;
     expenseItemName: string;
     rowCount: number;
     totalAmount: number;
@@ -39,16 +40,20 @@ type ExpenseReportSummary = {
 type ExpenseReportSortKey = "spentAt" | "expenseItemName" | "paymentMethod" | "amount" | "description";
 
 type ExpenseReportPageProps = {
+  canEdit: boolean;
+  canDelete: boolean;
   loading: boolean;
   expenseReportFilter: ExpenseReportFilterState;
   setExpenseReportFilter: Dispatch<SetStateAction<ExpenseReportFilterState>>;
   expenseItemOptions: ExpenseItemDefinition[];
   expenseReportItemSummary: ExpenseReportSummary;
+  selectedExpenseSummaryItemId: string | null;
   editingExpenseReportId: string | null;
   expenseReportEditForm: ExpenseReportEditFormState;
   setExpenseReportEditForm: Dispatch<SetStateAction<ExpenseReportEditFormState>>;
   paymentMethodOptions: PaymentMethodDefinition[];
   runExpenseReportQuery: () => Promise<void>;
+  onSelectExpenseSummaryItem: (expenseItemId: string) => void;
   clearExpenseReportFilters: () => Promise<void>;
   submitExpenseReportRowEdit: (e: FormEvent<HTMLFormElement>) => Promise<void>;
   cancelEditExpenseReportRow: () => void;
@@ -62,16 +67,20 @@ type ExpenseReportPageProps = {
 };
 
 export function ExpenseReportPage({
+  canEdit,
+  canDelete,
   loading,
   expenseReportFilter,
   setExpenseReportFilter,
   expenseItemOptions,
   expenseReportItemSummary,
+  selectedExpenseSummaryItemId,
   editingExpenseReportId,
   expenseReportEditForm,
   setExpenseReportEditForm,
   paymentMethodOptions,
   runExpenseReportQuery,
+  onSelectExpenseSummaryItem,
   clearExpenseReportFilters,
   submitExpenseReportRowEdit,
   cancelEditExpenseReportRow,
@@ -132,11 +141,11 @@ export function ExpenseReportPage({
   }
 
   return (
-    <section className="dashboard">
+    <section className="dashboard expense-report-page">
       <div className="card table-card">
-        <div className="section-head">
+        <div className="section-head expense-report-head">
           <h3>Gider Raporu</h3>
-          <div className="admin-row">
+          <div className="admin-row expense-report-head-actions">
             <button
               data-testid="expense-report-run-trigger"
               className="btn btn-primary btn-run"
@@ -283,9 +292,22 @@ export function ExpenseReportPage({
                 </thead>
                 <tbody>
                   {expenseReportItemSummary.rows.map((item, index) => (
-                    <tr key={`${item.expenseItemName}-${index}`}>
+                    <tr key={item.expenseItemId}>
                       <td className="col-num">{index + 1}</td>
-                      <td>{item.expenseItemName}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className={
+                            selectedExpenseSummaryItemId === item.expenseItemId
+                              ? "expense-report-summary-item-button is-active"
+                              : "expense-report-summary-item-button"
+                          }
+                          title="Bu gider kalemini listeye filtre uygula"
+                          onClick={() => void onSelectExpenseSummaryItem(item.expenseItemId)}
+                        >
+                          {item.expenseItemName}
+                        </button>
+                      </td>
                       <td className="col-num">{item.rowCount}</td>
                       <td className="col-num">{formatTry(item.totalAmount)}</td>
                     </tr>
@@ -302,7 +324,7 @@ export function ExpenseReportPage({
           )}
         </section>
 
-        {editingExpenseReportId && (
+        {canEdit && editingExpenseReportId && (
           <form id="expense-report-edit-form" className="admin-form expense-report-edit-form" onSubmit={submitExpenseReportRowEdit}>
             <div className="section-head expense-report-edit-head">
               <h3>Secili Gider Satirini Duzenle</h3>
@@ -461,7 +483,7 @@ export function ExpenseReportPage({
                   </span>
                 </th>
                 <th>Kaynak</th>
-                <th>Islem</th>
+                {(canEdit || canDelete) && <th>Islem</th>}
               </tr>
             </thead>
             <tbody>
@@ -476,20 +498,26 @@ export function ExpenseReportPage({
                     <td className="col-num">{formatTry(row.amount)}</td>
                     <td className="expense-report-description" title={row.description ?? "-"}>{row.description ?? "-"}</td>
                     <td className="expense-report-source" title={sourceLabel(row.source)}>{sourceLabel(row.source)}</td>
-                    <td className="actions-cell">
-                      <button className="btn btn-ghost" type="button" onClick={() => openEditAndScroll(row)}>
-                        Duzelt
-                      </button>
-                      <button className="btn btn-danger" type="button" onClick={() => void deleteExpenseReportRow(row)}>
-                        Sil
-                      </button>
-                    </td>
+                    {(canEdit || canDelete) && (
+                      <td className="actions-cell">
+                        {canEdit && (
+                          <button className="btn btn-ghost" type="button" onClick={() => openEditAndScroll(row)}>
+                            Duzelt
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button className="btn btn-danger" type="button" onClick={() => void deleteExpenseReportRow(row)}>
+                            Sil
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
               {sortedExpenseReportRows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="empty">
+                  <td colSpan={canEdit || canDelete ? 7 : 6} className="empty">
                     {expenseReportError || "Gider kaydi yok"}
                   </td>
                 </tr>

@@ -1504,6 +1504,22 @@ button:active:not(:disabled) {
   flex-wrap: nowrap;
 }
 
+@media (min-width: 981px) {
+  .report-page .section-head.report-toolbar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 10px;
+  }
+
+  .report-page .section-head.report-toolbar .admin-row {
+    margin-left: auto;
+    flex-wrap: nowrap;
+  }
+}
+
 .report-filter-grid {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
@@ -2588,6 +2604,211 @@ button:active:not(:disabled) {
   max-width: none;
   width: 100%;
 }
+.user-access-page {
+  gap: 14px;
+}
+
+.user-access-workspace {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 12px;
+}
+
+.user-access-page-card {
+  border: 1px solid #c8d8ea;
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 120% at 100% 0%, rgba(176, 216, 255, 0.22) 0%, transparent 42%),
+    radial-gradient(100% 120% at 0% 100%, rgba(182, 241, 205, 0.2) 0%, transparent 38%),
+    #ffffff;
+  box-shadow: 0 12px 30px rgba(27, 55, 82, 0.1);
+}
+
+.user-access-overview-card .section-head h3,
+.user-access-action-card h3,
+.user-access-create-card h3 {
+  margin-bottom: 0.25rem;
+}
+
+.user-access-selected-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.user-access-role-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 74px;
+  padding: 0.16rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  border: 1px solid #8db2d6;
+  background: #ecf5ff;
+  color: #1f4a73;
+}
+
+.user-access-page-card .form-grid {
+  margin-top: 0.75rem;
+}
+.permission-matrix-wrap {
+  overflow-x: auto;
+}
+.permission-matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+  border: 1px solid #d4e1ef;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.permission-matrix-table th,
+.permission-matrix-table td {
+  border-bottom: 1px solid #e3ecf5;
+  padding: 0.55rem 0.45rem;
+  text-align: center;
+}
+
+.permission-matrix-table thead th {
+  position: sticky;
+  top: 0;
+  background: linear-gradient(180deg, #f5faff, #eef5fc);
+  color: #274d73;
+  z-index: 1;
+}
+
+.permission-header-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  font-weight: 700;
+}
+
+.permission-header-check input {
+  width: 14px;
+  height: 14px;
+}
+
+.permission-matrix-table th:first-child,
+.permission-matrix-table td:first-child {
+  text-align: left;
+  min-width: 180px;
+}
+
+.permission-main-row td {
+  background: linear-gradient(90deg, #8fb6dc 0%, #a9c9e8 100%);
+  color: #0b2b47;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border-left: 5px solid #184f82;
+  text-transform: uppercase;
+  font-size: 0.92rem;
+  padding-top: 0.7rem !important;
+  padding-bottom: 0.7rem !important;
+}
+
+.permission-subgroup-row td {
+  background: #f4f8fc;
+  color: #3c5f82;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+.permission-submenu-cell {
+  padding-left: 1rem !important;
+  font-size: 0.82rem;
+  opacity: 0.95;
+}
+
+.user-access-intro {
+  margin-top: 0.4rem;
+  opacity: 0.92;
+}
+
+.user-access-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.75rem;
+}
+
+.user-access-filter-grid {
+  grid-template-columns: minmax(180px, 0.8fr) minmax(280px, 1.1fr) minmax(360px, 1.6fr);
+}
+
+@media (max-width: 1200px) {
+  .user-access-filter-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .user-access-filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.permission-preset-row {
+  margin-bottom: 0.55rem;
+}
+
+.permission-preset-row .btn {
+  min-height: 36px;
+  font-size: 0.78rem;
+}
+
+.permission-matrix-wrap {
+  border: 1px solid #d6e3f0;
+  border-radius: 10px;
+  padding: 0.55rem;
+  background: #f8fbff;
+}
+
+.user-access-message {
+  margin-top: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+
+.user-access-message-success {
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #14532d;
+}
+
+.user-access-message-error {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #7f1d1d;
+}
+
+.user-access-message-info {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.45);
+  color: #1e3a8a;
+}
+
+@media (max-width: 1100px) {
+  .user-access-workspace {
+    grid-template-columns: 1fr;
+  }
+}
 
 .bank-term-deposit-page {
   gap: 12px;
@@ -2793,6 +3014,54 @@ button:active:not(:disabled) {
 .expense-item-table-card {
   width: 100%;
   max-width: none;
+}
+
+.expense-item-page .expense-item-form-surface > .section-head:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  min-height: 44px;
+  border: 1px solid #000000;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #eef1f5, #dfe5ec);
+  box-shadow: 0 8px 18px rgba(56, 66, 79, 0.14);
+}
+
+.expense-item-page .expense-item-form-surface > .section-head:first-child h3 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #131313;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.expense-item-page .expense-item-form-surface > .section-head:first-child h3::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 999px;
+  border: 1px solid #3f617f;
+  background: radial-gradient(circle at 30% 30%, #ffffff 0%, #d7e6f6 35%, #8fb0cf 100%);
+  box-shadow: 0 0 0 1px rgba(63, 97, 127, 0.18);
+}
+
+.expense-item-page .expense-item-form-surface > .section-head:first-child .admin-row {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.expense-item-page .expense-item-form-surface > .section-head:first-child .admin-row .btn {
+  white-space: nowrap;
 }
 
 .expense-item-form-row {
@@ -3960,6 +4229,10 @@ button:active:not(:disabled) {
     padding: 12px 10px;
   }
 
+  .staff-open-aidat-page .report-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
   .staff-mobile-links-page .staff-mobile-links-card {
     margin-top: 0;
   }
@@ -4000,6 +4273,13 @@ button:active:not(:disabled) {
     text-align: center;
     padding: 12px;
     background: #c21f1f;
+    width: 100%;
+    max-width: 100%;
+    justify-self: stretch;
+  }
+
+  .staff-open-aidat-page .staff-open-aidat-email-trigger {
+    width: 100%;
   }
 
   .staff-open-aidat-page .staff-open-aidat-apartment-card .stat-label {
@@ -6126,6 +6406,32 @@ td {
   overflow-x: auto;
 }
 
+.overdue-payments-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  min-height: 0 !important;
+}
+
+.overdue-payments-toolbar h3 {
+  margin: 0;
+}
+
+.overdue-payments-toolbar h3::before {
+  display: none !important;
+}
+
+.overdue-payments-toolbar .admin-row {
+  margin-left: auto;
+}
+
 .overdue-payments-table {
   min-width: 1120px;
   table-layout: fixed;
@@ -6723,10 +7029,83 @@ details.cc-excluded-card[open] > .cc-excluded-summary::after {
 
 /* Duzelt action button in table */
 .cc-action-btn {
-  font-size: 0.7rem !important;
   padding: 3px 8px !important;
   min-height: 0 !important;
   height: auto !important;
+  white-space: nowrap;
+}
+
+.manual-review-matches-page .manual-review-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.manual-review-matches-page .manual-review-table th,
+.manual-review-matches-page .manual-review-table td {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  vertical-align: top;
+}
+
+/* Odeme Tarihi: 8% — tarih 2 satıra geçebilir */
+.manual-review-matches-page .manual-review-table th:nth-child(1),
+.manual-review-matches-page .manual-review-table td:nth-child(1) {
+  width: 8%;
+}
+
+/* Daire: 5% */
+.manual-review-matches-page .manual-review-table th:nth-child(2),
+.manual-review-matches-page .manual-review-table td:nth-child(2) {
+  width: 5%;
+}
+
+/* Neden: 15% — uzun metin, sarılabilir */
+.manual-review-matches-page .manual-review-table th:nth-child(3),
+.manual-review-matches-page .manual-review-table td:nth-child(3) {
+  width: 15%;
+}
+
+/* Tutar: 7% */
+.manual-review-matches-page .manual-review-table th:nth-child(4),
+.manual-review-matches-page .manual-review-table td:nth-child(4) {
+  width: 7%;
+}
+
+/* Aciklama: 12% */
+.manual-review-matches-page .manual-review-table th:nth-child(5),
+.manual-review-matches-page .manual-review-table td:nth-child(5) {
+  width: 12%;
+}
+
+/* Not: en geniş — 42% */
+.manual-review-matches-page .manual-review-table th:nth-child(6),
+.manual-review-matches-page .manual-review-table td:nth-child(6) {
+  width: 42%;
+}
+
+/* Islem: 11% — buton için yeterli */
+.manual-review-matches-page .manual-review-table th:nth-child(7),
+.manual-review-matches-page .manual-review-table td:nth-child(7) {
+  width: 11%;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.manual-review-matches-page .manual-review-table .actions-cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.manual-review-matches-page .manual-review-table .actions-cell .btn {
+  min-width: 92px;
+  height: 30px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   white-space: nowrap;
 }
 
@@ -7032,6 +7411,29 @@ details.cc-excluded-card[open] > .cc-excluded-summary::after {
 
 .expense-report-summary-table {
   min-width: 420px;
+}
+
+.expense-report-summary-item-button {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.expense-report-summary-item-button:hover {
+  background: #eef4fb;
+  border-color: #c7d8ea;
+}
+
+.expense-report-summary-item-button.is-active {
+  background: #dcecff;
+  border-color: #8fb0cf;
+  font-weight: 700;
 }
 
 .expense-report-summary-table .expense-report-summary-total-row td {
@@ -9989,3 +10391,1142 @@ td.empty {
     text-align: center;
   }
 }
+
+/* ================================================================
+   MOBILE-FIRST RESPONSIVE  —  375 px → Desktop
+   Temel kural: bu blok mobil baseline'ı tanımlar.
+   Masaüstü istisnalar @media (min-width: 768px) içinde.
+   ================================================================ */
+
+/* ── Hamburger Wrapper (checkbox trick — tarayıcıdan bağımsız) ── */
+.admin-nav-wrapper {
+  display: block;
+  position: relative; /* absolute input'u wrapper içinde tut */
+}
+
+/* Gizli checkbox input */
+.admin-nav-toggle-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Hamburger label (mobilde görünür, masaüstünde gizli) */
+.admin-nav-hamburger-btn {
+  display: none; /* masaüstünde gizli — mobil override aşağıda */
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 10px 14px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid #4a7faa;
+  background: linear-gradient(180deg, #1a4b79, #12395c);
+  color: #f2f8ff;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.admin-nav-hamburger-icon {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 20px;
+  height: 16px;
+  flex: 0 0 20px;
+}
+
+.admin-nav-hamburger-icon span {
+  display: block;
+  height: 2px;
+  background: #f2f8ff;
+  border-radius: 2px;
+  transition: transform 220ms ease, opacity 220ms ease;
+}
+
+/* Checkbox işaretlenince hamburger → X animasyonu */
+.admin-nav-toggle-input:checked ~ .admin-nav-hamburger-btn .admin-nav-hamburger-icon span:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+.admin-nav-toggle-input:checked ~ .admin-nav-hamburger-btn .admin-nav-hamburger-icon span:nth-child(2) {
+  opacity: 0;
+  transform: scaleX(0);
+}
+.admin-nav-toggle-input:checked ~ .admin-nav-hamburger-btn .admin-nav-hamburger-icon span:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+.admin-nav-toggle-input:checked ~ .admin-nav-hamburger-btn {
+  border-radius: 10px 10px 0 0;
+  border-bottom-color: transparent;
+  background: linear-gradient(180deg, #0f70d3, #0959a8);
+}
+
+/* ── Masaüstü (≥ 768px): hamburger gizli, nav her zaman görünür ── */
+@media (min-width: 768px) {
+  .admin-nav-hamburger-btn {
+    display: none !important;
+  }
+
+  .admin-nav-wrapper .admin-subnav {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    border-radius: 12px !important;
+    position: sticky !important;
+    top: 10px !important;
+  }
+
+  .admin-nav-wrapper .admin-subnav .admin-subnav-group {
+    flex: 1 1 0 !important;
+  }
+
+  .admin-nav-wrapper .admin-subnav .admin-subnav-links {
+    position: absolute !important;
+    width: min(var(--admin-submenu-panel-width), 92vw) !important;
+    max-width: min(var(--admin-submenu-panel-width), 92vw) !important;
+    min-width: min(var(--admin-submenu-panel-width), 92vw) !important;
+    transform: translate3d(0, -4px, 24px) rotateX(-2deg) !important;
+    animation: admin-subnav-panel-in 190ms ease-out !important;
+    border-radius: 10px !important;
+    margin-top: 0;
+  }
+}
+
+/* ── Mobil (≤ 767px) ── */
+@media (max-width: 767px) {
+  /* Mobilde wrapper gorunsun; menu ac/kapa hamburger ile yonetilecek */
+  .admin-nav-wrapper {
+    display: block !important;
+  }
+
+  /* Hamburger label göster */
+  .admin-nav-hamburger-btn {
+    display: flex;
+  }
+
+  /* Subnav: varsayılan gizli */
+  .admin-nav-wrapper .admin-subnav {
+    display: none;
+  }
+
+  /* Checkbox işaretlenince subnav aç */
+  .admin-nav-toggle-input:checked ~ .admin-subnav {
+    display: flex !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    border-radius: 0 0 10px 10px !important;
+    border-top: none !important;
+    position: relative !important;
+    top: 0 !important;
+    z-index: 300;
+    gap: 4px;
+  }
+
+  /* Mobilde her subnav grubu tam genişlik */
+  .admin-nav-toggle-input:checked ~ .admin-subnav .admin-subnav-group {
+    flex: none !important;
+    width: 100%;
+    max-width: none !important;
+    min-width: 0 !important;
+    transform: none !important;
+  }
+
+  .admin-nav-toggle-input:checked ~ .admin-subnav .admin-subnav-title {
+    width: 100%;
+    font-size: 0.9rem;
+    letter-spacing: 0.01em;
+    text-transform: none;
+    white-space: normal;
+    gap: 8px;
+  }
+
+  .admin-nav-toggle-input:checked ~ .admin-subnav .admin-subnav-label {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  /* Mobilde dropdown paneller satır içi açılır */
+  .admin-nav-toggle-input:checked ~ .admin-subnav .admin-subnav-links {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    transform: none !important;
+    animation: none !important;
+    border-radius: 0 0 6px 6px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+    margin-top: 0;
+  }
+
+  /* Kart padding'i küçült */
+  .card {
+    padding: 10px;
+    border-radius: 10px;
+  }
+
+  /* Hero: yatay → dikey */
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .hero h1 {
+    font-size: 0.95rem;
+  }
+
+  .hero-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* Top nav: kaydırma yerine sarma */
+  .top-nav {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .nav-links {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    gap: 4px;
+  }
+
+  .nav-links .btn {
+    font-size: 0.78rem;
+    padding: 6px 8px;
+    min-height: 36px;
+  }
+
+  /* Touch dostu input/select/button yükseklikleri */
+  /* Checkbox ve radio native boyutunu koru — filtre dropdown içindeki seçenekler bozulmasın */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="submit"]):not([type="button"]):not([type="reset"]),
+  select,
+  textarea {
+    min-height: 44px;
+    padding: 10px 10px;
+    font-size: 0.9rem;
+    border-radius: 8px;
+    width: 100%;
+  }
+
+  /* Checkbox/radio → native boyut koru */
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: unset;
+    width: auto;
+    padding: unset;
+  }
+
+  .btn {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 0.875rem;
+    border-radius: 8px;
+  }
+
+  /* Admin form grid: 2 sütun → 1 sütun */
+  .admin-forms-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Section head: yatay → dikey */
+  .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .section-head .admin-row {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .section-head .admin-row .btn {
+    flex: 1 1 auto;
+    min-width: 80px;
+    text-align: center;
+  }
+
+  /* Home grid: 3 sütun → 1 sütun */
+  .home-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Admin welcome: yan yana → üst üste */
+  .admin-welcome-layout {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stats grid: overflow yerine sarma */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  /* Status bar: küçük yazı */
+  .status-bar {
+    font-size: 0.78rem;
+    padding: 6px 10px;
+  }
+
+  /* Dashboard boşluklar */
+  .dashboard {
+    gap: 8px;
+  }
+
+  /* Table-card padding */
+  .table-card {
+    padding: 8px;
+  }
+
+  /* Filter ve compact row'lar */
+  .compact-row,
+  .admin-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+/* === Gider Raporu — Mobil Kart Layout (≤ 760px) === */
+@media (max-width: 760px) {
+  /* Gider raporu baslik satiri: ilk kartin zorunlu yatay stilini mobilde kapat */
+  .dashboard > .card:first-child > .section-head.expense-report-head {
+    align-items: flex-start;
+    justify-content: flex-start;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .dashboard > .card:first-child > .section-head.expense-report-head .expense-report-head-actions {
+    margin-left: 0;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+    flex-wrap: nowrap;
+    overflow-x: clip;
+  }
+
+  .dashboard > .card:first-child > .section-head.expense-report-head .expense-report-head-actions .btn {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin-left: 0;
+    white-space: normal;
+  }
+
+  /* Filtre alanları mobilde tek sutun (tam genislik) */
+  .expense-report-filter-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .expense-report-filter-row > label {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  /* Özet tablo tam genişlik */
+  .expense-report-summary-table {
+    min-width: 0 !important;
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  .expense-report-summary-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .expense-report-summary-head .small {
+    width: 100%;
+    margin-top: 2px;
+  }
+
+  .expense-report-summary-table th,
+  .expense-report-summary-table td {
+    white-space: normal !important;
+    word-break: break-word;
+  }
+
+  /* Table-wrap kapsayıcısını kart layout için sıfırla */
+  .table-wrap:has(.expense-report-table) {
+    overflow-x: visible;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  /* Tablo → block moduna geç */
+  .expense-report-table {
+    display: block;
+    width: 100% !important;
+    table-layout: auto;
+  }
+
+  .expense-report-table thead {
+    display: none;
+  }
+
+  .expense-report-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Her satır → kart */
+  .expense-report-table tr {
+    display: grid;
+    grid-template:
+      "date   amount" auto
+      "item   item"   auto
+      "method source" auto
+      "desc   desc"   auto
+      "acts   acts"   auto
+      / 1fr auto;
+    column-gap: 10px;
+    row-gap: 3px;
+    padding: 10px 12px;
+    border: 1px solid #c2d8ee;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(24, 52, 82, 0.07);
+  }
+
+  .expense-report-table td {
+    display: block;
+    width: auto !important;
+    white-space: normal;
+    padding: 0;
+    border: none;
+    overflow: visible;
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+
+  /* 1 — Gider Tarihi */
+  .expense-report-table td:nth-child(1) {
+    grid-area: date;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: #4a6a8a;
+    align-self: center;
+  }
+
+  /* 2 — Gider Kalemi */
+  .expense-report-table td:nth-child(2) {
+    grid-area: item;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #1a2f48;
+    margin-top: 1px;
+  }
+
+  /* 3 — Ödeme Aracı */
+  .expense-report-table td:nth-child(3) {
+    grid-area: method;
+    font-size: 0.75rem;
+    color: #556a7e;
+  }
+
+  .expense-report-table td:nth-child(3)::before {
+    content: "Ödeme: ";
+    font-weight: 600;
+    color: #8aa0b4;
+  }
+
+  /* 4 — Tutar */
+  .expense-report-table td:nth-child(4) {
+    grid-area: amount;
+    font-weight: 700;
+    font-size: 1rem;
+    color: #1a3a56;
+    text-align: right;
+    align-self: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 5 — Açıklama */
+  .expense-report-table td:nth-child(5) {
+    grid-area: desc;
+    font-size: 0.75rem;
+    color: #667788;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .expense-report-table td:nth-child(5)::before {
+    content: "Açıklama: ";
+    font-weight: 600;
+    color: #8aa0b4;
+  }
+
+  /* 6 — Kaynak */
+  .expense-report-table td:nth-child(6) {
+    grid-area: source;
+    font-size: 0.72rem;
+    color: #8a9aaa;
+    text-align: right;
+    align-self: center;
+  }
+
+  /* 7 — İşlem butonları */
+  .expense-report-table td:nth-child(7) {
+    grid-area: acts;
+    display: flex !important;
+    gap: 6px;
+    justify-content: flex-end;
+    padding-top: 7px;
+    border-top: 1px solid #e8f0f8;
+    margin-top: 4px;
+  }
+
+  .expense-report-table .actions-cell .btn {
+    font-size: 0.78rem;
+    padding: 5px 0;
+    flex: 1 1 auto;
+    max-width: 50%;
+    text-align: center;
+  }
+
+  /* Boş satır */
+  .expense-report-table tr:has(td[colspan]) {
+    display: block;
+    text-align: center;
+    padding: 18px;
+    background: #fff;
+    border: 1px solid #c2d8ee;
+    border-radius: 10px;
+    font-style: italic;
+    color: #778899;
+  }
+
+  .expense-report-table tr:has(td[colspan]) td {
+    display: block;
+    width: 100% !important;
+  }
+
+  /* Düzenleme formu mobilde tek sütun */
+  .expense-report-edit-form .expense-report-edit-row-main,
+  .expense-report-edit-form .expense-report-edit-row-secondary {
+    grid-template-columns: 1fr;
+  }
+
+  /* Düzenleme formu aksiyonları mobilde tam genişlik */
+  .expense-report-edit-form .expense-report-edit-actions {
+    flex-wrap: wrap;
+    justify-content: stretch;
+  }
+
+  .expense-report-edit-form .expense-report-edit-actions .btn {
+    flex: 1 1 auto;
+    min-width: 120px;
+    text-align: center;
+  }
+
+  /* Filtre dropdown özet butonu dokunma dostu */
+  .expense-report-filter-row .apartment-edit-select-dropdown > summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+  }
+
+  /* Filtre panel'i tam genişlik + kaydırılabilir */
+  .expense-report-filter-row .filter-dropdown-panel.apartment-edit-select-list {
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  /* Özet tablo sarmalayıcı yatay kaydırılabilir */
+  .expense-report-summary .table-wrap {
+    overflow-x: auto;
+  }
+
+  /* Kaynak (td:nth-child(6)) mobil kartlarda gizle — kart zaten #source alanında  */
+  /* İsteğe bağlı: Kaynak alanını source label'ıyla göster */
+  .expense-report-table td:nth-child(6) {
+    font-size: 0.72rem;
+    color: #8a9aaa;
+    text-align: right;
+    align-self: center;
+  }
+
+  /* Özet tablo satır sırası mobilde daha kompakt */
+  .expense-report-summary-table th,
+  .expense-report-summary-table td {
+    padding: 5px 6px;
+    font-size: 0.78rem;
+  }
+}
+
+  /* Expense report mobile hard-stop overrides (must stay at EOF for cascade priority) */
+  @media (max-width: 760px) {
+    .expense-report-page {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: clip;
+    }
+
+    .expense-report-page .table-card,
+    .expense-report-page .expense-report-summary,
+    .expense-report-page .table-wrap {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: clip;
+    }
+
+    .expense-report-page .expense-report-summary .table-wrap {
+      overflow-x: auto;
+    }
+
+    .expense-report-page .expense-report-summary-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 6px;
+    }
+
+    .expense-report-page .expense-report-summary-head > * {
+      max-width: 100%;
+    }
+
+    .expense-report-page .expense-report-summary-head .small {
+      width: 100%;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .expense-report-page .expense-report-summary-table {
+      width: 100% !important;
+      min-width: 0 !important;
+      table-layout: fixed !important;
+    }
+
+    .expense-report-page .expense-report-summary-table th,
+    .expense-report-page .expense-report-summary-table td {
+      white-space: nowrap !important;
+      padding: 4px 5px;
+      font-size: 0.74rem;
+    }
+
+    .expense-report-page .expense-report-summary-table th:nth-child(1),
+    .expense-report-page .expense-report-summary-table td:nth-child(1) {
+      width: 10%;
+      text-align: center;
+    }
+
+    .expense-report-page .expense-report-summary-table th:nth-child(2),
+    .expense-report-page .expense-report-summary-table td:nth-child(2) {
+      width: 36%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .expense-report-page .expense-report-summary-table th:nth-child(3),
+    .expense-report-page .expense-report-summary-table td:nth-child(3) {
+      width: 18%;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .expense-report-page .expense-report-summary-table th:nth-child(4),
+    .expense-report-page .expense-report-summary-table td:nth-child(4) {
+      width: 36%;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      overflow: visible;
+      text-overflow: clip;
+    }
+
+    .expense-report-page .expense-report-summary-table td.col-num,
+    .expense-report-page .expense-report-summary-table th.col-num,
+    .expense-report-page .expense-report-summary-table .expense-report-summary-total-row td,
+    .expense-report-page .expense-report-summary-table .expense-report-summary-total-row td:last-child {
+      text-align: right !important;
+      white-space: nowrap !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* report-page genel max-content/min-width kurallarini bu sayfada ez */
+    .expense-report-page .table-wrap > table,
+    .expense-report-page table.report-compact-table,
+    .expense-report-page .expense-report-summary-table,
+    .expense-report-page .expense-report-table {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+    }
+
+    .expense-report-page .expense-report-summary-table {
+      table-layout: fixed !important;
+    }
+
+    .expense-report-page .section-head,
+    .expense-report-page .admin-row,
+    .expense-report-page .compact-row,
+    .expense-report-page label {
+      min-width: 0 !important;
+      max-width: 100% !important;
+    }
+
+    .expense-report-page .expense-report-head-actions {
+      display: grid !important;
+      grid-template-columns: 1fr !important;
+      gap: 8px;
+    }
+
+    .expense-report-page .expense-report-head-actions .btn {
+      width: 100% !important;
+    }
+
+    /* Mobilde hareket satiri aksiyonlari gizli (Duzelt/Sil) */
+    .expense-report-page .expense-report-table td:nth-child(7),
+    .expense-report-page .expense-report-table .actions-cell,
+    .expense-report-page .expense-report-table .actions-cell .btn {
+      display: none !important;
+    }
+
+    /* Mobilde tahsilat raporu aksiyonlari gizli (Duzelt/Sil) */
+    .payment-list-page .payment-list-table th:nth-child(11),
+    .payment-list-page .payment-list-table td:nth-child(11),
+    .payment-list-page .payment-list-table .actions-cell,
+    .payment-list-page .payment-list-table .actions-cell .btn {
+      display: none !important;
+    }
+
+    /* Tahsilat Raporu: Gider raporu ile ayni mobil mantik */
+    .payment-list-page .payment-list-head {
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      justify-content: flex-start !important;
+      min-height: 0 !important;
+      gap: 8px;
+    }
+
+    .payment-list-page .payment-list-head-actions {
+      display: grid !important;
+      grid-template-columns: 1fr !important;
+      gap: 8px;
+      width: 100% !important;
+      margin-left: 0 !important;
+      justify-content: stretch !important;
+      flex-wrap: wrap !important;
+      overflow-x: visible !important;
+    }
+
+    .payment-list-page .payment-list-head-actions .btn {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      margin-left: 0 !important;
+      justify-content: center;
+    }
+
+    .payment-list-page .payment-list-filter-row > label {
+      flex: 1 1 100%;
+      min-width: 0;
+    }
+
+    .payment-list-page .table-wrap:has(.payment-list-table) {
+      overflow-x: visible;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .payment-list-page .payment-list-table {
+      display: block;
+      width: 100% !important;
+      min-width: 0 !important;
+      table-layout: auto;
+    }
+
+    .payment-list-page .payment-list-table thead {
+      display: none;
+    }
+
+    .payment-list-page .payment-list-table tbody {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .payment-list-page .payment-list-table tr {
+      display: grid;
+      grid-template:
+        "date amount" auto
+        "door method" auto
+        "occupant occupant" auto
+        "desc desc" auto
+        "ref ref" auto
+        "source source" auto
+        "createdby createdby" auto
+        "createdat createdat" auto
+        / 1fr auto;
+      column-gap: 10px;
+      row-gap: 3px;
+      padding: 10px 12px;
+      border: 1px solid #c2d8ee;
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(24, 52, 82, 0.07);
+    }
+
+    .payment-list-page .payment-list-table td {
+      display: block;
+      width: auto !important;
+      white-space: normal;
+      padding: 0;
+      border: none;
+      overflow: visible;
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(1) {
+      grid-area: date;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: #4a6a8a;
+      align-self: center;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(2) {
+      grid-area: door;
+      font-size: 0.76rem;
+      color: #425d78;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(2)::before {
+      content: "D.No: ";
+      font-weight: 600;
+      color: #8aa0b4;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(3) {
+      grid-area: occupant;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #1a2f48;
+      margin-top: 1px;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(4) {
+      grid-area: method;
+      font-size: 0.75rem;
+      color: #556a7e;
+      text-align: right;
+      align-self: center;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(4)::before {
+      content: "Ynt: ";
+      font-weight: 600;
+      color: #8aa0b4;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(5) {
+      grid-area: amount;
+      font-weight: 700;
+      font-size: 1rem;
+      color: #1a3a56;
+      text-align: right;
+      align-self: center;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(6) {
+      grid-area: desc;
+      font-size: 0.75rem;
+      color: #667788;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(6)::before {
+      content: "Aciklama: ";
+      font-weight: 600;
+      color: #8aa0b4;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(7) {
+      grid-area: ref;
+      font-size: 0.72rem;
+      color: #7a8fa4;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(8) {
+      grid-area: source;
+      font-size: 0.72rem;
+      color: #7a8fa4;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(8) {
+      margin-top: -1px;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(7)::before {
+      content: "Ref: ";
+      font-weight: 600;
+      color: #8aa0b4;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(8)::before {
+      content: "Kaynak: ";
+      font-weight: 600;
+      color: #8aa0b4;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(9) {
+      grid-area: createdby;
+      font-size: 0.7rem;
+      color: #8a9aaa;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(10) {
+      grid-area: createdat;
+      font-size: 0.7rem;
+      color: #8a9aaa;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(9)::before {
+      content: "Kim: ";
+      font-weight: 600;
+      color: #8aa0b4;
+    }
+
+    .payment-list-page .payment-list-table td:nth-child(10)::before {
+      content: "Giris: ";
+      font-weight: 600;
+      color: #8aa0b4;
+    }
+
+    .payment-list-page .payment-list-table tr:has(td[colspan]) {
+      display: block;
+      text-align: center;
+      padding: 18px;
+      background: #fff;
+      border: 1px solid #c2d8ee;
+      border-radius: 10px;
+      font-style: italic;
+      color: #778899;
+    }
+
+    .payment-list-page .payment-list-table tr:has(td[colspan]) td {
+      display: block;
+      width: 100% !important;
+    }
+
+    /* Admin Ekstre: Gider raporu mantiginda mobil kart gorunum */
+    .statement-page .admin-tools .section-head,
+    .statement-page .table-card > .compact-row {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+
+    .statement-page .admin-tools .section-head .admin-row,
+    .statement-page .table-card > .compact-row .admin-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      width: 100%;
+      margin-left: 0;
+    }
+
+    .statement-page .admin-tools .section-head .admin-row .btn,
+    .statement-page .table-card > .compact-row .admin-row .btn {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .statement-page .statement-query-row,
+    .statement-page .statement-query-row select {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+    }
+
+    .statement-page .statement-query-row {
+      justify-content: flex-end;
+    }
+
+    .statement-page .statement-query-row select {
+      flex: 1 1 auto;
+    }
+
+    .statement-page .statement-selected-apartment {
+      width: 100%;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .statement-page .stats-grid.statement-stats-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .statement-page .table-wrap:has(table),
+    .statement-page .table-wrap:has(.statement-accounting-table) {
+      overflow-x: visible;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .statement-page .table-wrap > table,
+    .statement-page .statement-accounting-table {
+      display: block;
+      width: 100% !important;
+      min-width: 0 !important;
+      table-layout: auto;
+    }
+
+    .statement-page .table-wrap > table thead,
+    .statement-page .statement-accounting-table thead {
+      display: none;
+    }
+
+    .statement-page .table-wrap > table tbody,
+    .statement-page .statement-accounting-table tbody {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Kapamali ekstre */
+    .statement-page .table-wrap > table:not(.statement-accounting-table) tr {
+      display: grid;
+      grid-template:
+        "year month amount" auto
+        "type type status" auto
+        "due paid day" auto
+        "paidv rem rem" auto
+        / auto auto 1fr;
+      column-gap: 10px;
+      row-gap: 3px;
+      padding: 10px 12px;
+      border: 1px solid #c2d8ee;
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(24, 52, 82, 0.07);
+    }
+
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td {
+      display: block;
+      width: auto !important;
+      padding: 0;
+      border: none;
+      font-size: 0.8rem;
+      line-height: 1.35;
+      white-space: normal;
+      overflow: visible;
+    }
+
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(1) { grid-area: year; font-weight: 700; color: #365777; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(2) { grid-area: month; font-weight: 700; color: #365777; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(3) { grid-area: type; font-weight: 700; color: #1a2f48; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(4) { grid-area: due; color: #5d748a; font-size: 0.74rem; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(4)::before { content: "Vade: "; font-weight: 600; color: #8aa0b4; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(5) { grid-area: paid; color: #5d748a; font-size: 0.74rem; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(5)::before { content: "Odeme: "; font-weight: 600; color: #8aa0b4; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(6) { grid-area: day; color: #60778f; font-size: 0.74rem; text-align: right; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(7) { grid-area: amount; text-align: right; font-weight: 700; font-size: 0.98rem; font-variant-numeric: tabular-nums; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(7)::before { content: "Tutar: "; font-weight: 600; color: #8aa0b4; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(8) { grid-area: paidv; font-size: 0.76rem; color: #486883; font-variant-numeric: tabular-nums; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(8)::before { content: "Odenen: "; font-weight: 600; color: #8aa0b4; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(9) { grid-area: rem; text-align: right; font-size: 0.86rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(9)::before { content: "Kalan: "; font-weight: 600; color: #8aa0b4; }
+    .statement-page .table-wrap > table:not(.statement-accounting-table) td:nth-child(10) { grid-area: status; text-align: right; font-size: 0.74rem; color: #5d748a; }
+
+    /* Muhasebe ekstresi */
+    .statement-page .statement-accounting-table tr {
+      display: grid;
+      grid-template:
+        "date movement balance" auto
+        "year month balance" auto
+        "desc desc desc" auto
+        "debit credit credit" auto
+        / auto auto 1fr;
+      column-gap: 10px;
+      row-gap: 3px;
+      padding: 10px 12px;
+      border: 1px solid #c2d8ee;
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(24, 52, 82, 0.07);
+    }
+
+    .statement-page .statement-accounting-table td {
+      display: block;
+      width: auto !important;
+      padding: 0;
+      border: none;
+      font-size: 0.8rem;
+      line-height: 1.35;
+      white-space: normal;
+      overflow: visible;
+    }
+
+    .statement-page .statement-accounting-table td:nth-child(1) { grid-area: year; font-weight: 700; color: #365777; }
+    .statement-page .statement-accounting-table td:nth-child(2) { grid-area: month; font-weight: 700; color: #365777; }
+    .statement-page .statement-accounting-table td:nth-child(3) { grid-area: date; font-size: 0.76rem; color: #4a6a8a; }
+    .statement-page .statement-accounting-table td:nth-child(4) { grid-area: movement; font-size: 0.74rem; color: #5d748a; }
+    .statement-page .statement-accounting-table td:nth-child(5) { grid-area: desc; font-size: 0.76rem; color: #596f84; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .statement-page .statement-accounting-table td:nth-child(6) { grid-area: debit; font-size: 0.78rem; color: #4a6882; font-variant-numeric: tabular-nums; }
+    .statement-page .statement-accounting-table td:nth-child(6)::before { content: "Borc: "; font-weight: 600; color: #8aa0b4; }
+    .statement-page .statement-accounting-table td:nth-child(7) { grid-area: credit; text-align: right; font-size: 0.78rem; color: #4a6882; font-variant-numeric: tabular-nums; }
+    .statement-page .statement-accounting-table td:nth-child(7)::before { content: "Alacak: "; font-weight: 600; color: #8aa0b4; }
+    .statement-page .statement-accounting-table td:nth-child(8) { grid-area: balance; text-align: right; font-weight: 700; font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+    .statement-page .statement-accounting-table td:nth-child(8)::before { content: "Bakiye: "; font-weight: 600; color: #8aa0b4; }
+
+    .statement-page .table-wrap > table tr:has(td[colspan]),
+    .statement-page .statement-accounting-table tr:has(td[colspan]) {
+      display: block;
+      text-align: center;
+      padding: 18px;
+      background: #fff;
+      border: 1px solid #c2d8ee;
+      border-radius: 10px;
+      font-style: italic;
+      color: #778899;
+    }
+
+    .statement-page .table-wrap > table tr:has(td[colspan]) td,
+    .statement-page .statement-accounting-table tr:has(td[colspan]) td {
+      display: block;
+      width: 100% !important;
+    }
+  }

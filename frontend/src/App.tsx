@@ -14,6 +14,7 @@ import {
   mapSkippedErrors,
   monthOptions,
   userStorageKey,
+  type AdminPageKey,
   type AccountingStatementItem,
   type AdminActionLogRow,
   type ApartmentClassDefinition,
@@ -253,6 +254,11 @@ const MeetingGuidePage = lazy(() =>
     default: module.MeetingGuidePage,
   }))
 );
+const UserAccessManagementPage = lazy(() =>
+  import("./components/admin/UserAccessManagementPage").then((module) => ({
+    default: module.UserAccessManagementPage,
+  }))
+);
 
 function LazyAdminPageFallback() {
   return (
@@ -317,7 +323,7 @@ function LoginPage({
   );
 }
 
-function AdminPage() {
+function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | null; onSessionExpired: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
   type BankSystemColumnKey = "date" | "type" | "amount" | "description" | "reference" | "source";
@@ -684,6 +690,7 @@ function AdminPage() {
     key: "spentAt",
     direction: "desc",
   });
+  const [expenseReportSummarySelectionId, setExpenseReportSummarySelectionId] = useState<string | null>(null);
   const [editingExpenseReportId, setEditingExpenseReportId] = useState<string | null>(null);
   const [expenseReportEditForm, setExpenseReportEditForm] = useState({
     expenseItemId: "",
@@ -969,6 +976,257 @@ function AdminPage() {
       details.open = false;
     }
   }
+
+  const adminMenuPermissionMap: Partial<
+    Record<AdminPageKey, { visible: boolean; read: boolean; write: boolean; delete: boolean }>
+  > | null =
+    user?.role === "ADMIN" ? user.adminPagePermissions ?? null : null;
+  const bankTermDepositListPermission = adminMenuPermissionMap?.BANK_TERM_DEPOSITS_LIST;
+  const bankTermDepositCreatePermission = adminMenuPermissionMap?.BANK_TERM_DEPOSITS_CREATE;
+  const bankTermDepositEditPermission = adminMenuPermissionMap?.BANK_TERM_DEPOSITS_EDIT;
+  const bankTermDepositDeletePermission = adminMenuPermissionMap?.BANK_TERM_DEPOSITS_DELETE;
+  const chargeTypesCreatePermission = adminMenuPermissionMap?.CHARGE_TYPES_CREATE;
+  const chargeTypesEditPermission = adminMenuPermissionMap?.CHARGE_TYPES_EDIT;
+  const chargeTypesDeletePermission = adminMenuPermissionMap?.CHARGE_TYPES_DELETE;
+  const expenseItemsCreatePermission = adminMenuPermissionMap?.EXPENSE_ITEMS_CREATE;
+  const expenseItemsEditPermission = adminMenuPermissionMap?.EXPENSE_ITEMS_EDIT;
+  const expenseItemsDeletePermission = adminMenuPermissionMap?.EXPENSE_ITEMS_DELETE;
+  const expensesReportEditPermission = adminMenuPermissionMap?.EXPENSES_REPORT_EDIT;
+  const expensesReportDeletePermission = adminMenuPermissionMap?.EXPENSES_REPORT_DELETE;
+  const paymentMethodsCreatePermission = adminMenuPermissionMap?.PAYMENT_METHODS_CREATE;
+  const paymentMethodsEditPermission = adminMenuPermissionMap?.PAYMENT_METHODS_EDIT;
+  const paymentMethodsDeletePermission = adminMenuPermissionMap?.PAYMENT_METHODS_DELETE;
+  const paymentsListEditPermission = adminMenuPermissionMap?.PAYMENTS_LIST_EDIT;
+  const paymentsListDeletePermission = adminMenuPermissionMap?.PAYMENTS_LIST_DELETE;
+  const staffOpenAidatSendEmailPermission = adminMenuPermissionMap?.REPORTS_STAFF_OPEN_AIDAT_SEND_EMAIL;
+
+  const canViewBankTermDepositList = bankTermDepositListPermission?.visible ?? true;
+  const canCreateBankTermDeposit =
+    (bankTermDepositCreatePermission?.visible ?? true) && (bankTermDepositCreatePermission?.write ?? true);
+  const canEditBankTermDeposit =
+    (bankTermDepositEditPermission?.visible ?? true) && (bankTermDepositEditPermission?.write ?? true);
+  const canDeleteBankTermDeposit =
+    (bankTermDepositDeletePermission?.visible ?? true) && (bankTermDepositDeletePermission?.delete ?? true);
+  const canSeeBankTermDepositActions = canEditBankTermDeposit || canDeleteBankTermDeposit;
+  const canCreateChargeType =
+    (chargeTypesCreatePermission?.visible ?? true) && (chargeTypesCreatePermission?.write ?? true);
+  const canEditChargeType =
+    (chargeTypesEditPermission?.visible ?? true) && (chargeTypesEditPermission?.write ?? true);
+  const canDeleteChargeType =
+    (chargeTypesDeletePermission?.visible ?? true) && (chargeTypesDeletePermission?.delete ?? true);
+  const canSeeChargeTypeActions = canEditChargeType || canDeleteChargeType;
+  const canCreateExpenseItem =
+    (expenseItemsCreatePermission?.visible ?? true) && (expenseItemsCreatePermission?.write ?? true);
+  const canEditExpenseItem =
+    (expenseItemsEditPermission?.visible ?? true) && (expenseItemsEditPermission?.write ?? true);
+  const canDeleteExpenseItem =
+    (expenseItemsDeletePermission?.visible ?? true) && (expenseItemsDeletePermission?.delete ?? true);
+  const canSeeExpenseItemActions = canEditExpenseItem || canDeleteExpenseItem;
+  const canEditExpenseReport =
+    (expensesReportEditPermission?.visible ?? true) && (expensesReportEditPermission?.write ?? true);
+  const canDeleteExpenseReport =
+    (expensesReportDeletePermission?.visible ?? true) && (expensesReportDeletePermission?.delete ?? true);
+  const canCreatePaymentMethod =
+    (paymentMethodsCreatePermission?.visible ?? true) && (paymentMethodsCreatePermission?.write ?? true);
+  const canEditPaymentMethod =
+    (paymentMethodsEditPermission?.visible ?? true) && (paymentMethodsEditPermission?.write ?? true);
+  const canDeletePaymentMethod =
+    (paymentMethodsDeletePermission?.visible ?? true) && (paymentMethodsDeletePermission?.delete ?? true);
+  const canEditPaymentList =
+    (paymentsListEditPermission?.visible ?? true) && (paymentsListEditPermission?.write ?? true);
+  const canDeletePaymentList =
+    (paymentsListDeletePermission?.visible ?? true) && (paymentsListDeletePermission?.delete ?? true);
+  const canSendStaffOpenAidatStatementEmail =
+    (staffOpenAidatSendEmailPermission?.visible ?? true) && (staffOpenAidatSendEmailPermission?.write ?? true);
+
+  function menuPathToPermissionKey(pathname: string): AdminPageKey | null {
+    const path = pathname.replace(/\/+$/, "");
+
+    const mapping: Record<string, AdminPageKey> = {
+      "/admin": "REPORTS_SUMMARY",
+      "/admin/apartments/new": "APT_NEW",
+      "/admin/apartments/list": "APT_LIST",
+      "/admin/apartments/edit": "APT_EDIT",
+      "/admin/apartments/passwords": "APT_PASSWORDS",
+      "/admin/apartments/upload": "APT_UPLOAD",
+      "/admin/apartments/bulk-update": "APT_BULK_UPDATE",
+      "/admin/apartments/history": "APT_HISTORY",
+      "/admin/building-info": "BUILDING_INFO",
+      "/admin/blocks": "BLOCKS",
+      "/admin/apartment-classes": "APT_CLASSES",
+      "/admin/apartment-types": "APT_TYPES",
+      "/admin/apartment-duties": "APT_DUTIES",
+      "/admin/charge-types": "CHARGE_TYPES_LIST",
+      "/admin/charges/new": "CHARGES_NEW_CREATE",
+      "/admin/charges/bulk": "CHARGES_BULK_CREATE",
+      "/admin/charges/bulk-correct": "CHARGES_BULK_CORRECT_EDIT",
+      "/admin/charges/bulk-correct/edit": "CHARGES_BULK_CORRECT_EDIT",
+      "/admin/charges/gas-calculator": "CHARGES_GAS_CALC_CREATE",
+      "/admin/payment-methods": "PAYMENT_METHODS_LIST",
+      "/admin/payments/new": "PAYMENTS_NEW_CREATE",
+      "/admin/payments/list": "PAYMENTS_LIST_LIST",
+      "/admin/statement": "STATEMENT_VIEW",
+      "/admin/statement/all": "STATEMENT_ALL_VIEW",
+      "/admin/expense-items": "EXPENSE_ITEMS_LIST",
+      "/admin/expenses/new": "EXPENSES_NEW_CREATE",
+      "/admin/expenses/report": "EXPENSES_REPORT_LIST",
+      "/admin/reports": "REPORTS_SUMMARY",
+      "/admin/reports/staff-mobile-home": "REPORTS_STAFF_MOBILE_HOME",
+      "/admin/reports/overdue-payments": "REPORTS_OVERDUE",
+      "/admin/reports/staff-open-aidat": "REPORTS_STAFF_OPEN_AIDAT",
+      "/admin/reports/staff-contact-edit": "APT_EDIT",
+      "/admin/reports/monthly-balance-matrix": "REPORTS_MONTHLY_BALANCE",
+      "/admin/reports/monthly-ledger-print": "REPORTS_MONTHLY_LEDGER",
+      "/admin/reports/fractional-closures": "REPORTS_FRACTIONAL",
+      "/admin/reports/reference-search": "REPORTS_REFERENCE_SEARCH",
+      "/admin/reports/bank-movements": "REPORTS_BANK_MOVEMENTS",
+      "/admin/reports/apartments/list": "APT_LIST",
+      "/admin/banks": "BANKS",
+      "/admin/initial-balances": "BANK_INITIAL_BALANCES",
+      "/admin/banks/term-deposits": "BANK_TERM_DEPOSITS_LIST",
+      "/admin/bank-statement": "BANK_STATEMENT_IMPORT",
+      "/admin/banks/statement-view": "BANK_STATEMENT_VIEW",
+      "/admin/upload-batches": "UPLOAD_BATCHES",
+      "/admin/reports/charge-consistency": "CHECK_CHARGE_CONSISTENCY",
+      "/admin/reconcile/door-mismatch-report": "CHECK_DOOR_MISMATCH",
+      "/admin/reports/bank-statement": "CHECK_BANK_STATEMENT",
+      "/admin/reports/manual-review-matches": "CHECK_MANUAL_REVIEW",
+      "/admin/description-door-rules": "SETTINGS_DESC_DOOR",
+      "/admin/description-expense-rules": "SETTINGS_DESC_EXPENSE",
+      "/admin/resident-content": "RESIDENT_CONTENT",
+      "/admin/corrections": "CORRECTIONS",
+      "/admin/unclassified": "UNCLASSIFIED",
+      "/admin/manual-closures": "MANUAL_CLOSURES",
+      "/admin/audit-logs": "AUDIT_LOGS",
+      "/admin/user-access": "USER_ACCESS",
+      "/admin/meeting": "MEETING",
+      "/admin/guide/manual": "GUIDE_MANUAL",
+    };
+
+    return mapping[path] ?? null;
+  }
+
+  const firstAccessibleAdminPath = useMemo(() => {
+    if (!adminMenuPermissionMap) {
+      return "/admin/reports";
+    }
+
+    const candidates: Array<{ path: string; key: AdminPageKey }> = [
+      { path: "/admin/reports", key: "REPORTS_SUMMARY" },
+      { path: "/admin/reports/staff-mobile-home", key: "REPORTS_STAFF_MOBILE_HOME" },
+      { path: "/admin/reports/overdue-payments", key: "REPORTS_OVERDUE" },
+      { path: "/admin/reports/staff-open-aidat", key: "REPORTS_STAFF_OPEN_AIDAT" },
+      { path: "/admin/reports/staff-contact-edit", key: "APT_EDIT" },
+      { path: "/admin/reports/monthly-balance-matrix", key: "REPORTS_MONTHLY_BALANCE" },
+      { path: "/admin/reports/monthly-ledger-print", key: "REPORTS_MONTHLY_LEDGER" },
+      { path: "/admin/reports/fractional-closures", key: "REPORTS_FRACTIONAL" },
+      { path: "/admin/reports/reference-search", key: "REPORTS_REFERENCE_SEARCH" },
+      { path: "/admin/reports/bank-movements", key: "REPORTS_BANK_MOVEMENTS" },
+      { path: "/admin/reports/apartments/list", key: "APT_LIST" },
+      { path: "/admin/apartments/new", key: "APT_NEW" },
+      { path: "/admin/apartments/list", key: "APT_LIST" },
+      { path: "/admin/apartments/edit", key: "APT_EDIT" },
+      { path: "/admin/apartments/passwords", key: "APT_PASSWORDS" },
+      { path: "/admin/apartments/upload", key: "APT_UPLOAD" },
+      { path: "/admin/apartments/bulk-update", key: "APT_BULK_UPDATE" },
+      { path: "/admin/apartments/history", key: "APT_HISTORY" },
+      { path: "/admin/building-info", key: "BUILDING_INFO" },
+      { path: "/admin/blocks", key: "BLOCKS" },
+      { path: "/admin/apartment-classes", key: "APT_CLASSES" },
+      { path: "/admin/apartment-types", key: "APT_TYPES" },
+      { path: "/admin/apartment-duties", key: "APT_DUTIES" },
+      { path: "/admin/charge-types", key: "CHARGE_TYPES_LIST" },
+      { path: "/admin/charges/new", key: "CHARGES_NEW_CREATE" },
+      { path: "/admin/charges/bulk", key: "CHARGES_BULK_CREATE" },
+      { path: "/admin/charges/bulk-correct", key: "CHARGES_BULK_CORRECT_EDIT" },
+      { path: "/admin/charges/gas-calculator", key: "CHARGES_GAS_CALC_CREATE" },
+      { path: "/admin/payment-methods", key: "PAYMENT_METHODS_LIST" },
+      { path: "/admin/payments/new", key: "PAYMENTS_NEW_CREATE" },
+      { path: "/admin/payments/list", key: "PAYMENTS_LIST_LIST" },
+      { path: "/admin/statement", key: "STATEMENT_VIEW" },
+      { path: "/admin/statement/all", key: "STATEMENT_ALL_VIEW" },
+      { path: "/admin/expense-items", key: "EXPENSE_ITEMS_LIST" },
+      { path: "/admin/expenses/new", key: "EXPENSES_NEW_CREATE" },
+      { path: "/admin/expenses/report", key: "EXPENSES_REPORT_LIST" },
+      { path: "/admin/banks", key: "BANKS" },
+      { path: "/admin/initial-balances", key: "BANK_INITIAL_BALANCES" },
+      { path: "/admin/banks/term-deposits", key: "BANK_TERM_DEPOSITS_LIST" },
+      { path: "/admin/bank-statement", key: "BANK_STATEMENT_IMPORT" },
+      { path: "/admin/banks/statement-view", key: "BANK_STATEMENT_VIEW" },
+      { path: "/admin/upload-batches", key: "UPLOAD_BATCHES" },
+      { path: "/admin/reports/charge-consistency", key: "CHECK_CHARGE_CONSISTENCY" },
+      { path: "/admin/reconcile/door-mismatch-report", key: "CHECK_DOOR_MISMATCH" },
+      { path: "/admin/reports/bank-statement", key: "CHECK_BANK_STATEMENT" },
+      { path: "/admin/reports/manual-review-matches", key: "CHECK_MANUAL_REVIEW" },
+      { path: "/admin/description-door-rules", key: "SETTINGS_DESC_DOOR" },
+      { path: "/admin/description-expense-rules", key: "SETTINGS_DESC_EXPENSE" },
+      { path: "/admin/resident-content", key: "RESIDENT_CONTENT" },
+      { path: "/admin/corrections", key: "CORRECTIONS" },
+      { path: "/admin/unclassified", key: "UNCLASSIFIED" },
+      { path: "/admin/manual-closures", key: "MANUAL_CLOSURES" },
+      { path: "/admin/audit-logs", key: "AUDIT_LOGS" },
+      { path: "/admin/meeting", key: "MEETING" },
+      { path: "/admin/guide/manual", key: "GUIDE_MANUAL" },
+      { path: "/admin/user-access", key: "USER_ACCESS" },
+    ];
+
+    const firstVisible = candidates.find((item) => adminMenuPermissionMap[item.key]?.visible);
+    return firstVisible?.path ?? null;
+  }, [adminMenuPermissionMap]);
+
+  useEffect(() => {
+    if (!adminMenuPermissionMap) {
+      return;
+    }
+
+    const permissionKey = menuPathToPermissionKey(location.pathname);
+    if (!permissionKey) {
+      return;
+    }
+
+    const isVisible = adminMenuPermissionMap[permissionKey]?.visible ?? true;
+    if (isVisible) {
+      return;
+    }
+
+    setMessage("Bu sayfayi goruntuleme yetkiniz yok.");
+
+    if (firstAccessibleAdminPath && firstAccessibleAdminPath !== location.pathname) {
+      navigate(firstAccessibleAdminPath, { replace: true });
+      return;
+    }
+
+    navigate("/login", { replace: true });
+  }, [adminMenuPermissionMap, firstAccessibleAdminPath, location.pathname, navigate]);
+
+  useEffect(() => {
+    const root = adminSubnavRef.current;
+    if (!root) {
+      return;
+    }
+
+    const links = Array.from(root.querySelectorAll<HTMLAnchorElement>(".admin-subnav-links a[href]"));
+    for (const link of links) {
+      const pathname = new URL(link.href).pathname;
+      const key = menuPathToPermissionKey(pathname);
+      const visible =
+        !adminMenuPermissionMap || !key
+          ? true
+          : (adminMenuPermissionMap[key]?.visible ?? true);
+
+      link.style.display = visible ? "" : "none";
+      link.setAttribute("data-hidden-by-permission", visible ? "false" : "true");
+    }
+
+    const groups = Array.from(root.querySelectorAll<HTMLDetailsElement>(".admin-subnav-dropdown"));
+    for (const group of groups) {
+      const visibleCount = group.querySelectorAll('.admin-subnav-links a[data-hidden-by-permission="false"]').length;
+      group.style.display = visibleCount > 0 ? "" : "none";
+      if (visibleCount === 0) {
+        group.open = false;
+      }
+    }
+  }, [adminMenuPermissionMap, location.pathname]);
 
   const totals = useMemo(() => {
     const amount = statement.reduce((sum, row) => sum + row.amount, 0);
@@ -1853,15 +2111,16 @@ function AdminPage() {
         .replace(/\s+/g, " ")
         .trim();
 
-    const grouped = new Map<string, { expenseItemName: string; totalAmount: number; rowCount: number }>();
+    const grouped = new Map<string, { expenseItemId: string; expenseItemName: string; totalAmount: number; rowCount: number }>();
 
     for (const row of expenseReportRows) {
       const normalizedName = normalizeSummaryItemName(row.expenseItemName);
-      const key = normalizedName.toLocaleLowerCase("tr");
+      const key = row.expenseItemId;
 
       const existing = grouped.get(key);
       if (!existing) {
         grouped.set(key, {
+          expenseItemId: row.expenseItemId,
           expenseItemName: normalizedName,
           totalAmount: Number(row.amount),
           rowCount: 1,
@@ -1925,6 +2184,14 @@ function AdminPage() {
       return expenseReportSort.direction === "asc" ? compare : -compare;
     });
   }, [expenseReportRows, expenseReportSort, paymentMethodOptions]);
+
+  const displayedExpenseReportRows = useMemo(() => {
+    if (!expenseReportSummarySelectionId) {
+      return sortedExpenseReportRows;
+    }
+
+    return sortedExpenseReportRows.filter((row) => row.expenseItemId === expenseReportSummarySelectionId);
+  }, [sortedExpenseReportRows, expenseReportSummarySelectionId]);
 
   const toggleExpenseReportSort = (
     key: "spentAt" | "expenseItemName" | "paymentMethod" | "amount" | "description"
@@ -3240,7 +3507,28 @@ function AdminPage() {
         setToastMessage(method === "DELETE" ? "Kayit silinemedi" : "Veri kaydedilemedi");
       }
       if (res.status === 401) {
+        onSessionExpired();
         throw new Error("Oturum gecersiz veya suresi dolmus. Lutfen tekrar giris yapin");
+      }
+      if (res.status === 403) {
+        const deniedMessage = errorBody.message ?? "Bu sayfa veya islem icin yetkiniz yok";
+        setToastMessage(deniedMessage);
+        setMessage(deniedMessage);
+
+        const currentPermissionKey = menuPathToPermissionKey(location.pathname);
+        const currentPageVisible = currentPermissionKey
+          ? (adminMenuPermissionMap?.[currentPermissionKey]?.visible ?? true)
+          : true;
+
+        if (!currentPageVisible) {
+          if (firstAccessibleAdminPath && firstAccessibleAdminPath !== location.pathname) {
+            navigate(firstAccessibleAdminPath, { replace: true });
+          } else {
+            navigate("/login", { replace: true });
+          }
+        }
+
+        throw new Error(deniedMessage);
       }
       if (res.status === 413) {
         throw new Error("Gonderilen veri cok buyuk (413). Satir sayisini azaltip parca parca kaydetmeyi deneyin.");
@@ -4093,9 +4381,16 @@ function AdminPage() {
     setExpenseReportAutoRefreshEnabled(false);
     skipNextExpenseReportAutoRefreshRef.current = true;
     setExpenseReportFilter(reset);
+    setExpenseReportSummarySelectionId(null);
     setExpenseReportRows([]);
     setExpenseReportError("");
     setMessage("Gider raporu filtresi temizlendi. Raporu calistirmak icin Calistir butonuna basin");
+  }
+
+  function filterExpenseReportBySummaryItem(expenseItemId: string): void {
+    const alreadySelected = expenseReportSummarySelectionId === expenseItemId;
+    setExpenseReportSummarySelectionId(alreadySelected ? null : expenseItemId);
+    setMessage(alreadySelected ? "Liste filtresi kaldirildi" : "Liste secilen gider kalemine gore filtrelendi");
   }
 
   async function openExpenseReportForItem(expenseItemId: string): Promise<void> {
@@ -4889,6 +5184,11 @@ function AdminPage() {
   }
 
   async function sendStaffOpenAidatStatementEmail(apartmentId: string): Promise<void> {
+    if (!canSendStaffOpenAidatStatementEmail) {
+      setMessage("Ekstre e-mail gonderme yetkiniz yok.");
+      return;
+    }
+
     const targetApartmentId = apartmentId.trim();
     if (!targetApartmentId) {
       setMessage("Lutfen once daire secin");
@@ -8171,6 +8471,17 @@ function AdminPage() {
   ]);
 
   useEffect(() => {
+    if (!expenseReportSummarySelectionId) {
+      return;
+    }
+
+    const hasSelectedItem = expenseReportRows.some((row) => row.expenseItemId === expenseReportSummarySelectionId);
+    if (!hasSelectedItem) {
+      setExpenseReportSummarySelectionId(null);
+    }
+  }, [expenseReportRows, expenseReportSummarySelectionId]);
+
+  useEffect(() => {
     if (location.pathname !== "/admin/unclassified") {
       return;
     }
@@ -8260,7 +8571,15 @@ function AdminPage() {
         </div>
       )}
 
-      <div className="card admin-subnav" ref={adminSubnavRef}>
+      <div className="admin-nav-wrapper">
+        <input type="checkbox" id="admin-nav-toggle" className="admin-nav-toggle-input" />
+        <label htmlFor="admin-nav-toggle" className="admin-nav-hamburger-btn" aria-label="Menüyü aç/kapat">
+          <span className="admin-nav-hamburger-icon" aria-hidden="true">
+            <span /><span /><span />
+          </span>
+          <span className="admin-nav-hamburger-label">Menü</span>
+        </label>
+        <div className="card admin-subnav" ref={adminSubnavRef}>
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon" aria-hidden="true">🏠</span>
@@ -8505,6 +8824,9 @@ function AdminPage() {
             <NavLink className="btn btn-ghost" to="/admin/audit-logs">
               Islem Gecmisi
             </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/user-access">
+              Kullanici - Sifre - Yetkiler
+            </NavLink>
           </div>
         </details>
 
@@ -8520,6 +8842,7 @@ function AdminPage() {
           </div>
         </details>
 
+        </div>
       </div>
 
       <Routes>
@@ -9448,7 +9771,7 @@ function AdminPage() {
           element={
             <section className="dashboard report-page">
               <div className="card table-card report-page-card">
-                <div className="section-head report-toolbar">
+                <div className="section-head report-toolbar overdue-payments-toolbar">
                   <h3>Gecikmis Odemeler Raporu</h3>
                   <div className="admin-row">
                     <button
@@ -9463,7 +9786,7 @@ function AdminPage() {
                   </div>
                 </div>
 
-                <div className="upload-batch-filter-row compact-row-top-gap report-filter-grid">
+                <div className="upload-batch-filter-row compact-row-top-gap report-filter-grid overdue-payments-filter-row">
                   <label>
                     Vade Baslangic
                     <input
@@ -9610,26 +9933,6 @@ function AdminPage() {
                   </label>
                 </div>
 
-                {overduePaymentsTotals && (
-                  <div className="stats-grid compact-row-top-gap">
-                    <article className="card stat stat-tone-danger">
-                      <h4>Toplam Kalan Borc</h4>
-                      <p>{formatTry(overduePaymentsTotals.totalRemaining)}</p>
-                      <span className="small">Satir sayisi: {overduePaymentsTotals.rowCount}</span>
-                    </article>
-                    <article className="card stat stat-tone-warn">
-                      <h4>Toplam Borclandirilan</h4>
-                      <p>{formatTry(overduePaymentsTotals.totalAmount)}</p>
-                      <span className="small">Rapor satirlari toplami</span>
-                    </article>
-                    <article className="card stat stat-tone-good">
-                      <h4>Toplam Odenen</h4>
-                      <p>{formatTry(overduePaymentsTotals.totalPaid)}</p>
-                      <span className="small">Gecikmis satirlardan tahsil edilen</span>
-                    </article>
-                  </div>
-                )}
-
                 <div className="report-column-menu-group">
                   <details className="report-column-menu">
                     <summary>Kolonlar</summary>
@@ -9767,6 +10070,24 @@ function AdminPage() {
                           </tr>
                         ))
                       )}
+                      {overduePaymentsRows.length > 0 && (
+                        overduePaymentsColumnVisibility.remaining ? (
+                          <tr>
+                            <td colSpan={Math.max(1, overduePaymentsVisibleColumnCount - 1)}>
+                              <strong>Genel Toplam</strong>
+                            </td>
+                            <td className="col-num">
+                              <strong>{formatTry(overduePaymentsTotals?.totalRemaining ?? 0)}</strong>
+                            </td>
+                          </tr>
+                        ) : (
+                          <tr>
+                            <td colSpan={overduePaymentsVisibleColumnCount}>
+                              <strong>Genel Toplam Kalan Borc: {formatTry(overduePaymentsTotals?.totalRemaining ?? 0)}</strong>
+                            </td>
+                          </tr>
+                        )
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -9782,10 +10103,7 @@ function AdminPage() {
               {/* ─── Filter Card ─────────────────────────────────── */}
               <div className="card report-page-card cc-report-card">
                 <div className="section-head report-toolbar">
-                  <div>
-                    <h3>Tahakkuk Kontrol Raporu</h3>
-                    <p className="small">Secilen donem icin tahakkuk tutarsizliklarini ve eksikliklerini tarar.</p>
-                  </div>
+                  <h3>Tahakkuk Kontrol Raporu</h3>
                   <div className="admin-row">
                     <button
                       className="btn btn-run"
@@ -9798,6 +10116,8 @@ function AdminPage() {
                     <button className="btn btn-ghost" type="button" onClick={clearChargeConsistencyFilters}>Temizle</button>
                   </div>
                 </div>
+
+                <p className="small">Secilen donem icin tahakkuk tutarsizliklarini ve eksikliklerini tarar.</p>
 
                 <div className="cc-filter-body">
                   {/* Donem */}
@@ -10184,7 +10504,7 @@ function AdminPage() {
                     Genel Rapor
                   </NavLink>
                   <NavLink className="btn btn-primary staff-mobile-link-btn" to="/admin/reports/staff-open-aidat">
-                    Daire Ekstre
+                    Daire Acik Borc
                   </NavLink>
                   <NavLink className="btn btn-primary staff-mobile-link-btn" to="/admin/reports/staff-contact-edit">
                     Daire Iletisim
@@ -10209,6 +10529,7 @@ function AdminPage() {
                 reportLoading={staffOpenAidatLoading}
                 runQuery={runStaffOpenAidatQuery}
                 sendStatementEmail={sendStaffOpenAidatStatementEmail}
+                canSendStatementEmail={canSendStaffOpenAidatStatementEmail}
                 clearFilters={clearStaffOpenAidatFilters}
               />
             </Suspense>
@@ -10749,11 +11070,12 @@ function AdminPage() {
           path="/charge-types"
           element={
             <section className="dashboard compact-management-page">
+              {(canCreateChargeType || (canEditChargeType && !!editingChargeTypeId)) && (
               <form className="card admin-form" onSubmit={onSubmitChargeType}>
                 <div className="section-head">
                   <h3>{editingChargeTypeId ? "Tahakkuk Tipi Degistir" : "Tahakkuk Tipi Ekle"}</h3>
                   <div className="admin-row">
-                    <button className="btn btn-primary" type="submit" disabled={loading}>
+                    <button className="btn btn-primary" type="submit" disabled={loading || (!editingChargeTypeId && !canCreateChargeType)}>
                       {editingChargeTypeId ? "Degisiklikleri Kaydet" : "Tip Ekle"}
                     </button>
                     <button className="btn btn-ghost" type="button" onClick={cancelEditChargeType}>Temizle</button>
@@ -10803,6 +11125,7 @@ function AdminPage() {
                   </label>
                 </div>
               </form>
+              )}
 
               <div className="card table-card">
                 <h3>Tahakkuk Tipi Listesi</h3>
@@ -10814,7 +11137,7 @@ function AdminPage() {
                         <th>Ad</th>
                         <th>Odeyecek</th>
                         <th>Durum</th>
-                        <th>Islem</th>
+                        {canSeeChargeTypeActions && <th>Islem</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -10824,23 +11147,29 @@ function AdminPage() {
                           <td>{item.name}</td>
                           <td>{item.payerTarget === "OWNER" ? "Ev Sahibi" : "Kiraci"}</td>
                           <td>{item.isActive ? "Aktif" : "Pasif"}</td>
-                          <td className="actions-cell">
-                            <button
-                              className="btn btn-ghost"
-                              type="button"
-                              onClick={() => startEditChargeType(item)}
-                            >
-                              Degistir
-                            </button>
-                            <button className="btn btn-danger" type="button" onClick={() => void deleteChargeType(item)}>
-                              Sil
-                            </button>
-                          </td>
+                          {canSeeChargeTypeActions && (
+                            <td className="actions-cell">
+                              {canEditChargeType && (
+                                <button
+                                  className="btn btn-ghost"
+                                  type="button"
+                                  onClick={() => startEditChargeType(item)}
+                                >
+                                  Degistir
+                                </button>
+                              )}
+                              {canDeleteChargeType && (
+                                <button className="btn btn-danger" type="button" onClick={() => void deleteChargeType(item)}>
+                                  Sil
+                                </button>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       ))}
                       {chargeTypeOptions.length === 0 && (
                         <tr>
-                          <td colSpan={5} className="empty">
+                          <td colSpan={canSeeChargeTypeActions ? 5 : 4} className="empty">
                             Tahakkuk tipi yok
                           </td>
                         </tr>
@@ -11808,11 +12137,12 @@ function AdminPage() {
           path="/expense-items"
           element={
             <section className="dashboard compact-management-page expense-item-page">
+              {(canCreateExpenseItem || (canEditExpenseItem && !!editingExpenseItemId)) && (
               <form className="card admin-form apartment-form-surface expense-item-form-surface" onSubmit={onSubmitExpenseItem}>
                 <div className="section-head">
                   <h3>{editingExpenseItemId ? "Gider Kalemi Degistir" : "Gider Kalemi Ekle"}</h3>
                   <div className="admin-row">
-                    <button className="btn btn-primary" type="submit" disabled={loading}>
+                    <button className="btn btn-primary" type="submit" disabled={loading || (!editingExpenseItemId && !canCreateExpenseItem)}>
                       {editingExpenseItemId ? "Degisiklikleri Kaydet" : "Kalem Ekle"}
                     </button>
                     <button className="btn btn-ghost" type="button" onClick={clearExpenseItemForm}>
@@ -11850,6 +12180,7 @@ function AdminPage() {
                   </label>
                 </div>
               </form>
+              )}
 
               <div className="card table-card expense-item-table-card">
                 <div className="section-head">
@@ -11863,7 +12194,7 @@ function AdminPage() {
                         <th>Kod</th>
                         <th>Ad</th>
                         <th>Durum</th>
-                        <th>Islem</th>
+                        {canSeeExpenseItemActions && <th>Islem</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -11872,19 +12203,25 @@ function AdminPage() {
                           <td>{item.code}</td>
                           <td>{item.name}</td>
                           <td>{item.isActive ? "Aktif" : "Pasif"}</td>
-                          <td className="actions-cell">
-                            <button className="btn btn-ghost" type="button" onClick={() => startEditExpenseItem(item)}>
-                              Degistir
-                            </button>
-                            <button className="btn btn-danger" type="button" onClick={() => void deleteExpenseItem(item)}>
-                              Sil
-                            </button>
-                          </td>
+                          {canSeeExpenseItemActions && (
+                            <td className="actions-cell">
+                              {canEditExpenseItem && (
+                                <button className="btn btn-ghost" type="button" onClick={() => startEditExpenseItem(item)}>
+                                  Degistir
+                                </button>
+                              )}
+                              {canDeleteExpenseItem && (
+                                <button className="btn btn-danger" type="button" onClick={() => void deleteExpenseItem(item)}>
+                                  Sil
+                                </button>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       ))}
                       {expenseItemOptions.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="empty">
+                          <td colSpan={canSeeExpenseItemActions ? 4 : 3} className="empty">
                             Gider kalemi yok
                           </td>
                         </tr>
@@ -12150,23 +12487,27 @@ function AdminPage() {
           element={
             <Suspense fallback={<LazyAdminPageFallback />}>
               <ExpenseReportPage
+                canEdit={canEditExpenseReport}
+                canDelete={canDeleteExpenseReport}
                 loading={loading}
                 expenseReportFilter={expenseReportFilter}
                 setExpenseReportFilter={setExpenseReportFilter}
                 expenseItemOptions={expenseItemOptions}
                 expenseReportItemSummary={expenseReportItemSummary}
+                selectedExpenseSummaryItemId={expenseReportSummarySelectionId}
                 editingExpenseReportId={editingExpenseReportId}
                 expenseReportEditForm={expenseReportEditForm}
                 setExpenseReportEditForm={setExpenseReportEditForm}
                 paymentMethodOptions={paymentMethodOptions}
                 runExpenseReportQuery={runExpenseReportQuery}
+                onSelectExpenseSummaryItem={filterExpenseReportBySummaryItem}
                 clearExpenseReportFilters={clearExpenseReportFilters}
                 submitExpenseReportRowEdit={submitExpenseReportRowEdit}
                 cancelEditExpenseReportRow={cancelEditExpenseReportRow}
                 toggleExpenseReportSort={toggleExpenseReportSort}
                 getExpenseReportSortButtonTitle={getExpenseReportSortButtonTitle}
                 getExpenseReportSortButtonText={getExpenseReportSortButtonText}
-                sortedExpenseReportRows={sortedExpenseReportRows}
+                sortedExpenseReportRows={displayedExpenseReportRows}
                 startEditExpenseReportRow={startEditExpenseReportRow}
                 deleteExpenseReportRow={deleteExpenseReportRow}
                 expenseReportError={expenseReportError}
@@ -12202,6 +12543,9 @@ function AdminPage() {
             <Suspense fallback={<LazyAdminPageFallback />}>
               <PaymentMethodManagementPage
                 loading={loading}
+                canCreate={canCreatePaymentMethod}
+                canEdit={canEditPaymentMethod}
+                canDelete={canDeletePaymentMethod}
                 editingPaymentMethodId={editingPaymentMethodId}
                 paymentMethodForm={paymentMethodForm}
                 setPaymentMethodForm={setPaymentMethodForm}
@@ -12732,6 +13076,8 @@ function AdminPage() {
           element={
             <Suspense fallback={<LazyAdminPageFallback />}>
               <PaymentListPage
+                canEdit={canEditPaymentList}
+                canDelete={canDeletePaymentList}
                 loading={loading}
                 apartmentOptions={apartmentOptions}
                 paymentMethodOptions={paymentMethodOptions}
@@ -12922,7 +13268,19 @@ function AdminPage() {
         />
         <Route
           path="/reports/bank-movements"
-          element={<Navigate replace to="/admin/banks/statement-view" />}
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <BankStatementViewPage
+                loading={loading}
+                rows={bankStatementViewRows}
+                openingBalance={bankStatementViewOpeningBalance}
+                filter={bankStatementViewFilter}
+                setFilter={setBankStatementViewFilter}
+                runQuery={runBankStatementViewQuery}
+                resetToCurrentMonth={resetBankStatementViewToCurrentMonth}
+              />
+            </Suspense>
+          }
         />
         <Route
           path="/reports/apartments/list"
@@ -13037,7 +13395,8 @@ function AdminPage() {
           path="/banks/term-deposits"
           element={
             <section className="dashboard bank-term-deposit-page">
-              <form className="card admin-form bank-term-deposit-form-surface" onSubmit={onSubmitBankTermDeposit}>
+              {canCreateBankTermDeposit && (
+                <form className="card admin-form bank-term-deposit-form-surface" onSubmit={onSubmitBankTermDeposit}>
                 <div className="section-head">
                   <h3>{editingBankTermDepositId ? "Vadeli Mevduat Degistir" : "Vadeli Mevduat Ekle"}</h3>
                   <div className="admin-row">
@@ -13199,9 +13558,11 @@ function AdminPage() {
                     />
                   </label>
                 </section>
-              </form>
+                </form>
+              )}
 
-              <div className="card table-card">
+              {canViewBankTermDepositList && (
+                <div className="card table-card">
                 <h3>Vadeli Mevduat Listesi</h3>
                 <p className="small">
                   Ana Para Toplami: <b>{formatTry(bankTermDepositPrincipalTotal)}</b>
@@ -13221,13 +13582,13 @@ function AdminPage() {
                         <th className="col-num">Net Getiri</th>
                         <th className="col-num">Vade Sonu Net</th>
                         <th>Durum</th>
-                        <th>Islem</th>
+                        {canSeeBankTermDepositActions && <th>Islem</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {bankTermDepositRows.length === 0 ? (
                         <tr>
-                          <td colSpan={12} className="empty">
+                          <td colSpan={canSeeBankTermDepositActions ? 12 : 11} className="empty">
                             Kayit bulunmuyor
                           </td>
                         </tr>
@@ -13245,21 +13606,28 @@ function AdminPage() {
                             <td className="col-num">{formatTry(row.netInterest)}</td>
                             <td className="col-num">{formatTry(row.netMaturityAmount)}</td>
                             <td>{row.isActive ? "Aktif" : "Pasif"}</td>
-                            <td className="actions-cell">
-                              <button className="btn btn-ghost" type="button" onClick={() => startEditBankTermDeposit(row)}>
-                                Degistir
-                              </button>
-                              <button className="btn btn-danger" type="button" onClick={() => void deleteBankTermDeposit(row)}>
-                                Sil
-                              </button>
-                            </td>
+                            {canSeeBankTermDepositActions && (
+                              <td className="actions-cell">
+                                {canEditBankTermDeposit && (
+                                  <button className="btn btn-ghost" type="button" onClick={() => startEditBankTermDeposit(row)}>
+                                    Degistir
+                                  </button>
+                                )}
+                                {canDeleteBankTermDeposit && (
+                                  <button className="btn btn-danger" type="button" onClick={() => void deleteBankTermDeposit(row)}>
+                                    Sil
+                                  </button>
+                                )}
+                              </td>
+                            )}
                           </tr>
                         ))
                       )}
                     </tbody>
                   </table>
                 </div>
-              </div>
+                </div>
+              )}
             </section>
           }
         />
@@ -13383,6 +13751,14 @@ function AdminPage() {
                 actionLogs={actionLogs}
                 fetchActionLogs={fetchActionLogs}
               />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/user-access"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <UserAccessManagementPage />
             </Suspense>
           }
         />
@@ -13513,9 +13889,11 @@ function AdminPage() {
 function ResidentPage({
   user,
   onResidentDoorNo,
+  onSessionExpired,
 }: {
   user: LoginResponse["user"] | null;
   onResidentDoorNo: (doorNo: string) => void;
+  onSessionExpired: () => void;
 }) {
   const [statement, setStatement] = useState<StatementItem[]>([]);
   const [accountingStatement, setAccountingStatement] = useState<AccountingStatementItem[]>([]);
@@ -13620,6 +13998,7 @@ function ResidentPage({
       });
 
       if (!res.ok) {
+        if (res.status === 401) { onSessionExpired(); return; }
         const errBody = (await res.json().catch(() => ({}))) as { message?: string };
         throw new Error(errBody.message ?? "Ekstre alinamadi");
       }
@@ -13647,6 +14026,7 @@ function ResidentPage({
         credentials: "include",
       });
       if (!res.ok) {
+        if (res.status === 401) { onSessionExpired(); return; }
         throw new Error("Duyuru ve anketler alinamadi");
       }
 
@@ -13675,6 +14055,7 @@ function ResidentPage({
         credentials: "include",
       });
       if (!res.ok) {
+        if (res.status === 401) { onSessionExpired(); return; }
         throw new Error("Gider raporu alinamadi");
       }
 
@@ -13710,6 +14091,7 @@ function ResidentPage({
       });
 
       if (!res.ok) {
+        if (res.status === 401) { onSessionExpired(); return; }
         const errBody = (await res.json().catch(() => ({}))) as { message?: string };
         throw new Error(errBody.message ?? "Oy kaydedilemedi");
       }
@@ -13749,6 +14131,7 @@ function ResidentPage({
       });
 
       if (!res.ok) {
+        if (res.status === 401) { onSessionExpired(); return; }
         const errBody = (await res.json().catch(() => ({}))) as { message?: string };
         throw new Error(errBody.message ?? "Sifre guncellenemedi");
       }
@@ -14418,7 +14801,7 @@ function App() {
             />
             <Route
               path="/admin/*"
-              element={user?.role === "ADMIN" ? <AdminPage /> : <Navigate to="/login" replace />}
+              element={user?.role === "ADMIN" ? <AdminPage user={user} onSessionExpired={logout} /> : <Navigate to="/login" replace />}
             />
             <Route
               path="/resident"
@@ -14426,6 +14809,7 @@ function App() {
                 user ? (
                   <ResidentPage
                     user={user}
+                    onSessionExpired={logout}
                     onResidentDoorNo={(doorNo) => {
                       setUser((prev) => {
                         if (!prev || prev.role !== "RESIDENT" || prev.apartmentDoorNo === doorNo) {

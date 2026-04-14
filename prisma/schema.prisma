@@ -260,6 +260,7 @@ model User {
   passwordHash String
   passwordPlaintext String?
   role         UserRole
+  adminPagePermissions Json?
   apartment    Apartment? @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
   importBatches ImportBatch[]
   auditLogs     AuditActionLog[]
