@@ -13534,13 +13534,13 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
               )}
 
               {canViewBankTermDepositList && (
-                <div className="card table-card">
+                <div className="card table-card bank-term-deposit-table-card">
                 <h3>Vadeli Mevduat Listesi</h3>
                 <p className="small">
                   Ana Para Toplami: <b>{formatTry(bankTermDepositPrincipalTotal)}</b>
                 </p>
                 <div className="table-wrap">
-                  <table className="apartment-list-table report-compact-table">
+                  <table className="apartment-list-table report-compact-table bank-term-deposit-table">
                     <thead>
                       <tr>
                         <th>Banka</th>
