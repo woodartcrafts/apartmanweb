@@ -11623,9 +11623,9 @@ td.empty {
     .statement-page .statement-accounting-table td:nth-child(3) { grid-area: date; font-size: 0.76rem; color: #4a6a8a; }
     .statement-page .statement-accounting-table td:nth-child(4) { grid-area: movement; font-size: 0.74rem; color: #5d748a; }
     .statement-page .statement-accounting-table td:nth-child(5) { grid-area: desc; font-size: 0.76rem; color: #596f84; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .statement-page .statement-accounting-table td:nth-child(6) { grid-area: debit; font-size: 0.78rem; color: #4a6882; font-variant-numeric: tabular-nums; }
+    .statement-page .statement-accounting-table td:nth-child(6) { grid-area: debit; font-size: 0.78rem; color: #4a6882; font-variant-numeric: tabular-nums; font-weight: 700; }
     .statement-page .statement-accounting-table td:nth-child(6)::before { content: "Borc: "; font-weight: 600; color: #8aa0b4; }
-    .statement-page .statement-accounting-table td:nth-child(7) { grid-area: credit; text-align: right; font-size: 0.78rem; color: #4a6882; font-variant-numeric: tabular-nums; }
+    .statement-page .statement-accounting-table td:nth-child(7) { grid-area: credit; text-align: right; font-size: 0.78rem; color: #4a6882; font-variant-numeric: tabular-nums; font-weight: 700; }
     .statement-page .statement-accounting-table td:nth-child(7)::before { content: "Alacak: "; font-weight: 600; color: #8aa0b4; }
     .statement-page .statement-accounting-table td:nth-child(8) { grid-area: balance; text-align: right; font-weight: 700; font-size: 0.92rem; font-variant-numeric: tabular-nums; }
     .statement-page .statement-accounting-table td:nth-child(8)::before { content: "Bakiye: "; font-weight: 600; color: #8aa0b4; }
