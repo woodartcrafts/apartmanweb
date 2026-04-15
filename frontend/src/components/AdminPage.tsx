@@ -8697,7 +8697,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
               Gecikmis Odemeler
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/staff-open-aidat">
-              Gorevli Mobil Acik Aidat
+              Acik Aidatlar
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/monthly-balance-matrix">
               Aylik Bakiye Matrisi

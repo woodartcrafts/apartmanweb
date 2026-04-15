@@ -107,7 +107,7 @@ export function StaffOpenAidatReportPage({
       <div className="mobile-app-name-bar">ApartmanWeb MVP</div>
       <div className="card table-card report-page-card staff-open-aidat-card-shell">
         <div className="section-head report-toolbar">
-          <h3>Gorevli Mobil Acik Borc Raporu</h3>
+          <h3>Acik Aidatlar</h3>
         </div>
         <div className={`staff-open-aidat-content${reportLoading ? " is-loading" : ""}`}>
           <div className="upload-batch-filter-row compact-row-top-gap report-filter-grid staff-open-aidat-filter-grid">
