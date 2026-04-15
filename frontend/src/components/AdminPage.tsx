@@ -1055,6 +1055,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/user-access": "USER_ACCESS",
       "/admin/meeting": "MEETING",
       "/admin/guide/manual": "GUIDE_MANUAL",
+      "/admin/opening": "OPENING_ENTRY",
     };
 
     return mapping[path] ?? null;
