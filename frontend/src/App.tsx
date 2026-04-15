@@ -224,29 +224,10 @@ function App() {
 
   function openCurrentScreenInNewTab(): void {
     const targetPath = `${location.pathname}${location.search}${location.hash}`;
-    const width = Math.max(1100, window.screen.availWidth);
-    const height = Math.max(760, window.screen.availHeight);
-    const left = 0;
-    const top = 0;
-
-    const features = [
-      "popup=yes",
-      "noopener=yes",
-      "noreferrer=yes",
-      `width=${width}`,
-      `height=${height}`,
-      `left=${left}`,
-      `top=${top}`,
-    ].join(",");
-
-    const opened = window.open(targetPath, "_blank", features);
+    const opened = window.open(targetPath, "_blank", "noopener,noreferrer");
     if (opened) {
       opened.focus();
-      return;
     }
-
-    // Fallback: if popup is blocked, continue with a normal new tab.
-    window.open(targetPath, "_blank", "noopener,noreferrer");
   }
 
   const isStaffOpenAidatRoute = location.pathname === "/admin/reports/staff-open-aidat";
