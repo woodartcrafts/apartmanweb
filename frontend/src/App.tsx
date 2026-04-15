@@ -1194,7 +1194,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       return;
     }
 
-    navigate("/login", { replace: true });
+    // firstAccessibleAdminPath null ise hiç erişilebilir sayfa yok;
+    // /login'e yönlendirmek sonsuz döngüye girer (kullanıcı girişli → tekrar reports'a dön).
+    navigate("/no-access", { replace: true });
   }, [adminMenuPermissionMap, firstAccessibleAdminPath, location.pathname, navigate]);
 
   useEffect(() => {
@@ -3520,7 +3522,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
           if (firstAccessibleAdminPath && firstAccessibleAdminPath !== location.pathname) {
             navigate(firstAccessibleAdminPath, { replace: true });
           } else {
-            navigate("/login", { replace: true });
+            navigate("/no-access", { replace: true });
           }
         }
 
@@ -14587,6 +14589,32 @@ function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("Lutfen giris yapin");
   const defaultAuthenticatedPath = user?.role === "ADMIN" ? "/admin/reports" : "/resident";
+
+  // Sayfa yenilemede JWT cookie gonderilemiyor olabilir (mobil Safari SameSite sorunu).
+  // localStorage'dan kullanici restore edilir edilmez /api/auth/me ile session dogrula
+  // ve taze adminPagePermissions al. Basarisizsa logout yap.
+  useEffect(() => {
+    const raw = localStorage.getItem(userStorageKey);
+    if (!raw) return;
+
+    void fetch(`${apiBase}/api/auth/me`, { credentials: "include" })
+      .then(async (res) => {
+        if (!res.ok) {
+          setUser(null);
+          localStorage.removeItem(userStorageKey);
+          setAuthMessage("Oturum suresi doldu. Lutfen tekrar giris yapin.");
+          return;
+        }
+        const data = (await res.json()) as LoginResponse;
+        setUser(data.user);
+        const { adminPagePermissions: _dropped, ...userForStorage } = data.user;
+        localStorage.setItem(userStorageKey, JSON.stringify(userForStorage));
+      })
+      .catch(() => {
+        // Ag sorunu varsa mevcut localStorage kullanicisini koru — sunucu cevap veremiyordur.
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const isAdmin = user?.role === "ADMIN";
   const residentDoorNo =
     user?.role === "RESIDENT"
@@ -14811,6 +14839,21 @@ function App() {
                       });
                     }}
                   />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
+            <Route
+              path="/no-access"
+              element={
+                user ? (
+                  <div className="no-access-page">
+                    <h2>Yetkisiz Erisim</h2>
+                    <p>Hesabiniza atanmis erisilebilir bir sayfa bulunmuyor.</p>
+                    <p>Lutfen yonetici ile iletisime gecin.</p>
+                    <button className="btn btn-danger no-access-btn" onClick={logout}>Cikis Yap</button>
+                  </div>
                 ) : (
                   <Navigate to="/login" replace />
                 )

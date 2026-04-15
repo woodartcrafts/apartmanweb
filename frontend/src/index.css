@@ -212,6 +212,15 @@ body {
   max-width: 100%;
 }
 
+.no-access-page {
+  padding: 2rem;
+  text-align: center;
+}
+
+.no-access-page .no-access-btn {
+  margin-top: 1rem;
+}
+
 .top-nav {
   display: flex;
   justify-content: space-between;

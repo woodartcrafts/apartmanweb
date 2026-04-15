@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { config } from "../config";
 import { prisma } from "../db";
 import { normalizeAdminPermissionMap } from "../utils/adminPermissions";
+import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
 const AUTH_COOKIE_NAME = "auth_token";
@@ -175,6 +176,37 @@ router.post("/logout", (_req, res) => {
   });
 
   return res.json({ ok: true });
+});
+
+// Session dogrulama — sayfa yenilemede taze kullanici verisi ve izinleri doner
+router.get("/me", requireAuth, async (req, res) => {
+  const userId = req.user!.userId;
+
+  type UserWithApartment = Prisma.UserGetPayload<{ include: { apartment: { select: { doorNo: true } } } }>;
+  const user: UserWithApartment | null = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { apartment: { select: { doorNo: true } } },
+  });
+
+  if (!user) {
+    return res.status(401).json({ message: "User not found" });
+  }
+
+  return res.json({
+    user: {
+      id: user.id,
+      email: user.email,
+      phone: user.phone,
+      fullName: user.fullName,
+      role: user.role,
+      apartmentId: user.apartmentId,
+      apartmentDoorNo: user.apartment?.doorNo ?? null,
+      adminPagePermissions:
+        user.role === "ADMIN" && user.adminPagePermissions
+          ? normalizeAdminPermissionMap(user.adminPagePermissions)
+          : null,
+    },
+  });
 });
 
 export default router;
