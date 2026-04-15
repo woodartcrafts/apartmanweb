@@ -348,6 +348,7 @@ model Charge {
   @@index([apartmentId, periodYear, periodMonth])
   @@index([status])
   @@index([chargeTypeId])
+  @@index([dueDate])
 }
 
 model ChargeTypeDefinition {
@@ -391,6 +392,7 @@ model Expense {
   @@index([paymentMethod])
   @@index([importBatchId])
   @@index([reference])
+  @@index([createdById])
 }
 
 model PaymentMethodDefinition {
@@ -417,6 +419,7 @@ model Payment {
   @@index([importBatchId])
   @@index([paidAt])
   @@index([method])
+  @@index([createdById])
 }
 
 model ImportBatch {

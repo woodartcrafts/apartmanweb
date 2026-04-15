@@ -3505,7 +3505,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     }
 
     if (method === "DELETE") {
-      void autoRefreshAfterDelete();
+      void autoRefreshAfterDelete(endpoint);
     }
 
     if (method !== "GET") {
@@ -5562,20 +5562,41 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     window.setTimeout(cleanup, 1500);
   }
 
-  async function autoRefreshAfterDelete(): Promise<void> {
-    const tasks: Array<Promise<unknown>> = [
-      fetchBulkStatement({ silent: true }),
-      fetchPaymentList(paymentListFilter, { silent: true }),
-      fetchExpenseReport(expenseReportFilter, { silent: true }),
-      fetchUploadBatches(uploadBatchFilter, { silent: true }),
-      fetchReportsSummary({ silent: true }),
-      fetchOverduePaymentsReport({ silent: true }),
-      fetchChargeConsistencyReport({ silent: true }),
-      fetchActionLogs(),
-    ];
+  async function autoRefreshAfterDelete(deletedEndpoint: string): Promise<void> {
+    const ep = deletedEndpoint.toLowerCase();
+    const tasks: Array<Promise<unknown>> = [fetchActionLogs()];
 
-    if (activeApartmentId) {
-      tasks.push(fetchStatement(activeApartmentId, { silent: true }));
+    if (ep.includes("/payments/")) {
+      tasks.push(
+        fetchPaymentList(paymentListFilter, { silent: true }),
+        fetchReportsSummary({ silent: true }),
+      );
+    } else if (ep.includes("/expenses/")) {
+      tasks.push(
+        fetchExpenseReport(expenseReportFilter, { silent: true }),
+        fetchReportsSummary({ silent: true }),
+      );
+    } else if (ep.includes("/charges/")) {
+      tasks.push(
+        fetchChargeConsistencyReport({ silent: true }),
+        fetchReportsSummary({ silent: true }),
+        fetchOverduePaymentsReport({ silent: true }),
+      );
+      if (activeApartmentId) {
+        tasks.push(fetchStatement(activeApartmentId, { silent: true }));
+      }
+    } else if (ep.includes("/upload-batches/") || ep.includes("/bulk-statement/")) {
+      tasks.push(
+        fetchBulkStatement({ silent: true }),
+        fetchUploadBatches(uploadBatchFilter, { silent: true }),
+        fetchPaymentList(paymentListFilter, { silent: true }),
+        fetchExpenseReport(expenseReportFilter, { silent: true }),
+        fetchReportsSummary({ silent: true }),
+      );
+    } else if (ep.includes("/apartments/")) {
+      tasks.push(fetchReportsSummary({ silent: true }));
+    } else {
+      tasks.push(fetchReportsSummary({ silent: true }));
     }
 
     await Promise.allSettled(tasks);
@@ -8254,24 +8275,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         void fetchDescriptionExpenseRules();
       }
     }
-  }, [
-    activeApartmentId,
-    apartmentClassOptions.length,
-    apartmentDutyOptions.length,
-    apartmentTypeOptions.length,
-    bankOptions.length,
-    blockOptions.length,
-    chargeTypeOptions.length,
-    correctionApartmentId,
-    descriptionDoorRules.length,
-    descriptionExpenseRules.length,
-    expenseItemOptions.length,
-    location.pathname,
-    location.search,
-    paymentMethodOptions.length,
-    staffOpenAidatLatestUploadRows.length,
-    uploadBatchUploaders.length,
-  ]);
+  }, [location.pathname, location.search, correctionApartmentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const isMonthlyBalanceMatrixPage = location.pathname === "/admin/reports/monthly-balance-matrix";

@@ -4921,6 +4921,7 @@ router.get("/payments/list", async (req, res) => {
     to: z.string().datetime().optional(),
     source: z.enum(["MANUAL", "BANK_STATEMENT_UPLOAD", "PAYMENT_UPLOAD", "GMAIL"]).optional(),
     description: z.string().trim().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(2000).default(500),
   });
 
   const parsed = querySchema.safeParse(req.query);
@@ -4928,7 +4929,7 @@ router.get("/payments/list", async (req, res) => {
     return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
   }
 
-  const { from, to, source, description } = parsed.data;
+  const { from, to, source, description, limit } = parsed.data;
 
   const payments = await prisma.payment.findMany({
     where: {
@@ -4951,13 +4952,11 @@ router.get("/payments/list", async (req, res) => {
         select: { kind: true, fileName: true },
       },
       itemLinks: {
-        include: {
+        select: {
           charge: {
-            include: {
+            select: {
               apartment: {
-                include: {
-                  block: true,
-                },
+                select: { id: true, doorNo: true },
               },
             },
           },
@@ -4965,6 +4964,7 @@ router.get("/payments/list", async (req, res) => {
       },
     },
     orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+    take: limit,
   });
 
   const creatorIds = [...new Set(payments.map((p) => p.createdById).filter(Boolean))] as string[];

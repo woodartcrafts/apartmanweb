@@ -98,6 +98,7 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
         },
       },
       orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
+      take: 1000,
     });
 
     return res.json(
@@ -151,6 +152,7 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
         },
       },
       orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
+      take: 2000,
     });
 
     const needDistributedRows = includeDistributed && (!source || source === "CHARGE_DISTRIBUTION");
@@ -171,6 +173,7 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
             },
           },
           orderBy: [{ dueDate: "desc" }, { createdAt: "desc" }],
+          take: 5000,
         })
       : [];
 
