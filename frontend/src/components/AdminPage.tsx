@@ -8539,16 +8539,16 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
       <div className="admin-nav-wrapper">
         <input type="checkbox" id="admin-nav-toggle" className="admin-nav-toggle-input" />
-        <label htmlFor="admin-nav-toggle" className="admin-nav-hamburger-btn" aria-label="MenÃ¼yÃ¼ aÃ§/kapat">
+        <label htmlFor="admin-nav-toggle" className="admin-nav-hamburger-btn" aria-label="Menüyü aç/kapat">
           <span className="admin-nav-hamburger-icon" aria-hidden="true">
             <span /><span /><span />
           </span>
-          <span className="admin-nav-hamburger-label">MenÃ¼</span>
+          <span className="admin-nav-hamburger-label">Menü</span>
         </label>
         <div className="card admin-subnav" ref={adminSubnavRef}>
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon" aria-hidden="true">ğŸ </span>
+            <span className="admin-subnav-icon" aria-hidden="true">🏠</span>
             <span className="admin-subnav-label">Daire</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -8594,7 +8594,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon" aria-hidden="true">ğŸ§¾</span>
+            <span className="admin-subnav-icon" aria-hidden="true">🧾</span>
             <span className="admin-subnav-label">Tahakkuk</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -8618,7 +8618,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon" aria-hidden="true">ğŸ’³</span>
+            <span className="admin-subnav-icon" aria-hidden="true">💳</span>
             <span className="admin-subnav-label">Tahsilat</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -8633,7 +8633,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon" aria-hidden="true">ğŸ“„</span>
+            <span className="admin-subnav-icon" aria-hidden="true">🔄</span>
             <span className="admin-subnav-label">Ekstre</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -8648,7 +8648,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon" aria-hidden="true">ğŸ’¸</span>
+            <span className="admin-subnav-icon" aria-hidden="true">💸</span>
             <span className="admin-subnav-label">Gider</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -8663,7 +8663,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon" aria-hidden="true">ğŸ“Š</span>
+            <span className="admin-subnav-icon" aria-hidden="true">📊</span>
             <span className="admin-subnav-label">Raporlar</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -8705,7 +8705,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon" aria-hidden="true">ğŸ¦</span>
+            <span className="admin-subnav-icon" aria-hidden="true">🏦</span>
             <span className="admin-subnav-label">Bankalar</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -8732,7 +8732,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon" aria-hidden="true">âœ…</span>
+            <span className="admin-subnav-icon" aria-hidden="true">✅</span>
             <span className="admin-subnav-label">Kontrol</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -8753,7 +8753,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon" aria-hidden="true">ğŸ› ï¸</span>
+            <span className="admin-subnav-icon" aria-hidden="true">🛠️</span>
             <span className="admin-subnav-label">Sistem ve Duzeltme</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -8786,7 +8786,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
-            <span className="admin-subnav-icon" aria-hidden="true">ğŸ—‚ï¸</span>
+            <span className="admin-subnav-icon" aria-hidden="true">🗂️</span>
             <span className="admin-subnav-label">Toplanti</span>
           </summary>
           <div className="admin-subnav-links" onClick={closeAdminSubnavMenus}>
@@ -13346,7 +13346,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
                 <section className="bank-term-deposit-form-section">
                   <div className="bank-term-deposit-form-section-head">
-                    <h4>ğŸ¦ Banka ve Sube</h4>
+                    <h4>🏦 Banka ve Sube</h4>
                     <p className="small">Kaydin bagli oldugu banka ve sube secimi</p>
                   </div>
 
