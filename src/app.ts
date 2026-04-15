@@ -13,9 +13,15 @@ import { runGmailBankSync } from "./routes/admin";
 
 const app = express();
 
-// Health check must be registered before CORS middleware so Railway's
-// internal healthcheck (no Origin header) is never blocked.
-app.get("/health", (_req, res) => {
+// Health check must respond to both:
+// 1. Railway internal healthcheck (no Origin header) — must not be blocked
+// 2. Browser fetch from frontend (has Origin header) — must include CORS header
+app.get("/health", (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && config.corsAllowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
   res.json({ ok: true });
 });
 
