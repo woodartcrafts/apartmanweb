@@ -9351,4 +9351,60 @@ export async function runScheduledGmailBankSync(): Promise<void> {
   }
 }
 
+router.get("/login-logs", async (req, res) => {
+  const schema = z.object({
+    limit: z.coerce.number().int().positive().max(500).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+    userId: z.string().optional(),
+    success: z.enum(["true", "false", ""]).optional(),
+    from: z.string().optional(),
+    to: z.string().optional(),
+  });
+  const parsed = schema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
+  }
+
+  const { limit = 100, offset = 0, userId, success, from, to } = parsed.data;
+
+  const where: {
+    userId?: string;
+    success?: boolean;
+    createdAt?: { gte?: Date; lte?: Date };
+  } = {};
+  if (userId) where.userId = userId;
+  if (success === "true") where.success = true;
+  if (success === "false") where.success = false;
+  if (from || to) {
+    where.createdAt = {};
+    if (from) where.createdAt.gte = new Date(from);
+    if (to) where.createdAt.lte = new Date(`${to}T23:59:59.999Z`);
+  }
+
+  const [rows, total] = await prisma.$transaction([
+    prisma.loginLog.findMany({
+      where,
+      take: limit,
+      skip: offset,
+      orderBy: [{ createdAt: "desc" }],
+    }),
+    prisma.loginLog.count({ where }),
+  ]);
+
+  return res.json({
+    rows: rows.map((r) => ({
+      id: r.id,
+      userId: r.userId,
+      identifier: r.identifier,
+      userFullName: r.userFullName,
+      userRole: r.userRole,
+      ipAddress: r.ipAddress,
+      success: r.success,
+      failReason: r.failReason,
+      createdAt: r.createdAt.toISOString(),
+    })),
+    total,
+  });
+});
+
 export default router;

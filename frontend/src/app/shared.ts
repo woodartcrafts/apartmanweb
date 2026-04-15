@@ -72,7 +72,8 @@ export type AdminPageKey =
   | "MEETING"
   | "GUIDE_MANUAL"
   | "USER_ACCESS"
-  | "OPENING_ENTRY";
+  | "OPENING_ENTRY"
+  | "LOGIN_LOGS";
 
 export type AdminPagePermission = {
   visible: boolean;
@@ -104,6 +105,23 @@ export type AdminUserAccessListResponse = {
   total: number;
   limit: number;
   offset: number;
+};
+
+export type LoginLogRow = {
+  id: string;
+  userId: string | null;
+  identifier: string | null;
+  userFullName: string | null;
+  userRole: string | null;
+  ipAddress: string | null;
+  success: boolean;
+  failReason: string | null;
+  createdAt: string;
+};
+
+export type LoginLogListResponse = {
+  rows: LoginLogRow[];
+  total: number;
 };
 
 export type UiMessageType = "success" | "error" | "info";

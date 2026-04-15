@@ -11771,3 +11771,65 @@ td.empty {
       width: 100% !important;
     }
   }
+/* =========================================================
+   User Sessions Page
+   ========================================================= */
+.user-sessions-page .sessions-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  align-items: flex-end;
+}
+
+.user-sessions-page .sessions-filter-row > label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+}
+
+.user-sessions-page .sessions-table-wrap {
+  overflow-x: auto;
+}
+
+.user-sessions-page .sessions-table {
+  min-width: 900px;
+}
+
+.user-sessions-page .sessions-table td.col-datetime {
+  white-space: nowrap;
+}
+
+.user-sessions-page .sessions-table td.col-mono {
+  font-family: monospace;
+  font-size: 0.85em;
+}
+
+.user-sessions-page .sessions-table td.col-empty {
+  text-align: center;
+  color: var(--color-muted, #888);
+  padding: 1.5rem;
+}
+
+.user-sessions-page .sessions-result-ok {
+  color: green;
+  font-weight: 600;
+}
+
+.user-sessions-page .sessions-result-fail {
+  color: red;
+  font-weight: 600;
+}
+
+.user-sessions-page .sessions-result-dash {
+  color: var(--color-muted, #888);
+}
+
+.user-sessions-page .sessions-pagination {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  align-items: center;
+  font-size: 0.9rem;
+}

@@ -195,6 +195,11 @@ const AuditLogsPage = lazy(() =>
     default: module.AuditLogsPage,
   }))
 );
+const UserSessionsPage = lazy(() =>
+  import("./admin/UserSessionsPage").then((module) => ({
+    default: module.UserSessionsPage,
+  }))
+);
 const ManualReviewMatchesPage = lazy(() =>
   import("./admin/ManualReviewMatchesPage").then((module) => ({
     default: module.ManualReviewMatchesPage,
@@ -1046,6 +1051,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/unclassified": "UNCLASSIFIED",
       "/admin/manual-closures": "MANUAL_CLOSURES",
       "/admin/audit-logs": "AUDIT_LOGS",
+      "/admin/login-logs": "LOGIN_LOGS",
       "/admin/user-access": "USER_ACCESS",
       "/admin/meeting": "MEETING",
       "/admin/guide/manual": "GUIDE_MANUAL",
@@ -1112,6 +1118,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       { path: "/admin/unclassified", key: "UNCLASSIFIED" },
       { path: "/admin/manual-closures", key: "MANUAL_CLOSURES" },
       { path: "/admin/audit-logs", key: "AUDIT_LOGS" },
+      { path: "/admin/login-logs", key: "LOGIN_LOGS" },
       { path: "/admin/meeting", key: "MEETING" },
       { path: "/admin/guide/manual", key: "GUIDE_MANUAL" },
       { path: "/admin/user-access", key: "USER_ACCESS" },
@@ -8778,6 +8785,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <NavLink className="btn btn-ghost" to="/admin/audit-logs">
               Islem Gecmisi
             </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/login-logs">
+              Kullanici Oturumlari
+            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/user-access">
               Kullanici - Sifre - Yetkiler
             </NavLink>
@@ -13702,6 +13712,14 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 actionLogs={actionLogs}
                 fetchActionLogs={fetchActionLogs}
               />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/login-logs"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <UserSessionsPage />
             </Suspense>
           }
         />

@@ -127,14 +127,27 @@ router.post("/login", loginRateLimiter, async (req, res) => {
     });
   }
 
+  const ip = req.ip ?? null;
+  const ua = (req.headers["user-agent"] ?? null) as string | null;
+
   if (!user) {
-    console.warn(`[auth] Basarisiz giris: kullanici bulunamadi ip=${req.ip ?? "-"} at=${new Date().toISOString()}`);
+    console.warn(`[auth] Basarisiz giris: kullanici bulunamadi ip=${ip ?? "-"} at=${new Date().toISOString()}`);
+    prisma.loginLog.create({
+      data: { identifier: rawIdentifier, ipAddress: ip, userAgent: ua, success: false, failReason: "USER_NOT_FOUND" },
+    }).catch(() => undefined);
     return res.status(401).json({ message: "Invalid credentials" });
   }
 
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) {
-    console.warn(`[auth] Basarisiz giris: yanlis sifre ip=${req.ip ?? "-"} at=${new Date().toISOString()}`);
+    console.warn(`[auth] Basarisiz giris: yanlis sifre ip=${ip ?? "-"} at=${new Date().toISOString()}`);
+    prisma.loginLog.create({
+      data: {
+        userId: user.id, identifier: rawIdentifier,
+        userFullName: user.fullName, userRole: user.role,
+        ipAddress: ip, userAgent: ua, success: false, failReason: "WRONG_PASSWORD",
+      },
+    }).catch(() => undefined);
     return res.status(401).json({ message: "Invalid credentials" });
   }
 
@@ -147,6 +160,14 @@ router.post("/login", loginRateLimiter, async (req, res) => {
     config.jwtSecret,
     { expiresIn: "7d" }
   );
+
+  prisma.loginLog.create({
+    data: {
+      userId: user.id, identifier: rawIdentifier,
+      userFullName: user.fullName, userRole: user.role,
+      ipAddress: ip, userAgent: ua, success: true,
+    },
+  }).catch(() => undefined);
 
   res.cookie(AUTH_COOKIE_NAME, token, {
     ...getAuthCookieOptions(),

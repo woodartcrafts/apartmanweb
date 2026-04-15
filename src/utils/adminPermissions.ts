@@ -74,7 +74,8 @@ export type AdminPageKey =
   | "MEETING"
   | "GUIDE_MANUAL"
   | "USER_ACCESS"
-  | "OPENING_ENTRY";
+  | "OPENING_ENTRY"
+  | "LOGIN_LOGS";
 
 export type AdminPagePermission = {
   visible: boolean;
@@ -158,6 +159,7 @@ export const ADMIN_PAGE_DEFINITIONS: Array<{ key: AdminPageKey; label: string }>
   { key: "GUIDE_MANUAL", label: "Kullanim Kilavuzu / Dokuman / Kilavuz" },
   { key: "USER_ACCESS", label: "Kullanici ve Yetki / Yonetim / Yonetim" },
   { key: "OPENING_ENTRY", label: "Sistem ve Duzeltme / Islemler / Acilis Kaydi" },
+  { key: "LOGIN_LOGS", label: "Sistem ve Duzeltme / Izleme / Kullanici Oturumlari" },
 ];
 
 const ADMIN_PAGE_KEYS = new Set<AdminPageKey>(ADMIN_PAGE_DEFINITIONS.map((x) => x.key));
@@ -322,6 +324,7 @@ export function mapRequestPathToAdminPage(pathname: string, method?: string): Ad
   if (pathname.startsWith("/unclassified")) return "UNCLASSIFIED";
   if (pathname.startsWith("/manual-closures")) return "MANUAL_CLOSURES";
   if (pathname.startsWith("/audit-logs")) return "AUDIT_LOGS";
+  if (pathname.startsWith("/login-logs")) return "LOGIN_LOGS";
 
   if (pathname.startsWith("/meeting")) return "MEETING";
   if (pathname.startsWith("/guide")) return "GUIDE_MANUAL";

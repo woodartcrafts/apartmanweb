@@ -267,6 +267,7 @@ model User {
   apartmentChangeLogs ApartmentChangeLog[]
   passwordHistoryAsSubject UserPasswordHistory[] @relation("PasswordHistorySubject")
   passwordHistoryAsActor UserPasswordHistory[] @relation("PasswordHistoryActor")
+  loginLogs    LoginLog[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -287,6 +288,24 @@ model UserPasswordHistory {
   @@index([userId, changedAt])
   @@index([changedByUserId, changedAt])
   @@index([changedAt])
+}
+
+model LoginLog {
+  id           String    @id @default(cuid())
+  userId       String?
+  identifier   String?
+  userFullName String?
+  userRole     String?
+  ipAddress    String?
+  userAgent    String?
+  success      Boolean
+  failReason   String?
+  createdAt    DateTime  @default(now())
+  user         User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([success])
 }
 
 model AuditActionLog {
