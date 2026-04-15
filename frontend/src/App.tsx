@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { apiBase, userStorageKey, type LoginResponse } from "./app/shared";
 import { Silent403Error } from "./errors";
 import AdminPage from "./components/AdminPage";
