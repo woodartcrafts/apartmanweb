@@ -6782,58 +6782,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       });
   }
 
-  async function onCreateCarryForward(payload: {
-    apartmentId: string;
-    amount: string;
-    paidAt: string;
-    reference: string;
-    note: string;
-  }): Promise<void> {
-    setLoading(true);
-    setMessage("Devir alacak kaydi olusturuluyor...");
-
-    try {
-      const parsedAmount = parseDistDecimal(payload.amount);
-      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-        throw new Error("Devir alacak tutari gecersiz");
-      }
-
-      const isoPaidAt = dateInputToIso(payload.paidAt);
-      const result = await authorizedRequest<{
-        id: string;
-        apartmentId: string;
-        doorNo: string;
-        autoReconcileApplied: boolean;
-        reconcileResult: { createdPaymentItemCount: number; unappliedTotal: number } | null;
-      }>("/api/admin/payments/carry-forward", {
-        method: "POST",
-        payload: {
-          apartmentId: payload.apartmentId,
-          paidAt: isoPaidAt,
-          amount: Number(parsedAmount.toFixed(2)),
-          reference: payload.reference || undefined,
-          note: payload.note || undefined,
-          autoReconcile: true,
-        },
-      });
-
-      const reconcileText = result.autoReconcileApplied
-        ? ` Eslestirme yapildi (baglanan satir: ${result.reconcileResult?.createdPaymentItemCount ?? 0}, kalan: ${formatTry(result.reconcileResult?.unappliedTotal ?? 0)}).`
-        : "";
-      setMessage(`Devir alacak kaydi eklendi: ${result.doorNo}.${reconcileText}`);
-
-      await fetchPaymentList();
-      if (activeApartmentId === result.apartmentId) {
-        await fetchStatement(result.apartmentId);
-      }
-    } catch (err) {
-      console.error(err);
-      setMessage(err instanceof Error ? err.message : "Devir alacak kaydi basarisiz");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function onCreateOpeningEntry(payload: {
     entryType: "ALACAK" | "FAZLA_ODEME";
     apartmentId: string;
