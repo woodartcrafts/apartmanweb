@@ -14,7 +14,6 @@ import {
   mapImportInfos,
   mapSkippedErrors,
   monthOptions,
-  userStorageKey,
   type AdminPageKey,
   type AccountingStatementItem,
   type AdminActionLogRow,
@@ -72,10 +71,6 @@ import {
   type PaymentMethodDefinition,
   type PaymentSourceFilter,
   type ReconcileApartmentResponse,
-  type ResidentAnnouncementItem,
-  type ResidentExpenseReportResponse,
-  type ResidentEngagementResponse,
-  type ResidentPollItem,
   type ReportsSummaryResponse,
   type SkippedRowInfo,
   type StatementItem,
@@ -3024,7 +3019,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       }
 
       crossTabSyncDebounceRef.current = window.setTimeout(() => {
-        void autoRefreshAfterDelete();
+        void autoRefreshAfterDelete("/api/admin/generic");
         setToastMessage("Diger sekmeden veri guncellendi");
       }, 250);
     };

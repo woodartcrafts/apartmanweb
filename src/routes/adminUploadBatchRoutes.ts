@@ -1,4 +1,5 @@
-﻿import { Router } from "express";
+﻿import { ImportBatchType } from "@prisma/client";
+import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 
