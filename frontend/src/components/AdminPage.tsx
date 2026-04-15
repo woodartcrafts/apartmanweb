@@ -3115,7 +3115,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         >
           <span>{label}</span>
           {selected.length > 0 && <span className="filter-count">{selected.length}</span>}
-          <span className="filter-arrow">â–¼</span>
+          <span className="filter-arrow">▼</span>
         </button>
 
         {isOpen && (
@@ -3208,7 +3208,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         >
           <span>{label}</span>
           {selected.length > 0 && <span className="filter-count">{selected.length}</span>}
-          <span className="filter-arrow">â–¼</span>
+          <span className="filter-arrow">▼</span>
         </button>
 
         {isOpen && (
@@ -9216,7 +9216,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                                       <td className="col-num">{row.unclassifiedCount > 0 ? row.unclassifiedCount : "-"}</td>
                                       <td className="col-num">
                                         <button type="button" className="btn btn-ghost upload-row-goto-btn" disabled={isLoadingThis} onClick={() => void toggleDashBatch()}>
-                                          {isLoadingThis ? "..." : isExpanded ? "â–²" : "â–¼"}
+                                          {isLoadingThis ? "..." : isExpanded ? "▲" : "▼"}
                                         </button>
                                       </td>
                                     </tr>
@@ -10057,7 +10057,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                       onClick={() => void runChargeConsistencyQuery()}
                       disabled={chargeConsistencyLoading || loading}
                     >
-                      {chargeConsistencyLoading ? "Hesaplaniyor..." : "â–¶ Calistir"}
+                      {chargeConsistencyLoading ? "Hesaplaniyor..." : "▶ Calistir"}
                     </button>
                     <button className="btn btn-ghost" type="button" onClick={clearChargeConsistencyFilters}>Temizle</button>
                   </div>
