@@ -38,13 +38,6 @@ type PaymentEntryPageProps = {
     }>
   >;
   onCreatePayment: (payload: PaymentFormState) => Promise<void>;
-  onCreateCarryForward: (payload: {
-    apartmentId: string;
-    amount: string;
-    paidAt: string;
-    reference: string;
-    note: string;
-  }) => Promise<void>;
   onUploadPayments: (payload: { method: PaymentMethod; file: File }) => Promise<void>;
   lastImportSummary: ImportSummary | null;
   lastSkippedRows: SkippedRowInfo[];
@@ -58,7 +51,6 @@ export function PaymentEntryPage({
   paymentMethodOptions,
   fetchOpenPaymentCharges,
   onCreatePayment,
-  onCreateCarryForward,
   onUploadPayments,
   lastImportSummary,
   lastSkippedRows,
@@ -70,13 +62,6 @@ export function PaymentEntryPage({
     reference: "",
     note: "",
     items: [],
-  });
-  const [carryForwardForm, setCarryForwardForm] = useState({
-    apartmentId: "",
-    amount: "",
-    paidAt: "",
-    reference: "",
-    note: "",
   });
   const [paymentUploadFile, setPaymentUploadFile] = useState<File | null>(null);
   const [paymentApartmentId, setPaymentApartmentId] = useState("");
@@ -130,8 +115,6 @@ export function PaymentEntryPage({
       : paymentMethodOptions;
   const defaultMethod = activeOrAllMethods[0]?.code ?? "BANK_TRANSFER";
   const selectedMethod = paymentForm.method || defaultMethod;
-  const selectedCarryForwardApartmentId = carryForwardForm.apartmentId || apartmentOptions[0]?.id || "";
-
   function resetPaymentEntryForm(): void {
     setPaymentForm({
       paidAt: "",
@@ -212,24 +195,6 @@ export function PaymentEntryPage({
     paymentChargeLoading ||
     paymentForm.items.length === 0 ||
     selectedPaymentTotal <= 0.0001;
-
-  async function onSubmitCarryForward(e: FormEvent<HTMLFormElement>): Promise<void> {
-    e.preventDefault();
-    await onCreateCarryForward({
-      ...carryForwardForm,
-      apartmentId: selectedCarryForwardApartmentId,
-    });
-  }
-
-  function resetCarryForwardForm(): void {
-    setCarryForwardForm({
-      apartmentId: "",
-      amount: "",
-      paidAt: "",
-      reference: "",
-      note: "",
-    });
-  }
 
   async function onSubmitUpload(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
@@ -456,86 +421,6 @@ export function PaymentEntryPage({
               <input
                 value={paymentForm.note}
                 onChange={(e) => setPaymentForm((prev) => ({ ...prev, note: e.target.value }))}
-                placeholder="Opsiyonel"
-              />
-            </label>
-          </div>
-        </section>
-      </form>
-
-      <form className="card admin-form apartment-form-surface payment-entry-form-surface" onSubmit={(e) => void onSubmitCarryForward(e)}>
-        <div className="section-head">
-          <h3>Devir Alacak Girisi</h3>
-          <div className="admin-row">
-            <button className="btn btn-primary" type="submit" disabled={loading}>
-              Devir Alacak Kaydet
-            </button>
-            <button className="btn btn-ghost" type="button" onClick={resetCarryForwardForm} disabled={loading}>
-              Temizle
-            </button>
-          </div>
-        </div>
-
-        <section className="payment-entry-form-section">
-          <div className="payment-entry-form-section-head">
-            <h4>↩ Devir Kaydi</h4>
-            <p className="small">Banka bakiyesini etkilemeden daire bazli devir alacak kaydi olusturur</p>
-          </div>
-
-          <div className="payment-entry-inline-grid payment-entry-inline-grid-bottom payment-entry-inline-grid-carry">
-            <label>
-              Daire
-              <select
-                value={selectedCarryForwardApartmentId}
-                onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, apartmentId: e.target.value }))}
-                required
-              >
-                <option value="">Daire seciniz</option>
-                {apartmentOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.blockName} / {item.doorNo}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Devir Alacak Tutari
-              <input
-                type="text"
-                inputMode="decimal"
-                value={carryForwardForm.amount}
-                onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, amount: e.target.value }))}
-                onBlur={(e) => {
-                  const parsed = parseTrDecimal(e.target.value);
-                  if (Number.isFinite(parsed)) {
-                    setCarryForwardForm((prev) => ({ ...prev, amount: formatTrDecimal(parsed) }));
-                  }
-                }}
-                required
-              />
-            </label>
-            <label>
-              Islem Tarihi
-              <input
-                type="date"
-                value={carryForwardForm.paidAt}
-                onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, paidAt: e.target.value }))}
-                required
-              />
-            </label>
-            <label>
-              Referans Numarasi
-              <input
-                value={carryForwardForm.reference}
-                onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, reference: e.target.value }))}
-                placeholder="Opsiyonel"
-              />
-            </label>
-            <label>
-              Aciklama
-              <input
-                value={carryForwardForm.note}
-                onChange={(e) => setCarryForwardForm((prev) => ({ ...prev, note: e.target.value }))}
                 placeholder="Opsiyonel"
               />
             </label>

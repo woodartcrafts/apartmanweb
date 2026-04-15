@@ -170,6 +170,11 @@ const PaymentEntryPage = lazy(() =>
     default: module.PaymentEntryPage,
   }))
 );
+const OpeningEntryPage = lazy(() =>
+  import("./admin/OpeningEntryPage").then((module) => ({
+    default: module.OpeningEntryPage,
+  }))
+);
 const ChargeEntryPage = lazy(() =>
   import("./admin/ChargeEntryPage").then((module) => ({
     default: module.ChargeEntryPage,
@@ -1110,6 +1115,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       { path: "/admin/meeting", key: "MEETING" },
       { path: "/admin/guide/manual", key: "GUIDE_MANUAL" },
       { path: "/admin/user-access", key: "USER_ACCESS" },
+      { path: "/admin/opening", key: "OPENING_ENTRY" },
     ];
 
     const firstVisible = candidates.find((item) => adminMenuPermissionMap[item.key]?.visible);
@@ -2159,9 +2165,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     key: "spentAt" | "expenseItemName" | "paymentMethod" | "amount" | "description"
   ): string => {
     if (expenseReportSort.key !== key) {
-      return "â†•";
+      return "↕";
     }
-    return expenseReportSort.direction === "asc" ? "â†‘" : "â†“";
+    return expenseReportSort.direction === "asc" ? "↑" : "↓";
   };
 
   const getExpenseReportSortButtonTitle = (
@@ -6828,6 +6834,63 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     }
   }
 
+  async function onCreateOpeningEntry(payload: {
+    entryType: "ALACAK" | "FAZLA_ODEME";
+    apartmentId: string;
+    amount: string;
+    entryDate: string;
+    reference: string;
+    note: string;
+  }): Promise<void> {
+    setLoading(true);
+    const entryLabel = payload.entryType === "ALACAK" ? "Alacak" : "Fazla Odeme";
+    setMessage(`Acilis ${entryLabel} kaydi olusturuluyor...`);
+
+    try {
+      const parsedAmount = parseDistDecimal(payload.amount);
+      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        throw new Error("Tutar gecersiz");
+      }
+
+      const isoEntryDate = dateInputToIso(payload.entryDate);
+      const result = await authorizedRequest<{
+        id: string;
+        apartmentId: string;
+        doorNo: string;
+        entryType: string;
+        autoReconcileApplied: boolean;
+        reconcileResult: { createdPaymentItemCount: number; unappliedTotal: number } | null;
+      }>("/api/admin/opening-entries", {
+        method: "POST",
+        payload: {
+          entryType: payload.entryType,
+          apartmentId: payload.apartmentId,
+          entryDate: isoEntryDate,
+          amount: Number(parsedAmount.toFixed(2)),
+          reference: payload.reference || undefined,
+          note: payload.note || undefined,
+        },
+      });
+
+      const reconcileText = result.autoReconcileApplied
+        ? ` Eslestirme yapildi (baglanan satir: ${result.reconcileResult?.createdPaymentItemCount ?? 0}, kalan: ${formatTry(result.reconcileResult?.unappliedTotal ?? 0)}).`
+        : "";
+      setMessage(`Acilis ${entryLabel} kaydi eklendi: ${result.doorNo}.${reconcileText}`);
+
+      await fetchPaymentList();
+      if (activeApartmentId === result.apartmentId) {
+        await fetchStatement(result.apartmentId);
+      }
+    } catch (err) {
+      console.error(err);
+      setMessage(
+        err instanceof Error ? err.message : `Acilis ${entryLabel} kaydi basarisiz`
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function onUploadPayments(payload: { method: PaymentMethod; file: File }): Promise<void> {
     setLoading(true);
     setLastSkippedRows([]);
@@ -8499,7 +8562,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         <div className="blocking-modal toast-modal" role="status" aria-live="polite" aria-busy="false">
           <div className={`blocking-modal-card save-notice-modal-card${toastIsError ? " save-notice-modal-card-error" : ""}`}>
             <div className="save-notice-icon" aria-hidden="true">
-              {toastIsError ? "!" : "âœ“"}
+              {toastIsError ? "!" : "✔"}
             </div>
             <h3>{toastIsError ? "Islem Basarisiz" : "Islem Tamamlandi"}</h3>
             <p className="small">{toastMessage}</p>
@@ -8524,7 +8587,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         <div className="blocking-modal" role="status" aria-live="polite" aria-busy="true">
           <div className="blocking-modal-card report-loading-modal-card">
             <div className="report-loading-hourglass" aria-hidden="true">
-              âŒ›
+              ⌛
             </div>
             <h3>Islem Devam Ediyor</h3>
             <p className="small">Lutfen bekleyin.</p>
@@ -8683,9 +8746,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <NavLink className="btn btn-ghost" to="/admin/reports/monthly-balance-matrix">
               Aylik Bakiye Matrisi
             </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/reports/monthly-ledger-print">
-              Gelir-Gider Defteri Print
-            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/fractional-closures">
               Kismi Kapama Raporu
             </NavLink>
@@ -8716,9 +8776,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <NavLink className="btn btn-ghost" to="/admin/bank-statement">
               Banka Ekstresi Yukle (Excel)
             </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/banks/statement-view">
-              Banka Hareketleri
-            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/upload-batches">
               Yukleme Kayitlari
             </NavLink>
@@ -8743,6 +8800,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <NavLink className="btn btn-ghost" to="/admin/reports/manual-review-matches">
               Manuel Inceleme Gerektiren Eslesmeler
             </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/unclassified">
+              Siniflandirilamayanlar
+            </NavLink>
           </div>
         </details>
 
@@ -8764,9 +8824,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <NavLink className="btn btn-ghost" to="/admin/corrections">
               Duzeltmeler
             </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/unclassified">
-              Siniflandirilamayanlar
-            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/manual-closures">
               Manuel Kapama Yonetimi
             </NavLink>
@@ -8775,6 +8832,12 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/user-access">
               Kullanici - Sifre - Yetkiler
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/opening">
+              Acilis Kaydi
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/reports/monthly-ledger-print">
+              Gelir-Gider Defteri Print
             </NavLink>
           </div>
         </details>
@@ -8846,7 +8909,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                               title="Ekstre bakiyesi ile uyumlu"
                               aria-label="Ekstre bakiyesi ile uyumlu"
                             >
-                              âœ“
+                              ✔
                             </span>
                           )}
                           {reportsSummary.bankBalance.isEstimatedBalanceMatchingLatestStatement === false && (
@@ -8855,7 +8918,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                               title="Ekstre bakiyesi ile uyumsuz"
                               aria-label="Ekstre bakiyesi ile uyumsuz"
                             >
-                              âœ•
+                              ✕
                             </span>
                           )}
                         </p>
@@ -10222,7 +10285,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
                   {/* Bilgi notu */}
                   <div className="cc-info-callout">
-                    <span className="cc-info-icon">â“˜</span>
+                    <span className="cc-info-icon">ⓘ</span>
                     <span>
                       Eksik tahakkuk uyarisi dogru calissin diye <strong>Tahakkuk Tipi</strong> secili olmalidir
                       (ornegin AIDAT).
@@ -12491,11 +12554,22 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 paymentMethodOptions={paymentMethodOptions}
                 fetchOpenPaymentCharges={fetchOpenPaymentCharges}
                 onCreatePayment={onCreatePayment}
-                onCreateCarryForward={onCreateCarryForward}
                 onUploadPayments={onUploadPayments}
                 lastImportSummary={lastImportSummary}
                 lastSkippedRows={lastSkippedRows}
                 lastSkippedTitle={lastSkippedTitle}
+              />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/opening"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <OpeningEntryPage
+                loading={loading}
+                apartmentOptions={apartmentOptions}
+                onCreateOpeningEntry={onCreateOpeningEntry}
               />
             </Suspense>
           }
@@ -13644,7 +13718,14 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <Suspense fallback={<LazyAdminPageFallback />}>
               <StatementPage
                 activeApartmentId={activeApartmentId}
-                setActiveApartmentId={setActiveApartmentId}
+                setActiveApartmentId={(id) => {
+                  setActiveApartmentId(id);
+                  if (!id) {
+                    setStatement([]);
+                    setAccountingStatement([]);
+                    setStatementHeaderApartmentId("");
+                  }
+                }}
                 apartmentOptions={apartmentOptions}
                 fetchApartmentOptions={fetchApartmentOptions}
                 fetchStatement={fetchStatement}

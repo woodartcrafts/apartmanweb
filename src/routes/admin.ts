@@ -1763,6 +1763,14 @@ function parseSignedAmount(raw: unknown): number | null {
 function toAsciiLower(input: string): string {
   return input
     .toLocaleLowerCase("tr")
+    // Properly-encoded UTF-8 Turkish chars:
+    .replace(/ı/g, "i")
+    .replace(/ş/g, "s")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    // Mojibake fallbacks (double-encoded UTF-8 misread as Latin-1):
     .replace(/Ä±/g, "i")
     .replace(/ÅŸ/g, "s")
     .replace(/ÄŸ/g, "g")
@@ -1897,7 +1905,7 @@ async function parseBankStatementRows(file: Express.Multer.File): Promise<BankSt
       const net = credit - debit;
       amount = Math.abs(net) > 0.0001 ? net : null;
     }
-    const description = String(row[descCol] ?? "").trim();
+    const description = cleanBankStatementDescription(String(row[descCol] ?? "").trim());
     const runningBalance = balanceCol >= 0 ? parseSignedAmount(row[balanceCol]) : null;
     const reference = refCol >= 0 ? String(row[refCol] ?? "").trim() : "";
     const txType = txTypeCol >= 0 ? String(row[txTypeCol] ?? "").trim() : "";
@@ -2219,6 +2227,29 @@ function collectPdfAttachmentParts(part: GmailMessagePart | undefined, bucket: G
   }
 }
 
+/**
+ * Banka ekstresi açıklama alanlarında bulunabilen yasal uyarı / footer metnini temizler.
+ * CSV ve PDF import pathlerinin ikisinde de kullanılır.
+ */
+function cleanBankStatementDescription(raw: string): string {
+  const lower = toAsciiLower(raw);
+  const triggers = [
+    "islem saatleri",
+    "bu hesap ozeti",
+    "banka kayitlarinin",
+    "bizi tercih ettiginiz",
+  ];
+  let cutAt = -1;
+  for (const t of triggers) {
+    const idx = lower.indexOf(t);
+    if (idx !== -1 && (cutAt === -1 || idx < cutAt)) {
+      cutAt = idx;
+    }
+  }
+  if (cutAt === -1) return raw;
+  return raw.slice(0, cutAt).replace(/[.,;\s]+$/, "").trim();
+}
+
 function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] {
   const rows: BankStatementRow[] = [];
   const lines = pdfText
@@ -2329,8 +2360,13 @@ function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] 
     }
 
     const secondAmount = amountCandidates[1];
-    const runningBalance = secondAmount ? parseSignedAmount(secondAmount[0]) : null;
-    const descriptionStartIndex = secondAmount
+    // If the second number is immediately followed by a currency suffix (TRY, TL, YTL)
+    // it is part of the description (e.g. "ÜCRET H... 15000,00 TRY ÜZ."), not the running balance.
+    const secondAmountEnd = secondAmount ? (secondAmount.index ?? -1) + secondAmount[0].length : -1;
+    const textAfterSecond = secondAmount && secondAmountEnd >= 0 ? line.slice(secondAmountEnd).trimStart() : "";
+    const secondIsCurrencyInDescription = /^(?:TRY|TL|YTL)\b/i.test(textAfterSecond);
+    const runningBalance = secondAmount && !secondIsCurrencyInDescription ? parseSignedAmount(secondAmount[0]) : null;
+    const descriptionStartIndex = secondAmount && !secondIsCurrencyInDescription
       ? (secondAmount.index ?? -1) + secondAmount[0].length
       : (amountCandidates[0].index ?? -1) + rawAmount.length;
 
@@ -2339,7 +2375,7 @@ function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] 
         ? line.slice(descriptionStartIndex)
         : line.replace(dateMatch[1], " ").replace(rawAmount, " ");
 
-    description = description.replace(/^\s*(?:TRY|TL|YTL)\b[:\s-]*/i, "").replace(/\s+/g, " ").trim();
+    description = cleanBankStatementDescription(description.replace(/^\s*(?:TRY|TL|YTL)\b[:\s-]*/i, "").replace(/\s+/g, " ").trim());
     if (!description) {
       description = line;
     }
@@ -3516,80 +3552,9 @@ async function processBankStatementImport(params: {
             }
 
           if (!fifoSumMatchCharges && !hintedSelection && !subsetSelection) {
-            const method = row.paymentMethod ?? derivePaymentMethod(row.txType);
-            let remainingToAllocate = paymentAmount;
-            const provisionalItems: Array<{ chargeId: string; amount: number }> = [];
-            const provisionalClosedChargeIds: string[] = [];
-
-            // Manual-review rows are still pre-allocated to the detected apartment so they are visible in correction flows.
-            for (const charge of openCharges) {
-              if (remainingToAllocate <= 0.0001) {
-                break;
-              }
-
-              const allocate = Math.min(remainingToAllocate, charge.remaining);
-              if (allocate > 0.0001) {
-                provisionalItems.push({ chargeId: charge.chargeId, amount: Number(allocate.toFixed(2)) });
-                remainingToAllocate = Number((remainingToAllocate - allocate).toFixed(2));
-                charge.remaining = Number((charge.remaining - allocate).toFixed(2));
-                if (charge.remaining <= 0.0001 && !charge.closedInImport) {
-                  charge.closedInImport = true;
-                  provisionalClosedChargeIds.push(charge.chargeId);
-                }
-              }
-            }
-
-            const noteParts = [
-              reference ? `BANK_REF:${reference}` : undefined,
-              row.description ? `BANK_DESC:${row.description}` : undefined,
-              detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
-              `UNAPPLIED:MANUAL_REVIEW:NO_EXACT_MATCH:${openCharges.length}`,
-              "MANUAL_REVIEW:PREALLOCATED_TO_APARTMENT",
-            ].filter(Boolean) as string[];
-
-            const lockedNote = withManualReconcileLock(noteParts.join(" | "), true);
-
-            await prisma.$transaction(async (tx) => {
-              const payment = await tx.payment.create({
-                data: {
-                  importBatchId: batch.id,
-                  paidAt: row.occurredAt,
-                  method,
-                  note: lockedNote,
-                  totalAmount: paymentAmount,
-                  createdById: uploadedById,
-                },
-              });
-
-              if (provisionalItems.length > 0) {
-                await tx.paymentItem.createMany({
-                  data: provisionalItems.map((item) => ({
-                    paymentId: payment.id,
-                    chargeId: item.chargeId,
-                    amount: item.amount,
-                  })),
-                });
-              }
-
-              if (provisionalClosedChargeIds.length > 0) {
-                await tx.charge.updateMany({
-                  where: {
-                    id: { in: provisionalClosedChargeIds },
-                    status: "OPEN",
-                  },
-                  data: {
-                    status: "CLOSED",
-                    closedAt: new Date(),
-                  },
-                });
-              }
-            });
-
-            paymentCreatedCount += 1;
-            infos.push(
-              `Satir ${rowNo}: Birden fazla acik borc bulundu ve exact eslesme yok, odeme daireye on dagitildi ve manuel incelemeye birakildi (${infoDoorNo}) ${infoContextTag}`
-            );
-            continue;
+            // Daire numarası belli ise her zaman uygula (FIFO). Manuel inceleme bloku kaldırıldı.
+            orderedCharges = openCharges;
+            autoMatchHintReason = "FIFO_FALLBACK";
           }
           } // end else (no fifoSumMatch)
         }
@@ -4915,6 +4880,76 @@ router.post("/payments/carry-forward", async (req, res) => {
   });
 });
 
+const OPENING_ENTRY_ALACAK_TAG = "OPENING:ALACAK";
+const OPENING_ENTRY_FAZLA_ODEME_TAG = "OPENING:FAZLA_ODEME";
+
+router.post("/opening-entries", async (req, res) => {
+  const schema = z.object({
+    entryType: z.enum(["ALACAK", "FAZLA_ODEME"]),
+    apartmentId: z.string().min(1),
+    entryDate: z.string().datetime(),
+    amount: z.number().positive(),
+    reference: z.string().optional(),
+    note: z.string().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Geçersiz istek", errors: parsed.error.issues });
+  }
+
+  const apartment = await prisma.apartment.findUnique({
+    where: { id: parsed.data.apartmentId },
+    select: { id: true, doorNo: true },
+  });
+  if (!apartment) {
+    return res.status(404).json({ message: "Daire bulunamadı" });
+  }
+
+  const normalizedAmount = Number(parsed.data.amount.toFixed(2));
+  const normalizedDoorNo = apartment.doorNo.trim();
+  if (!normalizedDoorNo) {
+    return res.status(400).json({ message: "Daire kapı numarası eksik" });
+  }
+
+  const entryTag =
+    parsed.data.entryType === "ALACAK" ? OPENING_ENTRY_ALACAK_TAG : OPENING_ENTRY_FAZLA_ODEME_TAG;
+
+  const noteParts = [
+    entryTag,
+    `DOOR:${normalizedDoorNo}`,
+    "UNAPPLIED:OPENING",
+    parsed.data.reference?.trim() ? `REF:${parsed.data.reference.trim()}` : undefined,
+    parsed.data.note?.trim() || undefined,
+  ].filter(Boolean) as string[];
+
+  const created = await prisma.payment.create({
+    data: {
+      paidAt: new Date(parsed.data.entryDate),
+      method: PaymentMethod.CASH,
+      totalAmount: normalizedAmount,
+      note: noteParts.join(" | "),
+      createdById: req.user?.userId,
+    },
+    select: { id: true },
+  });
+
+  // Alacak girişleri mevcut açık tahakkuklarla otomatik eşleştirilir
+  // Fazla ödeme girişleri gelecekte uygulanmak üzere beklemede kalır
+  const reconcileResult =
+    parsed.data.entryType === "ALACAK" ? await reconcileApartmentPaymentLinks(apartment.id) : null;
+
+  return res.status(201).json({
+    id: created.id,
+    apartmentId: apartment.id,
+    doorNo: apartment.doorNo,
+    amount: normalizedAmount,
+    entryType: parsed.data.entryType,
+    autoReconcileApplied: Boolean(reconcileResult),
+    reconcileResult,
+  });
+});
+
 router.get("/payments/list", async (req, res) => {
   const querySchema = z.object({
     from: z.string().datetime().optional(),
@@ -5034,6 +5069,9 @@ router.get("/payments/list", async (req, res) => {
         continue;
       }
       if (part.startsWith("CARRY_FORWARD:")) {
+        continue;
+      }
+      if (part.startsWith("AUTO_MATCH:")) {
         continue;
       }
 
@@ -7344,6 +7382,7 @@ router.get("/reports/summary", async (_req, res) => {
           upper.startsWith("PAYMENT_UPLOAD:") ||
           upper.startsWith("UNAPPLIED:") ||
           upper.startsWith("CARRY_FORWARD:") ||
+          upper.startsWith("AUTO_MATCH:") ||
           upper === "RECONCILE_LOCK:MANUAL"
         ) {
           continue;
@@ -7797,7 +7836,8 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
           upperPart.startsWith("DOOR:") ||
           upperPart.startsWith("PAYMENT_UPLOAD:") ||
           upperPart.startsWith("UNAPPLIED:") ||
-          upperPart.startsWith("CARRY_FORWARD:")
+          upperPart.startsWith("CARRY_FORWARD:") ||
+          upperPart.startsWith("AUTO_MATCH:")
         ) {
           continue;
         }
@@ -7960,6 +8000,7 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
         upper.startsWith("PAYMENT_UPLOAD:") ||
         upper.startsWith("UNAPPLIED:") ||
         upper.startsWith("CARRY_FORWARD:") ||
+        upper.startsWith("AUTO_MATCH:") ||
         upper.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX)
       ) {
         continue;

@@ -66,14 +66,11 @@ export function StatementPage({
     }
   }, [apartmentOptions.length, fetchApartmentOptions, loading]);
 
-  async function handleFetchStatement(): Promise<void> {
-    if (!activeApartmentId.trim()) {
-      window.alert("Lutfen bir daire seciniz");
-      return;
+  useEffect(() => {
+    if (activeApartmentId.trim()) {
+      void fetchStatement();
     }
-
-    await fetchStatement();
-  }
+  }, [activeApartmentId]);
 
   function formatPaymentDayDiff(
     dueDate: string,
@@ -161,17 +158,8 @@ export function StatementPage({
         <div className="section-head">
           <h3>Admin Ekstre Sorgu</h3>
           <div className="admin-row">
-            <button className="btn btn-primary statement-fetch-btn" onClick={() => void handleFetchStatement()} disabled={loading}>
-              Ekstre Getir
-            </button>
-            <button className="btn btn-ghost" type="button" onClick={() => setActiveApartmentId("")} disabled={loading}>
-              Temizle
-            </button>
-            <button className="btn btn-ghost" onClick={() => void reconcileSelectedApartment()} disabled={loading}>
+            <button className="btn btn-ghost hide-on-mobile" onClick={() => void reconcileSelectedApartment()} disabled={loading}>
               Secilen Daireyi Yeniden Eslestir
-            </button>
-            <button className="btn btn-ghost" type="button" onClick={() => void fetchApartmentOptions()} disabled={loading}>
-              Daireleri Yenile
             </button>
           </div>
         </div>

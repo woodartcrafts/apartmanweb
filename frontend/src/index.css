@@ -3288,6 +3288,94 @@ button:active:not(:disabled) {
   grid-template-columns: minmax(260px, 1.2fr) repeat(4, minmax(0, 1fr));
 }
 
+/* ── Opening Entry Page ───────────────────────────────────── */
+.opening-entry-page .section-head {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.opening-entry-disclaimer {
+  color: var(--color-warning-text, #7c5500);
+  background: var(--color-warning-bg, #fff8e6);
+  border: 1px solid var(--color-warning-border, #f0c040);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 0;
+}
+
+.opening-entry-type-section {
+  margin-bottom: 8px;
+}
+
+.opening-entry-type-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.opening-entry-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 16px;
+  border: 2px solid #d9e4f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.opening-entry-type-card input[type="radio"] {
+  display: none;
+}
+
+.opening-entry-type-card:hover {
+  border-color: var(--color-primary, #4f8ef7);
+  background: #f0f6ff;
+}
+
+.opening-entry-type-card-selected {
+  border-color: var(--color-primary, #4f8ef7);
+  background: #eef4ff;
+}
+
+.opening-entry-type-icon {
+  font-size: 1.6rem;
+}
+
+.opening-entry-type-label {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.opening-entry-type-desc {
+  color: #6b7a8d;
+}
+
+.opening-entry-actions {
+  padding: 12px 0 0;
+}
+
+.opening-entry-info-card {
+  margin-top: 24px;
+}
+
+.opening-entry-info-list {
+  margin: 12px 0 0 16px;
+  line-height: 1.7;
+}
+
+@media (max-width: 600px) {
+  .opening-entry-type-grid {
+    grid-template-columns: 1fr;
+  }
+}
+/* ── /Opening Entry Page ──────────────────────────────────── */
+
+
 .payment-entry-inline-grid-upload {
   grid-template-columns: minmax(260px, 1fr) minmax(300px, 1.4fr);
 }
@@ -5052,12 +5140,14 @@ button:active:not(:disabled) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-    margin-top: -4px;
-    margin-bottom: 16px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
   color: #fff;
-  font-size: 0.58rem;
+  font-size: 0.65rem;
   font-weight: 800;
+  line-height: 1;
 }
 
 .reports-home-balance-match-icon-ok {
@@ -9677,6 +9767,12 @@ td.empty {
   }
 }
 
+@media (max-width: 600px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+}
+
 @media print {
   @page {
     size: A4 portrait;
@@ -11476,6 +11572,20 @@ td.empty {
     }
 
     /* Admin Ekstre: Gider raporu mantiginda mobil kart gorunum */
+    .statement-page .admin-tools {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .statement-page .admin-tools .statement-query-row {
+      order: -1;
+      margin-bottom: 16px;
+      padding: 12px;
+      background: var(--color-bg, #f5f7fa);
+      border: 2px solid var(--color-primary, #4f8ef7);
+      border-radius: 10px;
+    }
+
     .statement-page .admin-tools .section-head,
     .statement-page .table-card > .compact-row {
       display: flex;

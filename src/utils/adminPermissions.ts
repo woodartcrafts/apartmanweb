@@ -73,7 +73,8 @@ export type AdminPageKey =
   | "AUDIT_LOGS"
   | "MEETING"
   | "GUIDE_MANUAL"
-  | "USER_ACCESS";
+  | "USER_ACCESS"
+  | "OPENING_ENTRY";
 
 export type AdminPagePermission = {
   visible: boolean;
@@ -129,7 +130,7 @@ export const ADMIN_PAGE_DEFINITIONS: Array<{ key: AdminPageKey; label: string }>
   { key: "REPORTS_STAFF_OPEN_AIDAT", label: "Raporlar / Personel / Personel Acik Aidat" },
   { key: "REPORTS_STAFF_OPEN_AIDAT_SEND_EMAIL", label: "Raporlar / Personel / Personel Acik Aidat / Ekstre E-mail Gonder" },
   { key: "REPORTS_MONTHLY_BALANCE", label: "Raporlar / Finans / Aylik Bakiye Matrisi" },
-  { key: "REPORTS_MONTHLY_LEDGER", label: "Raporlar / Finans / Aylik Defter" },
+  { key: "REPORTS_MONTHLY_LEDGER", label: "Sistem ve Duzeltme / Raporlar / Aylik Defter" },
   { key: "REPORTS_FRACTIONAL", label: "Raporlar / Finans / Kesirli Kapatmalar" },
   { key: "REPORTS_REFERENCE_SEARCH", label: "Raporlar / Arama / Referans Arama" },
   { key: "REPORTS_BANK_MOVEMENTS", label: "Raporlar / Finans / Banka Hareketleri" },
@@ -150,12 +151,13 @@ export const ADMIN_PAGE_DEFINITIONS: Array<{ key: AdminPageKey; label: string }>
   { key: "SETTINGS_DESC_EXPENSE", label: "Sistem ve Duzeltme / Esleme / Aciklama-Gider Esleme" },
   { key: "RESIDENT_CONTENT", label: "Sistem ve Duzeltme / Iletisim / Duyurular ve Anketler" },
   { key: "CORRECTIONS", label: "Sistem ve Duzeltme / Islemler / Duzeltmeler" },
-  { key: "UNCLASSIFIED", label: "Sistem ve Duzeltme / Islemler / Siniflandirilamayanlar" },
+  { key: "UNCLASSIFIED", label: "Kontrol / Finans Kontrolleri / Siniflandirilamayanlar" },
   { key: "MANUAL_CLOSURES", label: "Sistem ve Duzeltme / Islemler / Manuel Kapama Yonetimi" },
   { key: "AUDIT_LOGS", label: "Sistem ve Duzeltme / Izleme / Islem Gecmisi" },
   { key: "MEETING", label: "Toplanti / Islemler / Toplanti" },
   { key: "GUIDE_MANUAL", label: "Kullanim Kilavuzu / Dokuman / Kilavuz" },
   { key: "USER_ACCESS", label: "Kullanici ve Yetki / Yonetim / Yonetim" },
+  { key: "OPENING_ENTRY", label: "Sistem ve Duzeltme / Islemler / Acilis Kaydi" },
 ];
 
 const ADMIN_PAGE_KEYS = new Set<AdminPageKey>(ADMIN_PAGE_DEFINITIONS.map((x) => x.key));
@@ -199,6 +201,7 @@ export function mapRequestPathToAdminPage(pathname: string, method?: string): Ad
   const normalizedMethod = (method ?? "GET").toUpperCase();
 
   if (pathname.startsWith("/user-access")) return "USER_ACCESS";
+  if (pathname.startsWith("/opening-entries")) return "OPENING_ENTRY";
 
   if (/^\/apartments\/[^/]+\/statement-email$/.test(pathname)) {
     return "REPORTS_STAFF_OPEN_AIDAT_SEND_EMAIL";
