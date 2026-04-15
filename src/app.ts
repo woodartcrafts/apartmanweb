@@ -13,17 +13,20 @@ import { runGmailBankSync } from "./routes/admin";
 
 const app = express();
 
+// Health check must be registered before CORS middleware so Railway's
+// internal healthcheck (no Origin header) is never blocked.
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
 app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) {
-        // Origin header'siz istekler (curl, server-side): sadece dev ortamında izin ver
-        if (process.env.NODE_ENV !== "production") {
-          callback(null, true);
-        } else {
-          callback(new Error("CORS origin is not allowed"));
-        }
+        // Origin header'siz istekler (healthcheck, server-to-server, curl):
+        // CORS header ekleme ama engelleme — tarayici cross-origin istekleri Origin gonderir.
+        callback(null, false);
         return;
       }
 
@@ -42,10 +45,6 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(morgan("dev"));
 app.use(express.static(path.resolve(process.cwd(), "public"), { index: false }));
-
-app.get("/health", (_req, res) => {
-  res.json({ ok: true });
-});
 
 app.post("/api/internal/gmail-bank-sync", async (req, res) => {
   if (!config.gmailBankSync.enabled) {
