@@ -24,6 +24,9 @@ import { createAdminPaymentMethodRoutes } from "./adminPaymentMethodRoutes";
 import { createAdminApartmentDefinitionRoutes } from "./adminApartmentDefinitionRoutes";
 import { createAdminMeetingRoutes } from "./adminMeetingRoutes";
 import adminUserAccessRoutes from "./adminUserAccessRoutes";
+import { createAdminResidentContentRoutes } from "./adminResidentContentRoutes";
+import { createAdminBankRoutes } from "./adminBankRoutes";
+import { createAdminUploadBatchRoutes } from "./adminUploadBatchRoutes";
 import {
   mapRequestMethodToAdminAction,
   mapRequestPathToAdminPage,
@@ -106,7 +109,7 @@ function formatAccountingEmailDescription(description: string): string {
         .trim()
     )
     .filter(Boolean)
-    .filter((part) => !/^baslang[ıi]c\s*:/i.test(part))
+    .filter((part) => !/^baslang[Ä±i]c\s*:/i.test(part))
     .filter((part) => !/^bitis\s*:/i.test(part))
     .filter((part) => !/^door\s*:/i.test(part))
     .filter((part) => !/^carry_forward\s*:/i.test(part))
@@ -386,8 +389,8 @@ router.use(async (req, res, next) => {
       return next();
     }
 
-    // GET lookup endpoints: dropdown verisi olarak her sayfa tarafından kullanılır,
-    // yönetim izninden bağımsız olarak tüm adminlere açık olmalı.
+    // GET lookup endpoints: dropdown verisi olarak her sayfa tarafÄ±ndan kullanÄ±lÄ±r,
+    // yÃ¶netim izninden baÄŸÄ±msÄ±z olarak tÃ¼m adminlere aÃ§Ä±k olmalÄ±.
     const LOOKUP_PREFIXES = [
       "/apartment-duties",
       "/apartment-classes",
@@ -458,252 +461,8 @@ router.use(
 );
 router.use(createAdminMeetingRoutes());
 
-router.get("/resident-content/announcements", async (_req, res) => {
-  const rows = await prisma.residentAnnouncement.findMany({
-    orderBy: [{ publishAt: "desc" }, { createdAt: "desc" }],
-    take: 200,
-  });
 
-  return res.json(
-    rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      content: row.content,
-      isActive: row.isActive,
-      publishAt: row.publishAt,
-      expiresAt: row.expiresAt,
-      createdById: row.createdById,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    }))
-  );
-});
-
-router.post("/resident-content/announcements", async (req, res) => {
-  const schema = z.object({
-    title: z.string().trim().min(3).max(200),
-    content: z.string().trim().min(5).max(5000),
-    isActive: z.boolean().optional(),
-    publishAt: z.string().datetime().optional(),
-    expiresAt: z.string().datetime().nullable().optional(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
-  }
-
-  const created = await prisma.residentAnnouncement.create({
-    data: {
-      title: parsed.data.title,
-      content: parsed.data.content,
-      isActive: parsed.data.isActive ?? true,
-      publishAt: parsed.data.publishAt ? new Date(parsed.data.publishAt) : new Date(),
-      expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
-      createdById: req.user?.userId,
-    },
-  });
-
-  return res.status(201).json(created);
-});
-
-router.put("/resident-content/announcements/:id", async (req, res) => {
-  const { id } = req.params;
-  const schema = z.object({
-    title: z.string().trim().min(3).max(200).optional(),
-    content: z.string().trim().min(5).max(5000).optional(),
-    isActive: z.boolean().optional(),
-    publishAt: z.string().datetime().optional(),
-    expiresAt: z.string().datetime().nullable().optional(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
-  }
-
-  const existing = await prisma.residentAnnouncement.findUnique({ where: { id } });
-  if (!existing) {
-    return res.status(404).json({ message: "Duyuru bulunamadi" });
-  }
-
-  const updated = await prisma.residentAnnouncement.update({
-    where: { id },
-    data: {
-      ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
-      ...(parsed.data.content !== undefined ? { content: parsed.data.content } : {}),
-      ...(parsed.data.isActive !== undefined ? { isActive: parsed.data.isActive } : {}),
-      ...(parsed.data.publishAt !== undefined ? { publishAt: new Date(parsed.data.publishAt) } : {}),
-      ...(parsed.data.expiresAt !== undefined
-        ? { expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null }
-        : {}),
-    },
-  });
-
-  return res.json(updated);
-});
-
-router.delete("/resident-content/announcements/:id", async (req, res) => {
-  const { id } = req.params;
-
-  const existing = await prisma.residentAnnouncement.findUnique({ where: { id } });
-  if (!existing) {
-    return res.status(404).json({ message: "Duyuru bulunamadi" });
-  }
-
-  await prisma.residentAnnouncement.delete({ where: { id } });
-  return res.status(204).end();
-});
-
-router.get("/resident-content/polls", async (_req, res) => {
-  const polls = await prisma.residentPoll.findMany({
-    include: {
-      options: {
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      },
-    },
-    orderBy: [{ startsAt: "desc" }, { createdAt: "desc" }],
-    take: 200,
-  });
-
-  const allOptionIds = polls.flatMap((poll) => poll.options.map((opt) => opt.id));
-  const groupedCounts =
-    allOptionIds.length > 0
-      ? await prisma.residentPollVote.groupBy({
-          by: ["optionId"],
-          where: { optionId: { in: allOptionIds } },
-          _count: { _all: true },
-        })
-      : [];
-
-  const voteCountByOption = new Map(groupedCounts.map((x) => [x.optionId, x._count._all]));
-
-  return res.json(
-    polls.map((poll) => {
-      const options = poll.options.map((opt) => ({
-        id: opt.id,
-        text: opt.text,
-        sortOrder: opt.sortOrder,
-        isActive: opt.isActive,
-        voteCount: voteCountByOption.get(opt.id) ?? 0,
-      }));
-
-      return {
-        id: poll.id,
-        title: poll.title,
-        description: poll.description,
-        isActive: poll.isActive,
-        allowMultiple: poll.allowMultiple,
-        startsAt: poll.startsAt,
-        endsAt: poll.endsAt,
-        createdById: poll.createdById,
-        createdAt: poll.createdAt,
-        updatedAt: poll.updatedAt,
-        totalVotes: options.reduce((sum, x) => sum + x.voteCount, 0),
-        options,
-      };
-    })
-  );
-});
-
-router.post("/resident-content/polls", async (req, res) => {
-  const schema = z.object({
-    title: z.string().trim().min(3).max(200),
-    description: z.string().trim().max(2000).optional(),
-    allowMultiple: z.boolean().optional(),
-    isActive: z.boolean().optional(),
-    startsAt: z.string().datetime().optional(),
-    endsAt: z.string().datetime().nullable().optional(),
-    options: z.array(z.string().trim().min(1).max(200)).min(2).max(20),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
-  }
-
-  const uniqueOptions = [...new Set(parsed.data.options.map((x) => x.trim()).filter(Boolean))];
-  if (uniqueOptions.length < 2) {
-    return res.status(400).json({ message: "Anket icin en az 2 farkli secenek gereklidir" });
-  }
-
-  const created = await prisma.residentPoll.create({
-    data: {
-      title: parsed.data.title,
-      description: parsed.data.description || null,
-      allowMultiple: parsed.data.allowMultiple ?? false,
-      isActive: parsed.data.isActive ?? true,
-      startsAt: parsed.data.startsAt ? new Date(parsed.data.startsAt) : new Date(),
-      endsAt: parsed.data.endsAt ? new Date(parsed.data.endsAt) : null,
-      createdById: req.user?.userId,
-      options: {
-        create: uniqueOptions.map((text, idx) => ({
-          text,
-          sortOrder: idx,
-          isActive: true,
-        })),
-      },
-    },
-    include: {
-      options: {
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      },
-    },
-  });
-
-  return res.status(201).json(created);
-});
-
-router.put("/resident-content/polls/:id", async (req, res) => {
-  const { id } = req.params;
-  const schema = z.object({
-    title: z.string().trim().min(3).max(200).optional(),
-    description: z.string().trim().max(2000).nullable().optional(),
-    allowMultiple: z.boolean().optional(),
-    isActive: z.boolean().optional(),
-    startsAt: z.string().datetime().optional(),
-    endsAt: z.string().datetime().nullable().optional(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
-  }
-
-  const existing = await prisma.residentPoll.findUnique({ where: { id } });
-  if (!existing) {
-    return res.status(404).json({ message: "Anket bulunamadi" });
-  }
-
-  const updated = await prisma.residentPoll.update({
-    where: { id },
-    data: {
-      ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
-      ...(parsed.data.description !== undefined ? { description: parsed.data.description || null } : {}),
-      ...(parsed.data.allowMultiple !== undefined ? { allowMultiple: parsed.data.allowMultiple } : {}),
-      ...(parsed.data.isActive !== undefined ? { isActive: parsed.data.isActive } : {}),
-      ...(parsed.data.startsAt !== undefined ? { startsAt: new Date(parsed.data.startsAt) } : {}),
-      ...(parsed.data.endsAt !== undefined
-        ? { endsAt: parsed.data.endsAt ? new Date(parsed.data.endsAt) : null }
-        : {}),
-    },
-  });
-
-  return res.json(updated);
-});
-
-router.delete("/resident-content/polls/:id", async (req, res) => {
-  const { id } = req.params;
-
-  const existing = await prisma.residentPoll.findUnique({ where: { id } });
-  if (!existing) {
-    return res.status(404).json({ message: "Anket bulunamadi" });
-  }
-
-  await prisma.residentPoll.delete({ where: { id } });
-  return res.status(204).end();
-});
-
+router.use(createAdminResidentContentRoutes());
 const paymentMethodLabels: Record<PaymentMethod, string> = {
   BANK_TRANSFER: "Banka",
   CASH: "Nakit",
@@ -1719,12 +1478,12 @@ function parseAmount(raw: unknown): number | null {
 function normalizeHeader(value: string): string {
   return value
     .toLocaleLowerCase("tr")
-    .replace(/ı/g, "i")
-    .replace(/ş/g, "s")
-    .replace(/ğ/g, "g")
-    .replace(/ü/g, "u")
-    .replace(/ö/g, "o")
-    .replace(/ç/g, "c")
+    .replace(/Ä±/g, "i")
+    .replace(/ÅŸ/g, "s")
+    .replace(/ÄŸ/g, "g")
+    .replace(/Ã¼/g, "u")
+    .replace(/Ã¶/g, "o")
+    .replace(/Ã§/g, "c")
     .replace(/[^a-z0-9]+/g, "");
 }
 
@@ -1754,12 +1513,12 @@ function extractChargeInvoiceAmount(description: string | null | undefined): num
   const amountPart = description
     .split("|")
     .map((x) => x.trim())
-    .find((part) => /^fatura\s+tutar[ıi]\s*:/i.test(part));
+    .find((part) => /^fatura\s+tutar[Ä±i]\s*:/i.test(part));
   if (!amountPart) {
     return null;
   }
 
-  const raw = amountPart.replace(/^fatura\s+tutar[ıi]\s*:/i, "").trim();
+  const raw = amountPart.replace(/^fatura\s+tutar[Ä±i]\s*:/i, "").trim();
   if (!raw) {
     return null;
   }
@@ -2004,12 +1763,12 @@ function parseSignedAmount(raw: unknown): number | null {
 function toAsciiLower(input: string): string {
   return input
     .toLocaleLowerCase("tr")
-    .replace(/ı/g, "i")
-    .replace(/ş/g, "s")
-    .replace(/ğ/g, "g")
-    .replace(/ü/g, "u")
-    .replace(/ö/g, "o")
-    .replace(/ç/g, "c");
+    .replace(/Ä±/g, "i")
+    .replace(/ÅŸ/g, "s")
+    .replace(/ÄŸ/g, "g")
+    .replace(/Ã¼/g, "u")
+    .replace(/Ã¶/g, "o")
+    .replace(/Ã§/g, "c");
 }
 
 function normalizeKeywordForMatch(value: string): string {
@@ -2612,12 +2371,12 @@ function parseDoorNosFromFreeText(value: string): string[] {
 function normalizeDoorPatternText(value: string): string {
   return value
     .toLocaleLowerCase("tr")
-    .replace(/ı/g, "i")
-    .replace(/ş/g, "s")
-    .replace(/ğ/g, "g")
-    .replace(/ü/g, "u")
-    .replace(/ö/g, "o")
-    .replace(/ç/g, "c");
+    .replace(/Ä±/g, "i")
+    .replace(/ÅŸ/g, "s")
+    .replace(/ÄŸ/g, "g")
+    .replace(/Ã¼/g, "u")
+    .replace(/Ã¶/g, "o")
+    .replace(/Ã§/g, "c");
 }
 
 function extractDoorNosFromDescriptionForSplit(description: string): string[] {
@@ -3714,7 +3473,7 @@ async function processBankStatementImport(params: {
         if (openCharges.length > 1 && exactCharges.length === 0 && !safelyCoversAllOpenDebt) {
           // First try: FIFO prefix-sum exact match.
           // If the payment equals the exact sum of the N oldest debts (in due-date order),
-          // it is safe to auto-allocate — the resident paid exactly what was owed up to
+          // it is safe to auto-allocate â€” the resident paid exactly what was owed up to
           // a certain charge without month-hinting needed.
           let fifoSumMatchCharges: typeof openCharges | null = null;
           {
@@ -3726,7 +3485,7 @@ async function processBankStatementImport(params: {
                 break;
               }
               if (runningSum > paymentAmount + 0.01) {
-                break; // exceeded — no prefix-sum match
+                break; // exceeded â€” no prefix-sum match
               }
             }
           }
@@ -3998,503 +3757,8 @@ async function processBankStatementImport(params: {
   };
 }
 
-router.get("/banks", async (_req, res) => {
-  const banks = await prisma.bankDefinition.findMany({
-    include: {
-      branches: {
-        orderBy: [{ name: "asc" }],
-      },
-      _count: {
-        select: {
-          branches: true,
-        },
-      },
-    },
-    orderBy: [{ isActive: "desc" }, { name: "asc" }],
-  });
 
-  return res.json(
-    banks.map((bank) => ({
-      id: bank.id,
-      name: bank.name,
-      isActive: bank.isActive,
-      branchCount: bank._count.branches,
-      branches: bank.branches.map((branch) => ({
-        id: branch.id,
-        bankId: branch.bankId,
-        bankName: bank.name,
-        name: branch.name,
-        branchCode: branch.branchCode,
-        accountName: branch.accountName,
-        accountNumber: branch.accountNumber,
-        iban: branch.iban,
-        phone: branch.phone,
-        email: branch.email,
-        address: branch.address,
-        representativeName: branch.representativeName,
-        representativePhone: branch.representativePhone,
-        representativeEmail: branch.representativeEmail,
-        notes: branch.notes,
-        isActive: branch.isActive,
-      })),
-    }))
-  );
-});
-
-function optionalBankText(max: number) {
-  return z
-    .string()
-    .max(max)
-    .optional()
-    .transform((value) => {
-      if (typeof value !== "string") {
-        return undefined;
-      }
-      const trimmed = value.trim();
-      return trimmed ? trimmed : undefined;
-    });
-}
-
-router.post("/banks", async (req, res) => {
-  const schema = z.object({
-    name: z.string().min(2).max(120),
-    isActive: z.boolean().optional(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
-  }
-
-  try {
-    const created = await prisma.bankDefinition.create({
-      data: {
-        name: parsed.data.name.trim(),
-        isActive: parsed.data.isActive ?? true,
-      },
-    });
-
-    return res.status(201).json(created);
-  } catch (err) {
-    if (typeof err === "object" && err && "code" in err && (err as { code?: string }).code === "P2002") {
-      return res.status(409).json({ message: "Banka adi zaten var" });
-    }
-
-    throw err;
-  }
-});
-
-router.put("/banks/:bankId", async (req, res) => {
-  const { bankId } = req.params;
-  const schema = z.object({
-    name: z.string().min(2).max(120),
-    isActive: z.boolean(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
-  }
-
-  try {
-    const updated = await prisma.bankDefinition.update({
-      where: { id: bankId },
-      data: {
-        name: parsed.data.name.trim(),
-        isActive: parsed.data.isActive,
-      },
-    });
-    return res.json(updated);
-  } catch (err) {
-    if (typeof err === "object" && err && "code" in err) {
-      const code = (err as { code?: string }).code;
-      if (code === "P2025") {
-        return res.status(404).json({ message: "Banka bulunamadi" });
-      }
-      if (code === "P2002") {
-        return res.status(409).json({ message: "Banka adi zaten var" });
-      }
-    }
-    throw err;
-  }
-});
-
-router.delete("/banks/:bankId", async (req, res) => {
-  const { bankId } = req.params;
-  const existing = await prisma.bankDefinition.findUnique({ where: { id: bankId } });
-  if (!existing) {
-    return res.status(404).json({ message: "Banka bulunamadi" });
-  }
-
-  const branchCount = await prisma.bankBranchDefinition.count({ where: { bankId } });
-  if (branchCount > 0) {
-    return res.status(409).json({ message: "Bankaya bagli subeler oldugu icin silinemez", branchCount });
-  }
-
-  await prisma.bankDefinition.delete({ where: { id: bankId } });
-  return res.status(204).send();
-});
-
-router.post("/banks/branches", async (req, res) => {
-  const schema = z.object({
-    bankId: z.string().min(1),
-    name: z.string().min(2).max(120),
-    branchCode: optionalBankText(32),
-    accountName: optionalBankText(160),
-    accountNumber: optionalBankText(64),
-    iban: optionalBankText(64),
-    phone: optionalBankText(64),
-    email: optionalBankText(255),
-    address: optionalBankText(500),
-    representativeName: optionalBankText(160),
-    representativePhone: optionalBankText(64),
-    representativeEmail: optionalBankText(255),
-    notes: optionalBankText(1000),
-    isActive: z.boolean().optional(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
-  }
-
-  const bank = await prisma.bankDefinition.findUnique({ where: { id: parsed.data.bankId }, select: { id: true } });
-  if (!bank) {
-    return res.status(404).json({ message: "Banka bulunamadi" });
-  }
-
-  try {
-    const created = await prisma.bankBranchDefinition.create({
-      data: {
-        bankId: parsed.data.bankId,
-        name: parsed.data.name.trim(),
-        branchCode: parsed.data.branchCode,
-        accountName: parsed.data.accountName,
-        accountNumber: parsed.data.accountNumber,
-        iban: parsed.data.iban,
-        phone: parsed.data.phone,
-        email: parsed.data.email,
-        address: parsed.data.address,
-        representativeName: parsed.data.representativeName,
-        representativePhone: parsed.data.representativePhone,
-        representativeEmail: parsed.data.representativeEmail,
-        notes: parsed.data.notes,
-        isActive: parsed.data.isActive ?? true,
-      },
-    });
-    return res.status(201).json(created);
-  } catch (err) {
-    if (typeof err === "object" && err && "code" in err && (err as { code?: string }).code === "P2002") {
-      return res.status(409).json({ message: "Bu bankada ayni sube adi zaten var" });
-    }
-    throw err;
-  }
-});
-
-router.put("/banks/branches/:branchId", async (req, res) => {
-  const { branchId } = req.params;
-  const schema = z.object({
-    bankId: z.string().min(1),
-    name: z.string().min(2).max(120),
-    branchCode: optionalBankText(32),
-    accountName: optionalBankText(160),
-    accountNumber: optionalBankText(64),
-    iban: optionalBankText(64),
-    phone: optionalBankText(64),
-    email: optionalBankText(255),
-    address: optionalBankText(500),
-    representativeName: optionalBankText(160),
-    representativePhone: optionalBankText(64),
-    representativeEmail: optionalBankText(255),
-    notes: optionalBankText(1000),
-    isActive: z.boolean(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
-  }
-
-  const bank = await prisma.bankDefinition.findUnique({ where: { id: parsed.data.bankId }, select: { id: true } });
-  if (!bank) {
-    return res.status(404).json({ message: "Banka bulunamadi" });
-  }
-
-  try {
-    const updated = await prisma.bankBranchDefinition.update({
-      where: { id: branchId },
-      data: {
-        bankId: parsed.data.bankId,
-        name: parsed.data.name.trim(),
-        branchCode: parsed.data.branchCode,
-        accountName: parsed.data.accountName,
-        accountNumber: parsed.data.accountNumber,
-        iban: parsed.data.iban,
-        phone: parsed.data.phone,
-        email: parsed.data.email,
-        address: parsed.data.address,
-        representativeName: parsed.data.representativeName,
-        representativePhone: parsed.data.representativePhone,
-        representativeEmail: parsed.data.representativeEmail,
-        notes: parsed.data.notes,
-        isActive: parsed.data.isActive,
-      },
-    });
-    return res.json(updated);
-  } catch (err) {
-    if (typeof err === "object" && err && "code" in err) {
-      const code = (err as { code?: string }).code;
-      if (code === "P2025") {
-        return res.status(404).json({ message: "Sube bulunamadi" });
-      }
-      if (code === "P2002") {
-        return res.status(409).json({ message: "Bu bankada ayni sube adi zaten var" });
-      }
-    }
-    throw err;
-  }
-});
-
-router.delete("/banks/branches/:branchId", async (req, res) => {
-  const { branchId } = req.params;
-  const existing = await prisma.bankBranchDefinition.findUnique({ where: { id: branchId } });
-  if (!existing) {
-    return res.status(404).json({ message: "Sube bulunamadi" });
-  }
-
-  await prisma.bankBranchDefinition.delete({ where: { id: branchId } });
-  return res.status(204).send();
-});
-
-function calculateTermDepositSummary(input: {
-  principalAmount: number;
-  annualInterestRate: number;
-  withholdingTaxRate: number;
-  startDate: Date;
-  endDate: Date;
-}): {
-  dayCount: number;
-  grossInterest: number;
-  withholdingAmount: number;
-  netInterest: number;
-  netMaturityAmount: number;
-} {
-  const millisInDay = 1000 * 60 * 60 * 24;
-  const dayDiff = Math.ceil((input.endDate.getTime() - input.startDate.getTime()) / millisInDay);
-  const dayCount = Math.max(1, dayDiff);
-  const grossInterest = input.principalAmount * (input.annualInterestRate / 100) * (dayCount / 365);
-  const withholdingAmount = grossInterest * (input.withholdingTaxRate / 100);
-  const netInterest = grossInterest - withholdingAmount;
-  const netMaturityAmount = input.principalAmount + netInterest;
-
-  return {
-    dayCount,
-    grossInterest: Number(grossInterest.toFixed(2)),
-    withholdingAmount: Number(withholdingAmount.toFixed(2)),
-    netInterest: Number(netInterest.toFixed(2)),
-    netMaturityAmount: Number(netMaturityAmount.toFixed(2)),
-  };
-}
-
-router.get("/banks/term-deposits", async (_req, res) => {
-  const rows = await prisma.bankTermDeposit.findMany({
-    include: {
-      bank: {
-        select: { id: true, name: true },
-      },
-      branch: {
-        select: { id: true, name: true },
-      },
-    },
-    orderBy: [{ endDate: "asc" }, { createdAt: "desc" }],
-  });
-
-  const payload = rows.map((row) => {
-    const principalAmount = Number(row.principalAmount);
-    const annualInterestRate = Number(row.annualInterestRate);
-    const withholdingTaxRate = Number(row.withholdingTaxRate);
-    const summary = calculateTermDepositSummary({
-      principalAmount,
-      annualInterestRate,
-      withholdingTaxRate,
-      startDate: row.startDate,
-      endDate: row.endDate,
-    });
-
-    return {
-      id: row.id,
-      bankId: row.bankId,
-      bankName: row.bank.name,
-      branchId: row.branchId,
-      branchName: row.branch?.name ?? null,
-      principalAmount,
-      annualInterestRate,
-      withholdingTaxRate,
-      startDate: row.startDate.toISOString(),
-      endDate: row.endDate.toISOString(),
-      notes: row.notes,
-      isActive: row.isActive,
-      dayCount: summary.dayCount,
-      grossInterest: summary.grossInterest,
-      withholdingAmount: summary.withholdingAmount,
-      netInterest: summary.netInterest,
-      netMaturityAmount: summary.netMaturityAmount,
-    };
-  });
-
-  return res.json(payload);
-});
-
-router.post("/banks/term-deposits", async (req, res) => {
-  const schema = z.object({
-    bankId: z.string().min(1),
-    branchId: z
-      .string()
-      .optional()
-      .transform((value) => {
-        if (typeof value !== "string") {
-          return undefined;
-        }
-        const trimmed = value.trim();
-        return trimmed ? trimmed : undefined;
-      }),
-    principalAmount: z.coerce.number().positive(),
-    annualInterestRate: z.coerce.number().min(0).max(500),
-    withholdingTaxRate: z.coerce.number().min(0).max(100),
-    startDate: z.string().datetime(),
-    endDate: z.string().datetime(),
-    notes: optionalBankText(1000),
-    isActive: z.boolean().optional(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
-  }
-
-  const startDate = new Date(parsed.data.startDate);
-  const endDate = new Date(parsed.data.endDate);
-  if (endDate.getTime() < startDate.getTime()) {
-    return res.status(400).json({ message: "Bitis tarihi baslangic tarihinden once olamaz" });
-  }
-
-  const bank = await prisma.bankDefinition.findUnique({ where: { id: parsed.data.bankId }, select: { id: true } });
-  if (!bank) {
-    return res.status(404).json({ message: "Banka bulunamadi" });
-  }
-
-  if (parsed.data.branchId) {
-    const branch = await prisma.bankBranchDefinition.findUnique({
-      where: { id: parsed.data.branchId },
-      select: { id: true, bankId: true },
-    });
-    if (!branch || branch.bankId !== parsed.data.bankId) {
-      return res.status(400).json({ message: "Secilen sube bankaya ait degil" });
-    }
-  }
-
-  const created = await prisma.bankTermDeposit.create({
-    data: {
-      bankId: parsed.data.bankId,
-      branchId: parsed.data.branchId,
-      principalAmount: parsed.data.principalAmount,
-      annualInterestRate: parsed.data.annualInterestRate,
-      withholdingTaxRate: parsed.data.withholdingTaxRate,
-      startDate,
-      endDate,
-      notes: parsed.data.notes,
-      isActive: parsed.data.isActive ?? true,
-    },
-  });
-
-  return res.status(201).json(created);
-});
-
-router.put("/banks/term-deposits/:depositId", async (req, res) => {
-  const { depositId } = req.params;
-  const schema = z.object({
-    bankId: z.string().min(1),
-    branchId: z
-      .string()
-      .optional()
-      .transform((value) => {
-        if (typeof value !== "string") {
-          return undefined;
-        }
-        const trimmed = value.trim();
-        return trimmed ? trimmed : undefined;
-      }),
-    principalAmount: z.coerce.number().positive(),
-    annualInterestRate: z.coerce.number().min(0).max(500),
-    withholdingTaxRate: z.coerce.number().min(0).max(100),
-    startDate: z.string().datetime(),
-    endDate: z.string().datetime(),
-    notes: optionalBankText(1000),
-    isActive: z.boolean(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
-  }
-
-  const startDate = new Date(parsed.data.startDate);
-  const endDate = new Date(parsed.data.endDate);
-  if (endDate.getTime() < startDate.getTime()) {
-    return res.status(400).json({ message: "Bitis tarihi baslangic tarihinden once olamaz" });
-  }
-
-  const bank = await prisma.bankDefinition.findUnique({ where: { id: parsed.data.bankId }, select: { id: true } });
-  if (!bank) {
-    return res.status(404).json({ message: "Banka bulunamadi" });
-  }
-
-  if (parsed.data.branchId) {
-    const branch = await prisma.bankBranchDefinition.findUnique({
-      where: { id: parsed.data.branchId },
-      select: { id: true, bankId: true },
-    });
-    if (!branch || branch.bankId !== parsed.data.bankId) {
-      return res.status(400).json({ message: "Secilen sube bankaya ait degil" });
-    }
-  }
-
-  try {
-    const updated = await prisma.bankTermDeposit.update({
-      where: { id: depositId },
-      data: {
-        bankId: parsed.data.bankId,
-        branchId: parsed.data.branchId,
-        principalAmount: parsed.data.principalAmount,
-        annualInterestRate: parsed.data.annualInterestRate,
-        withholdingTaxRate: parsed.data.withholdingTaxRate,
-        startDate,
-        endDate,
-        notes: parsed.data.notes,
-        isActive: parsed.data.isActive,
-      },
-    });
-    return res.json(updated);
-  } catch (err) {
-    if (typeof err === "object" && err && "code" in err && (err as { code?: string }).code === "P2025") {
-      return res.status(404).json({ message: "Vadeli mevduat kaydi bulunamadi" });
-    }
-    throw err;
-  }
-});
-
-router.delete("/banks/term-deposits/:depositId", async (req, res) => {
-  const { depositId } = req.params;
-  try {
-    await prisma.bankTermDeposit.delete({ where: { id: depositId } });
-    return res.status(204).send();
-  } catch (err) {
-    if (typeof err === "object" && err && "code" in err && (err as { code?: string }).code === "P2025") {
-      return res.status(404).json({ message: "Vadeli mevduat kaydi bulunamadi" });
-    }
-    throw err;
-  }
-});
+router.use(createAdminBankRoutes());
 
 router.get("/initial-balances", async (_req, res) => {
   const openingPayments = await prisma.payment.findMany({
@@ -6719,310 +5983,8 @@ router.post("/actions/undo/:actionId", async (req, res) => {
   return res.json({ undoneActionId: target.id });
 });
 
-router.get("/upload-batches/uploaders", async (_req, res) => {
-  const batches = await prisma.importBatch.findMany({
-    where: { uploadedById: { not: null } },
-    select: { uploadedById: true },
-    distinct: ["uploadedById"],
-  });
 
-  const ids = batches.map((x) => x.uploadedById).filter(Boolean) as string[];
-  if (ids.length === 0) {
-    return res.json([]);
-  }
-
-  const users = await prisma.user.findMany({
-    where: { id: { in: ids } },
-    select: { id: true, fullName: true, email: true },
-    orderBy: [{ fullName: "asc" }],
-  });
-
-  return res.json(users);
-});
-
-router.get("/upload-batches", async (req, res) => {
-  const querySchema = z.object({
-    from: z.string().datetime().optional(),
-    to: z.string().datetime().optional(),
-    uploadedByUserId: z.string().optional(),
-    kind: z.union([z.nativeEnum(ImportBatchType), z.literal("GMAIL")]).optional(),
-    limit: z.coerce.number().int().min(1).max(1000).optional(),
-    offset: z.coerce.number().int().min(0).optional(),
-  });
-
-  const parsed = querySchema.safeParse(req.query);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
-  }
-
-  const { from, to, uploadedByUserId, kind } = parsed.data;
-  const gmailOnly = kind === "GMAIL";
-  const normalizedKind = gmailOnly ? ImportBatchType.BANK_STATEMENT_UPLOAD : kind;
-  const limit = parsed.data.limit ?? 200;
-  const offset = parsed.data.offset ?? 0;
-
-  const batches = await prisma.importBatch.findMany({
-    where: {
-      uploadedAt:
-        from || to
-          ? {
-              gte: from ? new Date(from) : undefined,
-              lte: to ? new Date(to) : undefined,
-            }
-          : undefined,
-      uploadedById: uploadedByUserId || undefined,
-      kind: normalizedKind || undefined,
-      fileName: gmailOnly
-        ? {
-            startsWith: "gmail:",
-            mode: "insensitive",
-          }
-        : undefined,
-    },
-    include: {
-      uploadedBy: {
-        select: {
-          fullName: true,
-          email: true,
-        },
-      },
-    },
-    orderBy: [{ uploadedAt: "desc" }],
-    take: limit,
-    skip: offset,
-  });
-
-  const batchIds = batches.map((b) => b.id);
-  const [manualReviewGroups, unclassifiedPaymentGroups, unclassifiedExpenseGroups] = batchIds.length > 0
-    ? await Promise.all([
-        prisma.payment.groupBy({
-          by: ["importBatchId"],
-          where: {
-            importBatchId: { in: batchIds },
-            note: { contains: "UNAPPLIED:MANUAL_REVIEW" },
-          },
-          _count: { _all: true },
-        }),
-        prisma.payment.groupBy({
-          by: ["importBatchId"],
-          where: {
-            importBatchId: { in: batchIds },
-            note: { contains: "UNCLASSIFIED_COLLECTION:" },
-          },
-          _count: { _all: true },
-        }),
-        prisma.expense.groupBy({
-          by: ["importBatchId"],
-          where: {
-            importBatchId: { in: batchIds },
-            expenseItem: { code: "SINIFLANDIRILAMAYAN_GIDERLER" },
-          },
-          _count: { _all: true },
-        }),
-      ])
-    : [[], [], []];
-  const manualReviewCountMap: Record<string, number> = {};
-  for (const g of manualReviewGroups) {
-    if (g.importBatchId) {
-      manualReviewCountMap[g.importBatchId] = g._count._all;
-    }
-  }
-  const unclassifiedCountMap: Record<string, number> = {};
-  for (const g of unclassifiedPaymentGroups) {
-    if (g.importBatchId) {
-      unclassifiedCountMap[g.importBatchId] = (unclassifiedCountMap[g.importBatchId] ?? 0) + g._count._all;
-    }
-  }
-  for (const g of unclassifiedExpenseGroups) {
-    if (g.importBatchId) {
-      unclassifiedCountMap[g.importBatchId] = (unclassifiedCountMap[g.importBatchId] ?? 0) + g._count._all;
-    }
-  }
-
-  return res.json(
-    batches.map((batch) => ({
-      id: batch.id,
-      kind: batch.kind,
-      fileName: batch.fileName,
-      uploadedAt: batch.uploadedAt,
-      uploadedByUserId: batch.uploadedById,
-      uploadedByName: batch.uploadedBy?.fullName ?? null,
-      uploadedByEmail: batch.uploadedBy?.email ?? null,
-      totalRows: batch.totalRows,
-      createdPaymentCount: batch.createdPaymentCount,
-      createdExpenseCount: batch.createdExpenseCount,
-      skippedCount: batch.skippedCount,
-      manualReviewCount: manualReviewCountMap[batch.id] ?? 0,
-      unclassifiedCount: unclassifiedCountMap[batch.id] ?? 0,
-    }))
-  );
-});
-
-router.get("/upload-batches/:batchId/details", async (req, res) => {
-  const { batchId } = req.params;
-
-  const extractPaymentReference = (note: string | null): string | null => {
-    if (!note) {
-      return null;
-    }
-    const match = note.match(/(?:^|\|)\s*(?:BANK_REF|REF):\s*([^|]+)/i);
-    return match?.[1]?.trim() || null;
-  };
-
-  const batch = await prisma.importBatch.findUnique({
-    where: { id: batchId },
-    include: {
-      uploadedBy: {
-        select: {
-          fullName: true,
-          email: true,
-        },
-      },
-    },
-  });
-
-  if (!batch) {
-    return res.status(404).json({ message: "Upload batch not found" });
-  }
-
-  const [payments, expenses] = await Promise.all([
-    prisma.payment.findMany({
-      where: { importBatchId: batchId },
-      select: {
-        id: true,
-        paidAt: true,
-        totalAmount: true,
-        method: true,
-        note: true,
-        itemLinks: {
-          select: {
-            charge: {
-              select: {
-                apartment: {
-                  select: {
-                    doorNo: true,
-                    block: {
-                      select: { name: true },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      orderBy: [{ paidAt: "desc" }, { id: "desc" }],
-    }),
-    prisma.expense.findMany({
-      where: { importBatchId: batchId },
-      select: {
-        id: true,
-        spentAt: true,
-        amount: true,
-        paymentMethod: true,
-        description: true,
-        reference: true,
-        expenseItem: {
-          select: {
-            name: true,
-          },
-        },
-      },
-      orderBy: [{ spentAt: "desc" }, { id: "desc" }],
-    }),
-  ]);
-
-  return res.json({
-    batch: {
-      id: batch.id,
-      kind: batch.kind,
-      fileName: batch.fileName,
-      uploadedAt: batch.uploadedAt,
-      uploadedByName: batch.uploadedBy?.fullName ?? null,
-      uploadedByEmail: batch.uploadedBy?.email ?? null,
-      totalRows: batch.totalRows,
-      createdPaymentCount: batch.createdPaymentCount,
-      createdExpenseCount: batch.createdExpenseCount,
-      skippedCount: batch.skippedCount,
-    },
-    payments: payments.map((payment) => ({
-      id: payment.id,
-      paidAt: payment.paidAt,
-      totalAmount: Number(payment.totalAmount),
-      method: payment.method,
-      reference: extractPaymentReference(payment.note),
-      note: payment.note,
-      apartmentLabels: [
-        ...new Set(
-          payment.itemLinks.map((item) => `${item.charge.apartment.block.name}/${item.charge.apartment.doorNo}`)
-        ),
-      ],
-    })),
-    expenses: expenses.map((expense) => ({
-      id: expense.id,
-      spentAt: expense.spentAt,
-      amount: Number(expense.amount),
-      paymentMethod: expense.paymentMethod,
-      expenseItemName: expense.expenseItem.name,
-      description: expense.description,
-      reference: expense.reference,
-    })),
-  });
-});
-
-router.delete("/upload-batches/:batchId", async (req, res) => {
-  const { batchId } = req.params;
-
-  try {
-    const batch = await prisma.importBatch.findUnique({
-      where: { id: batchId },
-      include: {
-        payments: {
-          include: {
-            itemLinks: {
-              select: { chargeId: true },
-            },
-          },
-        },
-        expenses: {
-          select: { id: true },
-        },
-      },
-    });
-
-    if (!batch) {
-      return res.status(404).json({ message: "Upload batch not found" });
-    }
-
-    const paymentIds = batch.payments.map((x) => x.id);
-    const expenseIds = batch.expenses.map((x) => x.id);
-    const affectedChargeIds = [...new Set(batch.payments.flatMap((x) => x.itemLinks.map((i) => i.chargeId)))];
-
-    await prisma.$transaction(async (tx) => {
-      if (paymentIds.length > 0) {
-        await tx.payment.deleteMany({ where: { id: { in: paymentIds } } });
-      }
-
-      if (expenseIds.length > 0) {
-        await tx.expense.deleteMany({ where: { id: { in: expenseIds } } });
-      }
-
-      await tx.importBatch.delete({ where: { id: batchId } });
-    });
-
-    await refreshChargeStatusesForIds(affectedChargeIds);
-
-    return res.json({
-      deletedBatchId: batchId,
-      deletedPayments: paymentIds.length,
-      deletedExpenses: expenseIds.length,
-      affectedCharges: affectedChargeIds.length,
-    });
-  } catch (err) {
-    console.error("upload-batch delete failed", { batchId, err });
-    return res.status(500).json({ message: "Yukleme silinirken hata olustu. Islem tamamlanmadi." });
-  }
-});
+router.use(createAdminUploadBatchRoutes({ refreshChargeStatusesForIds }));
 
 router.post("/payments/upload", upload.single("file"), async (req, res) => {
   const methodSchema = z.object({
