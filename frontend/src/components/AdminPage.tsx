@@ -8580,7 +8580,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         </div>
       )}
 
-      <div className="admin-nav-wrapper">
+      <div className="admin-nav-wrapper" ref={adminSubnavRef}>
         <input type="checkbox" id="admin-nav-toggle" className="admin-nav-toggle-input" />
         <label htmlFor="admin-nav-toggle" className="admin-nav-hamburger-btn" aria-label="Menüyü aç/kapat">
           <span className="admin-nav-hamburger-icon" aria-hidden="true">
@@ -8588,7 +8588,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
           </span>
           <span className="admin-nav-hamburger-label">Menü</span>
         </label>
-        <div className="card admin-subnav" ref={adminSubnavRef}>
+        <div className="card admin-subnav">
         <details className="admin-subnav-group admin-subnav-dropdown">
           <summary className="admin-subnav-title">
             <span className="admin-subnav-icon" aria-hidden="true">🏠</span>
