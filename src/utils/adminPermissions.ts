@@ -209,6 +209,10 @@ export function mapRequestPathToAdminPage(pathname: string, method?: string): Ad
     return "REPORTS_STAFF_OPEN_AIDAT_SEND_EMAIL";
   }
 
+  if (/^\/apartments\/[^/]+\/statement-pdf-email$/.test(pathname)) {
+    return "REPORTS_STAFF_OPEN_AIDAT_SEND_EMAIL";
+  }
+
   if (/^\/apartments\/[^/]+\/statement$/.test(pathname)) return "STATEMENT_VIEW";
 
   if (pathname.startsWith("/apartments/upload")) return "APT_UPLOAD";

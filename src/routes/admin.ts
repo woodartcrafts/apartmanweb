@@ -6,6 +6,7 @@ import multer from "multer";
 import nodemailer, { type Transporter } from "nodemailer";
 import { Resend } from "resend";
 import { PDFParse } from "pdf-parse";
+import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
@@ -197,6 +198,11 @@ function getStatementEmailTransporter(): Transporter {
   return statementEmailTransporter;
 }
 
+interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+}
+
 interface SendStatementEmailParams {
   from: string;
   fromName: string;
@@ -204,6 +210,7 @@ interface SendStatementEmailParams {
   subject: string;
   html: string;
   text: string;
+  attachments?: EmailAttachment[];
 }
 
 async function sendStatementEmail(params: SendStatementEmailParams): Promise<void> {
@@ -219,12 +226,15 @@ async function sendStatementEmail(params: SendStatementEmailParams): Promise<voi
     if (brevoApiKey.startsWith("xkeysib-")) {
       // Brevo Transactional Email HTTP API key
       console.log(`[statement-email] Brevo API ile gonderiliyor -> ${params.to.join(", ")}`);
-      const body = JSON.stringify({
+    const body = JSON.stringify({
         sender: { name: params.fromName, email: params.from },
         to: params.to.map((email) => ({ email })),
         subject: params.subject,
         htmlContent: params.html,
         textContent: params.text,
+        ...(params.attachments && params.attachments.length > 0
+          ? { attachment: params.attachments.map((a) => ({ name: a.filename, content: a.content.toString("base64") })) }
+          : {}),
       });
       const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
@@ -275,6 +285,7 @@ async function sendStatementEmail(params: SendStatementEmailParams): Promise<voi
         subject: params.subject,
         html: params.html,
         text: params.text,
+        attachments: params.attachments?.map((a) => ({ filename: a.filename, content: a.content })),
       });
     };
 
@@ -292,6 +303,9 @@ async function sendStatementEmail(params: SendStatementEmailParams): Promise<voi
       subject: params.subject,
       htmlContent: params.html,
       textContent: params.text,
+      ...(params.attachments && params.attachments.length > 0
+        ? { attachment: params.attachments.map((a) => ({ name: a.filename, content: a.content.toString("base64") })) }
+        : {}),
     });
     const fallbackResp = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -325,6 +339,9 @@ async function sendStatementEmail(params: SendStatementEmailParams): Promise<voi
       subject: params.subject,
       html: params.html,
       text: params.text,
+      ...(params.attachments && params.attachments.length > 0
+        ? { attachments: params.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64") })) }
+        : {}),
     });
     if (error) {
       throw new Error(`Resend API hatasi: ${(error as { message?: string }).message ?? JSON.stringify(error)}`);
@@ -341,6 +358,7 @@ async function sendStatementEmail(params: SendStatementEmailParams): Promise<voi
     subject: params.subject,
     html: params.html,
     text: params.text,
+    attachments: params.attachments?.map((a) => ({ filename: a.filename, content: a.content })),
   });
 }
 
@@ -6675,6 +6693,219 @@ router.post("/apartments/:apartmentId/statement-email", async (req, res) => {
     console.error("[statement-email-send-failed]", err);
     const detail = err instanceof Error ? err.message : "Bilinmeyen hata";
     return res.status(500).json({ message: `Ekstre e-mail gonderilemedi: ${detail}` });
+  }
+});
+
+function buildApartmentStatementPdf(
+  accountingStatement: Awaited<ReturnType<typeof getApartmentStatements>>["accountingStatement"],
+  apartmentLabel: string,
+  overdueDebt: number
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 36, size: "A4" });
+      const chunks: Buffer[] = [];
+      doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+
+      // Header
+      doc
+        .fontSize(16)
+        .fillColor("#1f4e79")
+        .text("ApartmanWeb Muhasebe Ekstresi", { align: "center" })
+        .moveDown(0.4);
+
+      doc
+        .fontSize(11)
+        .fillColor("#222222")
+        .text(`Daire: ${apartmentLabel}`, { continued: true })
+        .text(`   Geciken Borc: ${tryCurrencyFormatter.format(overdueDebt)}`, { align: "right" })
+        .moveDown(0.6);
+
+      doc
+        .fontSize(8)
+        .fillColor("#666666")
+        .text(`Olusturulma: ${new Date().toLocaleString("tr-TR")}`, { align: "right" })
+        .moveDown(0.6);
+
+      // Table header
+      const colWidths = [30, 24, 58, 50, 0, 54, 54, 58]; // last 0 = flexible description
+      const tableLeft = doc.page.margins.left;
+      const tableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+      const fixedWidth = colWidths.reduce((s, w) => s + w, 0);
+      const descWidth = tableWidth - fixedWidth;
+      const actualCols = [colWidths[0], colWidths[1], colWidths[2], colWidths[3], descWidth, colWidths[5], colWidths[6], colWidths[7]];
+      const headers = ["Yil", "Ay", "Tarih", "Hareket", "Aciklama", "Borc", "Alacak", "Bakiye"];
+      const rowHeight = 16;
+
+      const drawRow = (
+        y: number,
+        cells: string[],
+        isBold: boolean,
+        bgColor: string | null
+      ): void => {
+        if (bgColor) {
+          doc.rect(tableLeft, y, tableWidth, rowHeight).fill(bgColor).stroke("#d2dbe5");
+        } else {
+          doc.rect(tableLeft, y, tableWidth, rowHeight).stroke("#d2dbe5");
+        }
+        let x = tableLeft;
+        cells.forEach((text, i) => {
+          const colW = actualCols[i];
+          const align = i >= 5 ? "right" : "left";
+          doc
+            .fillColor("#222222")
+            .fontSize(isBold ? 7.5 : 7)
+            .font(isBold ? "Helvetica-Bold" : "Helvetica")
+            .text(text, x + 3, y + 4, { width: colW - 6, height: rowHeight - 4, align, lineBreak: false, ellipsis: true });
+          x += colW;
+        });
+      };
+
+      let y = doc.y;
+      // check page space helper
+      const ensureSpace = (needed: number): void => {
+        if (y + needed > doc.page.height - doc.page.margins.bottom) {
+          doc.addPage();
+          y = doc.page.margins.top;
+        }
+      };
+
+      ensureSpace(rowHeight);
+      drawRow(y, headers, true, "#dce8f5");
+      y += rowHeight;
+
+      if (accountingStatement.length === 0) {
+        ensureSpace(rowHeight);
+        drawRow(y, ["Kayit yok", "", "", "", "", "", "", ""], false, null);
+        y += rowHeight;
+      } else {
+        accountingStatement.forEach((row, idx) => {
+          ensureSpace(rowHeight);
+          const movementLabel = row.movementType === "BORC" ? "BORC" : "ALACAK";
+          const year = String(row.periodYear ?? row.date.getFullYear());
+          const month = String(row.periodMonth ?? (row.date.getMonth() + 1)).padStart(2, "0");
+          const dateStr = row.date.toLocaleDateString("tr-TR");
+          const description = formatAccountingEmailDescription(row.description).slice(0, 90);
+          const debitText = row.debit > 0.0001 ? tryCurrencyFormatter.format(row.debit) : "-";
+          const creditText = row.credit > 0.0001 ? tryCurrencyFormatter.format(row.credit) : "-";
+          const balanceText = tryCurrencyFormatter.format(row.balance);
+          const bg = idx % 2 === 0 ? null : "#f4f7fb";
+          drawRow(y, [year, month, dateStr, movementLabel, description, debitText, creditText, balanceText], false, bg);
+          y += rowHeight;
+        });
+      }
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+router.post("/apartments/:apartmentId/statement-pdf-email", async (req, res) => {
+  try {
+    const { apartmentId } = req.params;
+
+    const apartment = await prisma.apartment.findUnique({
+      where: { id: apartmentId },
+      select: {
+        id: true,
+        doorNo: true,
+        ownerFullName: true,
+        email1: true,
+        email2: true,
+        email3: true,
+        email4: true,
+        landlordEmail: true,
+        block: {
+          select: { name: true },
+        },
+      },
+    });
+
+    if (!apartment) {
+      return res.status(404).json({ message: "Daire bulunamadi" });
+    }
+
+    const recipients = collectApartmentStatementRecipients(apartment);
+    if (recipients.length === 0) {
+      return res.status(400).json({ message: "Kayitli bir email yok - GONDERILMEDI" });
+    }
+
+    const { statement, accountingStatement } = await getApartmentStatements(apartmentId);
+
+    const now = new Date();
+    const overdueDebt = Number(
+      statement
+        .filter((row) => row.remaining > 0.0001)
+        .filter((row) => row.dueDate.getTime() < now.getTime())
+        .reduce((sum, row) => sum + row.remaining, 0)
+        .toFixed(2)
+    );
+    const apartmentLabel = `${apartment.block.name} - ${apartment.doorNo}`;
+    const ownerLabel = apartment.ownerFullName?.trim() ? ` (${apartment.ownerFullName.trim()})` : "";
+
+    const pdfBuffer = await buildApartmentStatementPdf(accountingStatement, apartmentLabel + ownerLabel, overdueDebt);
+
+    const fromAddress =
+      process.env.STATEMENT_EMAIL_FROM?.trim() ||
+      process.env.STATEMENT_EMAIL_SMTP_USER?.trim() ||
+      config.gmailBankSync.gmailUser?.trim() ||
+      "";
+    if (!fromAddress) {
+      return res.status(500).json({ message: "Ekstre e-mail gonderici adresi tanimli degil" });
+    }
+
+    const fromName = process.env.STATEMENT_EMAIL_FROM_NAME?.trim() || "ApartmanWeb";
+    const subjectLine = `ApartmanWeb Muhasebe Ekstresi - ${apartmentLabel}`;
+    const bodyText = [
+      "ApartmanWeb Muhasebe Ekstresi",
+      `Daire: ${apartmentLabel}${ownerLabel}`,
+      `Geciken borc: ${tryCurrencyFormatter.format(overdueDebt)}`,
+      "",
+      "Ekstre PDF ek olarak iletilmistir.",
+    ].join("\n");
+
+    const bodyHtml = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html><head><meta charset="UTF-8" /></head><body style="margin:0;padding:0;background:#eef3f8;font-family:Arial,Helvetica,sans-serif;">
+<table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#eef3f8"><tr><td align="center" style="padding:20px 10px;">
+<table cellpadding="0" cellspacing="0" border="0" width="560" style="width:560px;background:#fff;border:1px solid #dbe5f1;">
+<tr><td bgcolor="#1f4e79" style="padding:16px 20px;background:#1f4e79;">
+<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:bold;color:#fff;">ApartmanWeb Ekstre Bilgilendirmesi</p>
+</td></tr>
+<tr><td style="padding:20px;">
+<p style="margin:0 0 10px 0;font-size:14px;color:#1e2f40;">Daire: <strong>${escapeHtml(apartmentLabel + ownerLabel)}</strong></p>
+<p style="margin:0 0 10px 0;font-size:14px;color:#1e2f40;">Geciken borc: <strong>${escapeHtml(tryCurrencyFormatter.format(overdueDebt))}</strong></p>
+<p style="margin:0;font-size:13px;color:#444;">Muhasebe ekstresi PDF olarak ekte yer almaktadir.</p>
+</td></tr>
+<tr><td bgcolor="#f4f7fb" style="padding:10px 20px;border-top:1px solid #dbe5f1;">
+<p style="margin:0;font-size:11px;color:#7a8fa6;text-align:center;">Bu e-posta ApartmanWeb sistemi tarafindan otomatik olarak gonderilmistir.</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`;
+
+    await sendStatementEmail({
+      from: fromAddress,
+      fromName,
+      to: recipients,
+      subject: subjectLine,
+      html: bodyHtml,
+      text: bodyText,
+      attachments: [{ filename: `ekstre-${apartment.doorNo}-${new Date().toISOString().slice(0, 10)}.pdf`, content: pdfBuffer }],
+    });
+
+    return res.json({
+      message: "Ekstre PDF e-mail gonderildi",
+      recipients,
+      rowCount: accountingStatement.length,
+      overdueDebt,
+    });
+  } catch (err) {
+    console.error("[statement-pdf-email-send-failed]", err);
+    const detail = err instanceof Error ? err.message : "Bilinmeyen hata";
+    return res.status(500).json({ message: `Ekstre PDF e-mail gonderilemedi: ${detail}` });
   }
 });
 

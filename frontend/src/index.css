@@ -4787,8 +4787,11 @@ button:active:not(:disabled) {
   gap: 8px;
 }
 
+.statement-mobile-email-row {
+  display: none;
+}
+
 .statement-query-row {
-  display: flex;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
@@ -11621,8 +11624,32 @@ td.empty {
 
     /* Admin Ekstre: Gider raporu mantiginda mobil kart gorunum */
     .statement-page .admin-tools {
+      display: none;
+    }
+
+    .statement-mobile-email-row {
       display: flex;
       flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+      background: var(--color-bg, #f5f7fa);
+      border: 2px solid var(--color-primary, #4f8ef7);
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+
+    .statement-mobile-email-row .statement-mobile-select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--color-border, #c2d8ee);
+      font-size: 0.95rem;
+    }
+
+    .statement-mobile-email-row .statement-pdf-email-btn {
+      width: 100%;
+      padding: 12px;
+      font-size: 0.95rem;
     }
 
     .statement-page .admin-tools .statement-query-row {

@@ -38,6 +38,8 @@ type StatementPageProps = {
   statementCount: number;
   accountingStatementCount: number;
   formatAccountingStatementDescription: (value: string) => string;
+  sendStatementPdfEmail?: (apartmentId: string) => Promise<void>;
+  canSendStatementPdfEmail?: boolean;
 };
 
 export function StatementPage({
@@ -59,6 +61,8 @@ export function StatementPage({
   statementCount,
   accountingStatementCount,
   formatAccountingStatementDescription,
+  sendStatementPdfEmail,
+  canSendStatementPdfEmail,
 }: StatementPageProps) {
   useEffect(() => {
     if (apartmentOptions.length === 0 && !loading) {
@@ -178,6 +182,48 @@ export function StatementPage({
           </select>
         </div>
       </div>
+
+      {canSendStatementPdfEmail ? (
+        <div className="statement-mobile-email-row">
+          <select
+            title="Ekstre icin daire secimi (mobil)"
+            value={activeApartmentId}
+            onChange={(e) => setActiveApartmentId(e.target.value)}
+            className="statement-mobile-select"
+          >
+            <option value="">Daire seciniz</option>
+            {apartmentOptions.map((apt) => (
+              <option key={apt.id} value={apt.id}>
+                {apt.doorNo}{apt.ownerFullName ? ` - ${apt.ownerFullName}` : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn btn-primary statement-pdf-email-btn"
+            type="button"
+            onClick={() => { if (activeApartmentId) void sendStatementPdfEmail!(activeApartmentId); }}
+            disabled={!activeApartmentId || loading}
+          >
+            Ekstreyi PDF Olarak E-Mail Gonder
+          </button>
+        </div>
+      ) : (
+        <div className="statement-mobile-email-row statement-mobile-email-row--readonly">
+          <select
+            title="Ekstre icin daire secimi (mobil)"
+            value={activeApartmentId}
+            onChange={(e) => setActiveApartmentId(e.target.value)}
+            className="statement-mobile-select"
+          >
+            <option value="">Daire seciniz</option>
+            {apartmentOptions.map((apt) => (
+              <option key={apt.id} value={apt.id}>
+                {apt.doorNo}{apt.ownerFullName ? ` - ${apt.ownerFullName}` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="stats-grid statement-stats-grid">
         {statementViewMode === "CLASSIC" ? (

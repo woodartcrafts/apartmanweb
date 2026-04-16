@@ -1005,6 +1005,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     (paymentsListDeletePermission?.visible ?? true) && (paymentsListDeletePermission?.delete ?? true);
   const canSendStaffOpenAidatStatementEmail =
     (staffOpenAidatSendEmailPermission?.visible ?? true) && (staffOpenAidatSendEmailPermission?.write ?? true);
+  const canSendStatementPdfEmail = canSendStaffOpenAidatStatementEmail;
 
   function menuPathToPermissionKey(pathname: string): AdminPageKey | null {
     const path = pathname.replace(/\/+$/, "");
@@ -5195,6 +5196,34 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       if (normalizeToastText(errorText).includes("kayitli bir email yok- gonderilmedi")) {
         setToastMessage("Kayitli bir email yok- GONDERILMEDI");
       }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function sendStatementPdfEmail(apartmentId: string): Promise<void> {
+    if (!canSendStatementPdfEmail) {
+      setMessage("Ekstre PDF e-mail gonderme yetkiniz yok.");
+      return;
+    }
+    const targetApartmentId = apartmentId.trim();
+    if (!targetApartmentId) {
+      setMessage("Lutfen once daire secin");
+      return;
+    }
+    setLoading(true);
+    setMessage("Ekstre PDF e-mail gonderiliyor...");
+    try {
+      const response = await authorizedRequest<{ message: string }>(
+        `/api/admin/apartments/${targetApartmentId}/statement-pdf-email`,
+        { method: "POST", suppressDataChangeToast: true }
+      );
+      setMessage(response.message);
+      setToastMessage("Ekstre PDF E-Mail gonderildi");
+    } catch (err) {
+      console.error(err);
+      const errorText = err instanceof Error ? err.message : "Ekstre PDF e-mail gonderilemedi";
+      setMessage(errorText);
     } finally {
       setLoading(false);
     }
@@ -13737,6 +13766,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 statementCount={statement.length}
                 accountingStatementCount={accountingStatement.length}
                 formatAccountingStatementDescription={formatAccountingStatementDescription}
+                sendStatementPdfEmail={sendStatementPdfEmail}
+                canSendStatementPdfEmail={canSendStatementPdfEmail}
               />
             </Suspense>
           }
