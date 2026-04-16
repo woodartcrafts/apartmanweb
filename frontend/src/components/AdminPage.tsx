@@ -8469,6 +8469,14 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     void loadUnclassifiedRows({ silent: true });
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (location.pathname !== "/admin/reports/overdue-payments") {
+      return;
+    }
+
+    void fetchOverduePaymentsReport();
+  }, [location.pathname]);
+
   function getFractionalClosureSourceStatus(row: FractionalClosureReportRow): string {
     const now = new Date();
     const currentYear = now.getFullYear();
