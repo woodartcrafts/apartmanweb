@@ -2364,7 +2364,10 @@ function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] 
     // it is part of the description (e.g. "ÜCRET H... 15000,00 TRY ÜZ."), not the running balance.
     const secondAmountEnd = secondAmount ? (secondAmount.index ?? -1) + secondAmount[0].length : -1;
     const textAfterSecond = secondAmount && secondAmountEnd >= 0 ? line.slice(secondAmountEnd).trimStart() : "";
-    const secondIsCurrencyInDescription = /^(?:TRY|TL|YTL)\b/i.test(textAfterSecond);
+    // An amount with an explicit sign prefix (+/-) is a balance figure, not a description token like
+    // "15000,00 TRY ÜCRET". Only suppress as "currency in description" when there is no explicit sign.
+    const secondHasExplicitSign = !!secondAmount && /^[+\-]/.test(secondAmount[0]);
+    const secondIsCurrencyInDescription = !secondHasExplicitSign && /^(?:TRY|TL|YTL)\b/i.test(textAfterSecond);
     const runningBalance = secondAmount && !secondIsCurrencyInDescription ? parseSignedAmount(secondAmount[0]) : null;
     const descriptionStartIndex = secondAmount && !secondIsCurrencyInDescription
       ? (secondAmount.index ?? -1) + secondAmount[0].length
@@ -3497,7 +3500,17 @@ async function processBankStatementImport(params: {
         let orderedCharges = openCharges;
 
         if (exactCharges.length === 1) {
-          orderedCharges = exactCharges;
+          const exactChargeIdx = openCharges.indexOf(exactCharges[0]);
+          if (exactChargeIdx === 0) {
+            // Exact match is already the oldest open charge — safe to use directly.
+            orderedCharges = exactCharges;
+          } else {
+            // There are older unsettled charges before the exact match.
+            // Use FIFO so the older partial debts are cleared first, then the
+            // remainder is applied to the matched charge.
+            orderedCharges = openCharges;
+            autoMatchHintReason = "FIFO_OLDER_PRIORITY";
+          }
         } else if (exactCharges.length > 1) {
           // Deterministic tie-breaker: close the oldest exact-matching debt first.
           orderedCharges = [exactCharges[0]];
@@ -7619,8 +7632,11 @@ router.get("/reports/summary", async (_req, res) => {
     unclassifiedCount: summaryUnclassifiedCountMap[b.id] ?? 0,
   }));
 
+  // Prefer the most recent bank statement batch that has a parsed closing balance.
+  // Batches with null statementClosingBalance (e.g. empty-day PDFs) are skipped so the
+  // icon is not suppressed just because the latest PDF had no extractable balance.
   const latestBankStatementBatch = latestUploadBatchesWithReview.find(
-    (batch) => batch.kind === ImportBatchType.BANK_STATEMENT_UPLOAD
+    (batch) => batch.kind === ImportBatchType.BANK_STATEMENT_UPLOAD && batch.statementClosingBalance !== null
   );
   const latestStatementClosingBalance =
     latestBankStatementBatch && latestBankStatementBatch.statementClosingBalance !== null
