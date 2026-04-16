@@ -10696,6 +10696,28 @@ td.empty {
   background: linear-gradient(180deg, #0f70d3, #0959a8);
 }
 
+/* Mobil menü çıkış butonu */
+.admin-subnav-logout-row {
+  display: none; /* masaüstünde gizli — hero'da çıkış var */
+  padding: 10px 12px 12px;
+  border-top: 1px solid rgba(255,255,255,0.12);
+  margin-top: 4px;
+}
+
+.admin-subnav-logout-btn {
+  width: 100%;
+  min-height: 44px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  justify-content: center;
+}
+
+@media (max-width: 767px) {
+  .admin-subnav-logout-row {
+    display: block;
+  }
+}
+
 /* ── Masaüstü (≥ 768px): hamburger gizli, nav her zaman görünür ── */
 @media (min-width: 768px) {
   .admin-nav-hamburger-btn {

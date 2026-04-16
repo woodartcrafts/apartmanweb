@@ -8813,6 +8813,16 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
           </div>
         </details>
 
+        <div className="admin-subnav-logout-row">
+          <button
+            className="btn btn-danger admin-subnav-logout-btn"
+            type="button"
+            onClick={onSessionExpired}
+          >
+            🚪 Çıkış Yap
+          </button>
+        </div>
+
         </div>
       </div>
 
