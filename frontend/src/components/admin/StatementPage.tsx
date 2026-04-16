@@ -165,6 +165,16 @@ export function StatementPage({
             <button className="btn btn-ghost hide-on-mobile" onClick={() => void reconcileSelectedApartment()} disabled={loading}>
               Secilen Daireyi Yeniden Eslestir
             </button>
+            {canSendStatementPdfEmail && (
+              <button
+                className="btn btn-primary hide-on-mobile"
+                type="button"
+                onClick={() => { if (activeApartmentId) void sendStatementPdfEmail!(activeApartmentId); }}
+                disabled={!activeApartmentId || loading}
+              >
+                Ekstreyi PDF Olarak E-Mail Gonder
+              </button>
+            )}
           </div>
         </div>
         <div className="statement-query-row">
