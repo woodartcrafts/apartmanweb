@@ -172,8 +172,7 @@ export function StatementPage({
             <option value="">Daire seciniz</option>
             {apartmentOptions.map((apt) => (
               <option key={apt.id} value={apt.id}>
-                {apt.blockName} / {apt.doorNo} / {apt.type}
-                {apt.ownerFullName ? ` / ${apt.ownerFullName}` : ""}
+                {apt.doorNo}{apt.ownerFullName ? ` - ${apt.ownerFullName}` : ""}
               </option>
             ))}
           </select>
