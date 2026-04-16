@@ -8490,6 +8490,14 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     void fetchOverduePaymentsReport();
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (location.pathname !== "/admin/expenses/report") {
+      return;
+    }
+
+    void fetchExpenseReport(expenseReportFilter);
+  }, [location.pathname]);
+
   function getFractionalClosureSourceStatus(row: FractionalClosureReportRow): string {
     const now = new Date();
     const currentYear = now.getFullYear();
