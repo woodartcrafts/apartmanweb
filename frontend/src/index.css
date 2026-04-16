@@ -11116,9 +11116,9 @@ td.empty {
     grid-area: desc;
     font-size: 0.75rem;
     color: #667788;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
   }
 
   .expense-report-table td:nth-child(5)::before {
@@ -11512,9 +11512,9 @@ td.empty {
       grid-area: desc;
       font-size: 0.75rem;
       color: #667788;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: unset;
     }
 
     .payment-list-page .payment-list-table td:nth-child(6)::before {
