@@ -733,7 +733,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [overduePaymentsColumnVisibility, setOverduePaymentsColumnVisibility] = useState<
     Record<OverduePaymentsColumnKey, boolean>
   >({
-    block: true,
+    block: false,
     doorNo: true,
     owner: true,
     chargeType: true,
@@ -9932,14 +9932,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                       <label>
                         <input
                           type="checkbox"
-                          checked={overduePaymentsColumnVisibility.block}
-                          onChange={() => toggleOverduePaymentsColumn("block")}
-                        />
-                        Blok
-                      </label>
-                      <label>
-                        <input
-                          type="checkbox"
                           checked={overduePaymentsColumnVisibility.doorNo}
                           onChange={() => toggleOverduePaymentsColumn("doorNo")}
                         />
@@ -10025,7 +10017,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                   <table className="apartment-list-table report-compact-table overdue-payments-table">
                     <thead>
                       <tr>
-                        {overduePaymentsColumnVisibility.block && <th>Blok</th>}
                         {overduePaymentsColumnVisibility.doorNo && <th>Daire</th>}
                         {overduePaymentsColumnVisibility.owner && <th>Malik</th>}
                         {overduePaymentsColumnVisibility.chargeType && <th>Borc Tipi</th>}
@@ -10048,7 +10039,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                       ) : (
                         overduePaymentsRows.map((row) => (
                           <tr key={row.chargeId}>
-                            {overduePaymentsColumnVisibility.block && <td>{row.blockName}</td>}
                             {overduePaymentsColumnVisibility.doorNo && <td>{row.apartmentDoorNo}</td>}
                             {overduePaymentsColumnVisibility.owner && <td>{row.apartmentOwnerName || "-"}</td>}
                             {overduePaymentsColumnVisibility.chargeType && <td>{row.chargeTypeName}</td>}
