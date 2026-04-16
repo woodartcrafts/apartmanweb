@@ -8484,6 +8484,20 @@ tbody tr:hover {
   box-shadow: 0 4px 10px rgba(18, 97, 53, 0.25);
 }
 
+@media (max-width: 767px) {
+  .apartment-list-report-page .section-head.report-toolbar .admin-row {
+    flex-wrap: wrap !important;
+    overflow-x: visible !important;
+  }
+
+  .apartment-list-report-page .section-head.report-toolbar .admin-row .btn {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    white-space: normal !important;
+    text-align: center;
+  }
+}
+
 .dashboard :is(
   .section-head,
   .charge-bulk-form-section-head,
