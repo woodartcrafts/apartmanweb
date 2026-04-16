@@ -806,7 +806,7 @@ export function ApartmentListPage({
                   </span>
                 </th>
                 {/* Iletisim ve Resident Sifre kolonları kaldırıldı */}
-                <th>Islem</th>
+                <th className="actions-cell">Islem</th>
               </tr>
             </thead>
             <tbody>

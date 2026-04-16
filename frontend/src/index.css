@@ -8499,6 +8499,10 @@ tbody tr:hover {
     white-space: normal !important;
     text-align: center;
   }
+
+  .apartment-list-report-page .actions-cell {
+    display: none;
+  }
 }
 
 .dashboard :is(
