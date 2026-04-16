@@ -11881,7 +11881,7 @@ td.empty {
   height: 72px;
   border-radius: 18px;
   box-shadow: 0 6px 20px rgba(15, 112, 211, 0.28);
-  display: none;
+  display: block;
 }
 
 .login-app-name {
@@ -11889,14 +11889,20 @@ td.empty {
   font-weight: 700;
   color: #11324f;
   margin: 0;
-  display: none;
+  display: block;
 }
 
 .login-app-tagline {
   font-size: 0.84rem;
   color: var(--muted);
   margin: 0;
-  display: none;
+  display: block;
+}
+
+@media (min-width: 761px) {
+  .page-login .login-app-brand {
+    display: none;
+  }
 }
 
 .login-card {
