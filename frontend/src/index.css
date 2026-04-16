@@ -4439,6 +4439,11 @@ button:active:not(:disabled) {
     background: #ffffff;
   }
 
+  .monthly-balance-report-page .monthly-balance-matrix-table th:nth-child(1) {
+    z-index: 32 !important;
+    background: #e8edf3 !important;
+  }
+
   .staff-open-aidat-page .report-toolbar h3 {
     white-space: nowrap;
   }
@@ -6524,9 +6529,6 @@ td {
 .monthly-balance-matrix-table thead th {
   font-weight: 700;
   color: #23435f;
-  position: sticky;
-  top: 0;
-  z-index: 8;
 }
 
 .monthly-balance-matrix-table th:first-child,
@@ -8153,11 +8155,18 @@ details.cc-excluded-card[open] > .cc-excluded-summary::after {
 .payment-list-table th:nth-child(1),
 .expense-report-table th:nth-child(1),
 .overdue-payments-table th:nth-child(1),
-.monthly-balance-matrix-table th:nth-child(1),
 .reference-search-table th:nth-child(1) {
   z-index: 24;
   top: 0;
   background: #e8edf3;
+}
+
+.monthly-balance-matrix-table th:nth-child(1) {
+  position: sticky !important;
+  left: 0 !important;
+  top: 0;
+  z-index: 30 !important;
+  background: #e8edf3 !important;
 }
 
 .payment-list-table th:nth-child(11),
