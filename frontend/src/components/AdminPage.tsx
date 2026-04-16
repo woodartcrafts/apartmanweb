@@ -929,6 +929,12 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     for (const details of detailsElements) {
       details.open = false;
     }
+
+    // Hamburger checkbox'ı kapat (mobil menüyü gizle)
+    const toggle = document.getElementById("admin-nav-toggle") as HTMLInputElement | null;
+    if (toggle) {
+      toggle.checked = false;
+    }
   }
 
   const adminMenuPermissionMap: Partial<
@@ -8825,7 +8831,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
           <button
             className="btn btn-danger admin-subnav-logout-btn"
             type="button"
-            onClick={onSessionExpired}
+            onClick={() => { closeAdminSubnavMenus(); onSessionExpired(); }}
           >
             🚪 Çıkış Yap
           </button>
