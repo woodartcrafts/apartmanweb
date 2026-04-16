@@ -4433,8 +4433,10 @@ button:active:not(:disabled) {
 
   .monthly-balance-report-page .monthly-balance-matrix-table th:nth-child(1),
   .monthly-balance-report-page .monthly-balance-matrix-table td:nth-child(1) {
-    position: static;
-    left: auto;
+    position: sticky;
+    left: 0;
+    z-index: 6;
+    background: #ffffff;
   }
 
   .staff-open-aidat-page .report-toolbar h3 {
@@ -6388,6 +6390,20 @@ td {
 
 .monthly-balance-toolbar-actions {
   gap: 6px;
+}
+
+@media (max-width: 767px) {
+  .monthly-balance-report-page .monthly-balance-toolbar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .monthly-balance-report-page .monthly-balance-toolbar-actions .btn {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+  }
 }
 
 .monthly-balance-filter-row {

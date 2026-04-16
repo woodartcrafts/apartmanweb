@@ -10574,8 +10574,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
               <div className="card table-card report-page-card monthly-balance-report-card">
                 <div className="section-head report-toolbar">
                   <h3 className="monthly-balance-title">
-                    <span className="monthly-balance-title-icon" aria-hidden="true">DL</span>
-                    Daire Listesi Raporu
+                    <span className="monthly-balance-title-icon" aria-hidden="true">MX</span>
+                    Matrix Rapor
                   </h3>
                   <div className="admin-row monthly-balance-toolbar-actions">
                     <button
@@ -10706,7 +10706,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                             onClick={() => onMonthlyBalanceMatrixRowClick(row.apartmentId)}
                             onKeyDown={(event) => onMonthlyBalanceMatrixRowKeyDown(event, row.apartmentId)}
                           >
-                            <td>{`${row.blockName}-${row.apartmentDoorNo}`}</td>
+                            <td>{row.apartmentDoorNo}</td>
                             <td className="monthly-balance-occupant" title={row.occupant || "-"}>{row.occupant || "-"}</td>
                             {row.monthBalances.map((balance, index) => (
                               <td key={`${row.apartmentId}-${index}`} className={`col-num${balance < 0 ? " col-num-negative" : ""}`}>
