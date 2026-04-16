@@ -6,6 +6,11 @@ import { Silent403Error } from "./errors";
 import AdminPage from "./components/AdminPage";
 import ResidentPage from "./components/ResidentPage";
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
 function LoginPage({
   onLogin,
   loading,
@@ -17,43 +22,111 @@ function LoginPage({
 }) {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showIosHint, setShowIosHint] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e as BeforeInstallPromptEvent);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      ("standalone" in navigator && Boolean((navigator as { standalone?: boolean }).standalone));
+    if (isIos && !isStandalone) {
+      setShowIosHint(true);
+    }
+
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  async function handleInstall(): Promise<void> {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const result = await installPrompt.userChoice;
+    if (result.outcome === "accepted") {
+      setInstallPrompt(null);
+    }
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
     await onLogin(identifier, password);
   }
 
+  const isError = message.includes("basarisiz") || message.includes("hatali") || message.includes("deneme");
+  const isSuccess = message.includes("Hos geldin");
+  const showMessage = message && message !== "Lutfen giris yapin";
+
   return (
-    <section className="card login-card">
-      <h2>Giris</h2>
-      <form onSubmit={handleSubmit} className="form-grid">
-        <label>
-          Telefon veya E-posta
-          <input
-            data-testid="login-identifier"
-            type="text"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            placeholder="+90 5xx xxx xx xx veya admin@apartman.local"
-            required
-          />
-        </label>
-        <label>
-          Sifre
-          <input
-            data-testid="login-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="********"
-            required
-          />
-        </label>
-        <button data-testid="login-submit" disabled={loading} type="submit" className="btn btn-primary">
-          {loading ? "Bekleyin..." : "Giris Yap"}
-        </button>
-      </form>
-      <footer className="status-bar">{message}</footer>
+    <section className="login-screen">
+      <div className="login-app-brand">
+        <img src="/app-icon.svg" alt="ApartmanWeb" className="login-app-icon" />
+        <h1 className="login-app-name">ApartmanWeb</h1>
+        <p className="login-app-tagline">Apartman Yonetim Sistemi</p>
+      </div>
+
+      <div className="card login-card">
+        <form onSubmit={(e) => void handleSubmit(e)} className="form-grid">
+          <label>
+            Telefon veya E-posta
+            <input
+              data-testid="login-identifier"
+              type="text"
+              inputMode="email"
+              autoComplete="username"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="+90 5xx xxx xx xx"
+              required
+            />
+          </label>
+          <label>
+            Sifre
+            <input
+              data-testid="login-password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+            />
+          </label>
+          <button
+            data-testid="login-submit"
+            disabled={loading}
+            type="submit"
+            className="btn btn-primary login-submit-btn"
+          >
+            {loading ? "Giris yapiliyor..." : "Giris Yap"}
+          </button>
+        </form>
+        {showMessage && (
+          <p className={`login-message${isError ? " login-message-error" : isSuccess ? " login-message-success" : ""}`}>
+            {message}
+          </p>
+        )}
+      </div>
+
+      {installPrompt && (
+        <div className="pwa-install-banner">
+          <span className="pwa-install-icon">📲</span>
+          <span className="pwa-install-text">Ana ekrana ekle — uygulama gibi kullan</span>
+          <button className="btn pwa-install-btn" type="button" onClick={() => void handleInstall()}>Ekle</button>
+          <button className="pwa-install-dismiss" type="button" onClick={() => setInstallPrompt(null)}>✕</button>
+        </div>
+      )}
+
+      {showIosHint && (
+        <div className="pwa-ios-hint">
+          <span>Safari'de <strong>Paylasim</strong> simgesine dokun → <strong>Ana Ekrana Ekle</strong></span>
+          <button className="pwa-ios-hint-close" type="button" onClick={() => setShowIosHint(false)}>✕</button>
+        </div>
+      )}
     </section>
   );
 }
@@ -233,9 +306,10 @@ function App() {
   const isStaffOpenAidatRoute = location.pathname === "/admin/reports/staff-open-aidat";
   const isStaffContactEditRoute = location.pathname === "/admin/reports/staff-contact-edit";
   const isMobileStaffRoute = isStaffOpenAidatRoute || isStaffContactEditRoute;
+  const isLoginRoute = !user && (location.pathname === "/login" || location.pathname === "/");
 
   return (
-    <div className={`page${isMobileStaffRoute ? " page-mobile-staff-open-aidat" : ""}`}>
+    <div className={`page${isMobileStaffRoute ? " page-mobile-staff-open-aidat" : ""}${isLoginRoute ? " page-login" : ""}`}>
       <div className="ambient ambient-one" />
       <div className="ambient ambient-two" />
 
