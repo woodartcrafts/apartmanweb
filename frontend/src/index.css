@@ -1022,6 +1022,14 @@ button:active:not(:disabled) {
   color: #1f4060;
 }
 
+.table-last-updated-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
 .meeting-guide-page {
   gap: 10px;
 }

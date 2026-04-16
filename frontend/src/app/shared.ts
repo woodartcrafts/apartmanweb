@@ -418,6 +418,7 @@ export type BankTermDepositRow = {
   endDate: string;
   notes: string | null;
   isActive: boolean;
+  updatedAt: string;
   dayCount: number;
   grossInterest: number;
   withholdingAmount: number;

@@ -471,6 +471,13 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     () => bankTermDepositRows.filter((row) => row.isActive).length,
     [bankTermDepositRows]
   );
+  const bankTermDepositLastUpdatedAt = useMemo(() => {
+    if (bankTermDepositRows.length === 0) return null;
+    return bankTermDepositRows.reduce<string | null>((max, row) => {
+      if (!max) return row.updatedAt;
+      return row.updatedAt > max ? row.updatedAt : max;
+    }, null);
+  }, [bankTermDepositRows]);
 
   const [lastCreatedChargeId, setLastCreatedChargeId] = useState("");
   const [bankStatementFile, setBankStatementFile] = useState<File | null>(null);
@@ -13532,7 +13539,14 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
               {canViewBankTermDepositList && (
                 <div className="card table-card bank-term-deposit-table-card">
-                <h3>Vadeli Mevduat Listesi</h3>
+                <h3>
+                  Vadeli Mevduat Listesi
+                  {bankTermDepositLastUpdatedAt && (
+                    <span className="table-last-updated-label">
+                      Son guncelleme: {formatDateTimeTr(bankTermDepositLastUpdatedAt)}
+                    </span>
+                  )}
+                </h3>
                 <p className="small">
                   Ana Para Toplami: <b>{formatTry(bankTermDepositPrincipalTotal)}</b>
                 </p>

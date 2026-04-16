@@ -340,6 +340,7 @@ router.get("/banks/term-deposits", async (_req, res) => {
       endDate: row.endDate.toISOString(),
       notes: row.notes,
       isActive: row.isActive,
+      updatedAt: row.updatedAt.toISOString(),
       dayCount: summary.dayCount,
       grossInterest: summary.grossInterest,
       withholdingAmount: summary.withholdingAmount,
