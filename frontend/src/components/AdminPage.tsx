@@ -260,6 +260,11 @@ const MeetingGuidePage = lazy(() =>
     default: module.MeetingGuidePage,
   }))
 );
+const SecureNotesPage = lazy(() =>
+  import("./admin/SecureNotesPage").then((module) => ({
+    default: module.SecureNotesPage,
+  }))
+);
 const UserAccessManagementPage = lazy(() =>
   import("./admin/UserAccessManagementPage").then((module) => ({
     default: module.UserAccessManagementPage,
@@ -8856,6 +8861,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <NavLink className="btn btn-ghost" to="/admin/reports/monthly-ledger-print">
               Gelir-Gider Defteri Print
             </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/secure-notes">
+              🔒 Sifireli Guvenli Notlar
+            </NavLink>
           </div>
         </details>
 
@@ -9315,10 +9323,18 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                                         <td colSpan={11} className="dash-upload-detail-cell">
                                           {isLoadingThis && <p className="small">Yukleniyor...</p>}
                                           {!isLoadingThis && detail && (() => {
+                                            function cleanDashNote(note: string | null | undefined): string {
+                                              if (!note) return "-";
+                                              const cleaned = note.split("|").map((p) => p.trim()).filter((p) => p.length > 0)
+                                                .filter((p) => !/^(BANK_REF|REF|DOOR|AUTO_MATCH|UNAPPLIED|CARRY_FORWARD|PAYMENT_UPLOAD)\s*:/i.test(p))
+                                                .map((p) => { const m = p.match(/^BANK_DESC\s*:\s*(.*)$/i); return m ? (m[1]?.trim() || "") : p; })
+                                                .filter((p) => p.length > 0).join(" | ");
+                                              return cleaned || "-";
+                                            }
                                             const payments = [...detail.payments].sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
                                             const expenses = [...detail.expenses].sort((a, b) => new Date(b.spentAt).getTime() - new Date(a.spentAt).getTime());
                                             const combined = [
-                                              ...payments.map(p => ({ type: "P" as const, id: p.id, date: p.paidAt, amount: p.totalAmount, main: p.apartmentLabels.join(" | ") || "-", ref: p.reference, desc: p.note ?? "-" })),
+                                              ...payments.map(p => ({ type: "P" as const, id: p.id, date: p.paidAt, amount: p.totalAmount, main: p.apartmentLabels.join(" | ") || "-", ref: p.reference, desc: cleanDashNote(p.note) })),
                                               ...expenses.map(e => ({ type: "E" as const, id: e.id, date: e.spentAt, amount: -e.amount, main: e.expenseItemName, ref: e.reference, desc: e.description ?? "-" })),
                                             ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
                                             return (
@@ -13812,6 +13828,14 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
           element={
             <Suspense fallback={<LazyAdminPageFallback />}>
               <MeetingGuidePage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/secure-notes"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <SecureNotesPage />
             </Suspense>
           }
         />

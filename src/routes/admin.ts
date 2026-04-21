@@ -24,6 +24,7 @@ import { createAdminExpenseRoutes } from "./adminExpenseRoutes";
 import { createAdminPaymentMethodRoutes } from "./adminPaymentMethodRoutes";
 import { createAdminApartmentDefinitionRoutes } from "./adminApartmentDefinitionRoutes";
 import { createAdminMeetingRoutes } from "./adminMeetingRoutes";
+import { createAdminSecureNoteRoutes } from "./adminSecureNoteRoutes";
 import adminUserAccessRoutes from "./adminUserAccessRoutes";
 import { createAdminResidentContentRoutes } from "./adminResidentContentRoutes";
 import { createAdminBankRoutes } from "./adminBankRoutes";
@@ -478,6 +479,7 @@ router.use(
   })
 );
 router.use(createAdminMeetingRoutes());
+router.use(createAdminSecureNoteRoutes());
 
 
 router.use(createAdminResidentContentRoutes());
@@ -2326,7 +2328,11 @@ function parseBankStatementRowsFromPdfText(pdfText: string): BankStatementRow[] 
       continue;
     }
 
-    const occurredAt = parseFlexibleDateTime(dateMatch[1]);
+    // PDF'deki saatler Türkiye saati (UTC+3) olduğundan, UTC olarak yorumlarsak
+    // 21:00-23:59 arası işlemler ertesi güne kayıyor. Bu nedenle sadece tarih kısmını
+    // (saat bilgisi olmadan, gece yarısı UTC) parse ediyoruz.
+    const dateOnlyStr = (dateMatch[1].match(/^\d{2}[./-]\d{2}[./-]\d{4}/) ?? [])[0] ?? dateMatch[1];
+    const occurredAt = parseFlexibleDateTime(dateOnlyStr);
     if (!occurredAt) {
       continue;
     }
