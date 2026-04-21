@@ -18,6 +18,7 @@ type ManualReviewMatchesPageProps = {
   clearFilters: () => void;
   clearingPaymentId: string | null;
   clearWarningRow: (row: ManualReviewMatchRow) => Promise<void>;
+  clearAllWarnings: () => Promise<void>;
 };
 
 function reasonLabel(row: ManualReviewMatchRow): string {
@@ -43,6 +44,7 @@ export function ManualReviewMatchesPage({
   clearFilters,
   clearingPaymentId,
   clearWarningRow,
+  clearAllWarnings,
 }: ManualReviewMatchesPageProps) {
   return (
     <section className="dashboard report-page manual-review-matches-page">
@@ -54,6 +56,16 @@ export function ManualReviewMatchesPage({
               {reportLoading ? "Yukleniyor..." : "Calistir"}
             </button>
             <button className="btn btn-ghost" type="button" onClick={clearFilters}>Temizle</button>
+            {rows.length > 0 && (
+              <button
+                className="btn btn-danger"
+                type="button"
+                disabled={loading || reportLoading}
+                onClick={() => void clearAllWarnings()}
+              >
+                Tumunu Temizle ({rows.length})
+              </button>
+            )}
           </div>
         </div>
 

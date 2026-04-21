@@ -5095,6 +5095,30 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     }
   }
 
+  async function clearAllManualReviewWarnings(): Promise<void> {
+    if (manualReviewMatchesRows.length === 0) return;
+    const accepted = window.confirm(
+      `Toplam ${manualReviewMatchesRows.length} kayittaki manuel inceleme uyarisinin tamami temizlenecek. Emin misiniz?`
+    );
+    if (!accepted) return;
+
+    setLoading(true);
+    try {
+      await Promise.all(
+        manualReviewMatchesRows.map((row) =>
+          authorizedRequest(`/api/admin/payments/${row.paymentId}/manual-review-dismiss`, { method: "POST" })
+        )
+      );
+      await Promise.all([fetchManualReviewMatchesReport({ silent: true }), fetchActionLogs()]);
+      setMessage(`${manualReviewMatchesRows.length} kayittaki manuel inceleme uyarisi temizlendi`);
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Toplu temizleme sirasinda hata olustu");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function runOverduePaymentsQuery(): Promise<void> {
     setLoading(true);
     try {
@@ -10579,6 +10603,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 clearFilters={clearManualReviewMatchesFilters}
                 clearingPaymentId={manualReviewClearingPaymentId}
                 clearWarningRow={clearManualReviewMatchWarning}
+                clearAllWarnings={clearAllManualReviewWarnings}
               />
             </Suspense>
           }
