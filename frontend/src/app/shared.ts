@@ -588,6 +588,7 @@ export type UploadBatchRow = {
   skippedCount: number;
   manualReviewCount: number;
   unclassifiedCount: number;
+  splitPaymentLineCount: number;
 };
 
 export type UploadBatchUploader = {
@@ -649,6 +650,10 @@ export type ReportsSummaryResponse = {
     estimatedBalance: number;
     latestStatementClosingBalance: number | null;
     isEstimatedBalanceMatchingLatestStatement: boolean | null;
+    statementBalanceDelta: number | null;
+    statementMatchBatchId: string | null;
+    statementMatchFileName: string | null;
+    statementMatchUploadedAt: string | null;
     totalBankIn: number;
     totalBankOut: number;
     latestMovementAt: string | null;

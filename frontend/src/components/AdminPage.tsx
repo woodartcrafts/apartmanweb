@@ -8971,15 +8971,31 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                               ✔
                             </span>
                           )}
-                          {reportsSummary.bankBalance.isEstimatedBalanceMatchingLatestStatement === false && (
-                            <span
-                              className="reports-home-balance-match-icon reports-home-balance-match-icon-bad"
-                              title="Ekstre bakiyesi ile uyumsuz"
-                              aria-label="Ekstre bakiyesi ile uyumsuz"
-                            >
-                              ✕
-                            </span>
-                          )}
+                          {reportsSummary.bankBalance.isEstimatedBalanceMatchingLatestStatement === false &&
+                            (() => {
+                              const b = reportsSummary.bankBalance;
+                              const detailParts = [
+                                b.statementMatchFileName ? `Ekstre dosyası: ${b.statementMatchFileName}` : null,
+                                b.statementMatchUploadedAt ? `Ekstre yükleme: ${formatDateTimeTr(b.statementMatchUploadedAt)}` : null,
+                                b.latestStatementClosingBalance != null ? `Ekstre kapanış: ${formatTry(b.latestStatementClosingBalance)}` : null,
+                                b.statementBalanceDelta != null
+                                  ? `Fark (hesaplanan − ekstre): ${formatTry(b.statementBalanceDelta)}`
+                                  : null,
+                              ].filter(Boolean);
+                              const mismatchTitle =
+                                detailParts.length > 0
+                                  ? `${detailParts.join(" • ")}. Hesaplanan bakiye ile eşleşmiyor.`
+                                  : "Ekstre bakiyesi ile uyumsuz";
+                              return (
+                                <span
+                                  className="reports-home-balance-match-icon reports-home-balance-match-icon-bad"
+                                  title={mismatchTitle}
+                                  aria-label={mismatchTitle}
+                                >
+                                  ✕
+                                </span>
+                              );
+                            })()}
                         </p>
                         <span className="small">
                           Son hareket: {reportsSummary.bankBalance.latestMovementAt ? formatDateTr(reportsSummary.bankBalance.latestMovementAt) : "-"}
@@ -9275,20 +9291,23 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                           <table className="apartment-list-table staff-open-aidat-upload-table reports-home-uploads-table">
                             <thead>
                               <tr>
-                                <th>
-                                  <span className="reports-home-upload-time-label-full">Yukleme Zamani</span>
-                                  <span className="reports-home-upload-time-label-short">Tarih</span>
+                                <th title="Yukleme zamani">
+                                  <span className="reports-home-upload-time-label-full">Yük.Zam.</span>
+                                  <span className="reports-home-upload-time-label-short">Yük.Zam.</span>
                                 </th>
                                 <th>Yukleyen</th>
-                                <th>Yukleme Tipi</th>
+                                <th title="Yukleme tipi">Yuk.Tipi</th>
                                 <th>Dosya</th>
-                                <th className="col-num" title="Toplam Satir">Sat.</th>
+                                <th className="col-num" title="Toplam satir">T.Satır</th>
                                 <th className="col-num" title="Tahsilat">Tah.</th>
                                 <th className="col-num" title="Gider">Gid.</th>
                                 <th className="col-num" title="Atlanan">Atl.</th>
-                                <th className="col-num" title="Incelenmesi Gereken">Ä°nc.</th>
-                                <th className="col-num" title="Siniflandirilamayanlar">Snf.</th>
-                                <th className="col-num"></th>
+                                <th className="col-num" title="Incelenmesi gereken">Inc.Ger.</th>
+                                <th className="col-num" title="Siniflandirilamayanlar">Sınıf</th>
+                                <th className="col-num" title="Bolunme (coklu-daire bolunmesi)">
+                                  Böl.
+                                </th>
+                                <th className="col-num" title="Islem"></th>
                               </tr>
                             </thead>
                             <tbody>
@@ -9318,6 +9337,12 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                                   }
                                 }
 
+                                const kindShort = isGmail
+                                  ? "Gmail"
+                                  : row.kind === "BANK_STATEMENT_UPLOAD"
+                                    ? "Banka ekst."
+                                    : "Toplu odm.";
+
                                 return (
                                   <Fragment key={row.id}>
                                     <tr>
@@ -9325,9 +9350,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                                         <span className="reports-home-upload-date-full">{formatDateTimeTr(row.uploadedAt)}</span>
                                         <span className="reports-home-upload-date-short">{formatDateTr(row.uploadedAt)}</span>
                                       </td>
-                                      <td>{sourceLabel}</td>
+                                      <td title={sourceLabel}>{sourceLabel}</td>
                                       <td>
-                                        <span className="reports-home-upload-kind" title={kindLabel}>{kindLabel}</span>
+                                        <span className="reports-home-upload-kind" title={kindLabel}>
+                                          {kindShort}
+                                        </span>
                                       </td>
                                       <td className="dash-upload-filename" title={row.fileName}>{row.fileName}</td>
                                       <td className="col-num">{row.totalRows}</td>
@@ -9337,6 +9364,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                                       <td className="col-num">{row.manualReviewCount > 0 ? row.manualReviewCount : "-"}</td>
                                       <td className="col-num">{row.unclassifiedCount > 0 ? row.unclassifiedCount : "-"}</td>
                                       <td className="col-num">
+                                        {(row.splitPaymentLineCount ?? 0) > 0 ? row.splitPaymentLineCount : "-"}
+                                      </td>
+                                      <td className="col-num">
                                         <button type="button" className="btn btn-ghost upload-row-goto-btn" disabled={isLoadingThis} onClick={() => void toggleDashBatch()}>
                                           {isLoadingThis ? "..." : isExpanded ? "▲" : "▼"}
                                         </button>
@@ -9344,13 +9374,13 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                                     </tr>
                                     {isExpanded && (
                                       <tr>
-                                        <td colSpan={11} className="dash-upload-detail-cell">
+                                        <td colSpan={12} className="dash-upload-detail-cell">
                                           {isLoadingThis && <p className="small">Yukleniyor...</p>}
                                           {!isLoadingThis && detail && (() => {
                                             function cleanDashNote(note: string | null | undefined): string {
                                               if (!note) return "-";
                                               const cleaned = note.split("|").map((p) => p.trim()).filter((p) => p.length > 0)
-                                                .filter((p) => !/^(BANK_REF|REF|DOOR|AUTO_MATCH|UNAPPLIED|CARRY_FORWARD|PAYMENT_UPLOAD)\s*:/i.test(p))
+                                                .filter((p) => !/^(BANK_REF|REF|DOOR|AUTO_MATCH|BANK_SPLIT|UNAPPLIED|CARRY_FORWARD|PAYMENT_UPLOAD)\s*:/i.test(p))
                                                 .map((p) => { const m = p.match(/^BANK_DESC\s*:\s*(.*)$/i); return m ? (m[1]?.trim() || "") : p; })
                                                 .filter((p) => p.length > 0).join(" | ");
                                               return cleaned || "-";
@@ -10101,16 +10131,32 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                   <table className="apartment-list-table report-compact-table overdue-payments-table">
                     <thead>
                       <tr>
-                        {overduePaymentsColumnVisibility.doorNo && <th>Daire</th>}
-                        {overduePaymentsColumnVisibility.owner && <th>Malik</th>}
-                        {overduePaymentsColumnVisibility.chargeType && <th>Borc Tipi</th>}
-                        {overduePaymentsColumnVisibility.period && <th>Donem</th>}
-                        {overduePaymentsColumnVisibility.dueDate && <th>Vade</th>}
-                        {overduePaymentsColumnVisibility.overdueDays && <th className="col-num">Gun</th>}
-                        {overduePaymentsColumnVisibility.amount && <th className="col-num">Borc</th>}
-                        {overduePaymentsColumnVisibility.paidTotal && <th className="col-num">Odenen</th>}
-                        {overduePaymentsColumnVisibility.remaining && <th className="col-num">Kalan</th>}
-                        {overduePaymentsColumnVisibility.description && <th>Aciklama</th>}
+                        {overduePaymentsColumnVisibility.doorNo && (
+                          <th className="overdue-col-door">Daire</th>
+                        )}
+                        {overduePaymentsColumnVisibility.owner && (
+                          <th className="overdue-col-owner">Malik</th>
+                        )}
+                        {overduePaymentsColumnVisibility.chargeType && (
+                          <th className="overdue-col-charge-type">Borc Tipi</th>
+                        )}
+                        {overduePaymentsColumnVisibility.period && <th className="overdue-col-period">Donem</th>}
+                        {overduePaymentsColumnVisibility.dueDate && <th className="overdue-col-due">Vade</th>}
+                        {overduePaymentsColumnVisibility.overdueDays && (
+                          <th className="overdue-col-days col-num">Gun</th>
+                        )}
+                        {overduePaymentsColumnVisibility.amount && (
+                          <th className="overdue-col-amount col-num">Borc</th>
+                        )}
+                        {overduePaymentsColumnVisibility.paidTotal && (
+                          <th className="overdue-col-paid col-num">Odenen</th>
+                        )}
+                        {overduePaymentsColumnVisibility.remaining && (
+                          <th className="overdue-col-remaining col-num">Kalan</th>
+                        )}
+                        {overduePaymentsColumnVisibility.description && (
+                          <th className="overdue-col-description">Aciklama</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -10123,16 +10169,36 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                       ) : (
                         overduePaymentsRows.map((row) => (
                           <tr key={row.chargeId}>
-                            {overduePaymentsColumnVisibility.doorNo && <td>{row.apartmentDoorNo}</td>}
-                            {overduePaymentsColumnVisibility.owner && <td>{row.apartmentOwnerName || "-"}</td>}
-                            {overduePaymentsColumnVisibility.chargeType && <td>{row.chargeTypeName}</td>}
-                            {overduePaymentsColumnVisibility.period && <td>{`${row.periodMonth}/${row.periodYear}`}</td>}
-                            {overduePaymentsColumnVisibility.dueDate && <td>{formatDateTr(row.dueDate)}</td>}
-                            {overduePaymentsColumnVisibility.overdueDays && <td className="col-num">{row.overdueDays}</td>}
-                            {overduePaymentsColumnVisibility.amount && <td className="col-num">{formatTry(row.amount)}</td>}
-                            {overduePaymentsColumnVisibility.paidTotal && <td className="col-num">{formatTry(row.paidTotal)}</td>}
-                            {overduePaymentsColumnVisibility.remaining && <td className="col-num">{formatTry(row.remaining)}</td>}
-                            {overduePaymentsColumnVisibility.description && <td>{row.description || "-"}</td>}
+                            {overduePaymentsColumnVisibility.doorNo && (
+                              <td className="overdue-col-door">{row.apartmentDoorNo}</td>
+                            )}
+                            {overduePaymentsColumnVisibility.owner && (
+                              <td className="overdue-col-owner">{row.apartmentOwnerName || "-"}</td>
+                            )}
+                            {overduePaymentsColumnVisibility.chargeType && (
+                              <td className="overdue-col-charge-type">{row.chargeTypeName}</td>
+                            )}
+                            {overduePaymentsColumnVisibility.period && (
+                              <td className="overdue-col-period">{`${row.periodMonth}/${row.periodYear}`}</td>
+                            )}
+                            {overduePaymentsColumnVisibility.dueDate && (
+                              <td className="overdue-col-due">{formatDateTr(row.dueDate)}</td>
+                            )}
+                            {overduePaymentsColumnVisibility.overdueDays && (
+                              <td className="overdue-col-days col-num">{row.overdueDays}</td>
+                            )}
+                            {overduePaymentsColumnVisibility.amount && (
+                              <td className="overdue-col-amount col-num">{formatTry(row.amount)}</td>
+                            )}
+                            {overduePaymentsColumnVisibility.paidTotal && (
+                              <td className="overdue-col-paid col-num">{formatTry(row.paidTotal)}</td>
+                            )}
+                            {overduePaymentsColumnVisibility.remaining && (
+                              <td className="overdue-col-remaining col-num">{formatTry(row.remaining)}</td>
+                            )}
+                            {overduePaymentsColumnVisibility.description && (
+                              <td className="overdue-col-description">{row.description || "-"}</td>
+                            )}
                           </tr>
                         ))
                       )}

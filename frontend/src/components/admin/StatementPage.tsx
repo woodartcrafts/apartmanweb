@@ -310,7 +310,8 @@ export function StatementPage({
               </thead>
               <tbody>
                 {sortedStatement.map((row) => {
-                  const isClosed = row.remaining <= 0.0001 || row.status === "CLOSED";
+                  const financiallySettled = row.remaining <= 0.0001;
+                  const isClosed = financiallySettled || row.status === "CLOSED";
                   let rowClassName = "statement-classic-row-open";
 
                   if (isClosed) {
@@ -327,13 +328,21 @@ export function StatementPage({
                     }
                   }
 
+                  const showPaymentDateCell = row.paidTotal > 0.0001;
+                  const statusIntegrityHint =
+                    row.status === "CLOSED" && row.remaining > 0.0001
+                      ? "Durum CLOSED ancak henüz kapama bekleyen bakiye görünüyor; ödeme-tahakkuk dağılımını kontrol edin."
+                      : row.status === "OPEN" && financiallySettled
+                        ? "Kayıtta durum OPEN; ödemelerle borç tutarı kadar düşürülmüş. Yeniden eşleştir veya sunucunun durum güncellemesini bekleyin."
+                        : undefined;
+
                   return (
-                    <tr key={row.chargeId} className={rowClassName}>
+                    <tr key={row.chargeId} className={rowClassName} title={statusIntegrityHint}>
                     <td>{row.periodYear}</td>
                     <td>{String(row.periodMonth).padStart(2, "0")}</td>
                     <td>{row.type}</td>
                     <td>{formatDateTr(row.dueDate)}</td>
-                    <td>{row.status === "CLOSED" ? (row.paidAt ? formatDateTr(row.paidAt) : "-") : "-"}</td>
+                    <td>{showPaymentDateCell ? (row.paidAt ? formatDateTr(row.paidAt) : "-") : "-"}</td>
                     <td>{formatPaymentDayDiff(row.dueDate, row.paidAt, row.status, row.remaining)}</td>
                     <td className="col-num">{formatTry(row.amount)}</td>
                     <td className="col-num">{formatTry(row.paidTotal)}</td>

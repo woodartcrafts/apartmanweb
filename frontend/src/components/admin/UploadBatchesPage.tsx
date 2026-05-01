@@ -151,7 +151,7 @@ export function UploadBatchesPage({
       .split("|")
       .map((part) => part.trim())
       .filter((part) => part.length > 0)
-      .filter((part) => !/^(BANK_REF|REF)\s*:/i.test(part))
+      .filter((part) => !/^(BANK_REF|REF|BANK_SPLIT)\s*:/i.test(part))
       .map((part) => {
         const match = part.match(/^BANK_DESC\s*:\s*(.*)$/i);
         return match ? (match[1]?.trim() || "") : part;
@@ -164,6 +164,16 @@ export function UploadBatchesPage({
 
   function isGmailBatch(row: UploadBatchRow): boolean {
     return row.kind === "BANK_STATEMENT_UPLOAD" && row.fileName.toLowerCase().startsWith("gmail:");
+  }
+
+  function uploadBatchKindCells(row: UploadBatchRow): { short: string; full: string } {
+    if (isGmailBatch(row)) {
+      return { short: "Gmail", full: "Gmail senkronizasyon" };
+    }
+    if (row.kind === "BANK_STATEMENT_UPLOAD") {
+      return { short: "Banka ekst.", full: "Banka Ekstresi Upload" };
+    }
+    return { short: "Toplu odm.", full: "Toplu Odeme Upload" };
   }
 
   return (
@@ -221,8 +231,8 @@ export function UploadBatchesPage({
               ))}
             </select>
           </label>
-          <label>
-            Yukleme Tipi
+          <label title="Yukleme tipi">
+            Yuk.Tipi
             <select
               value={uploadBatchFilter.kind}
               onChange={(e) =>
@@ -238,42 +248,58 @@ export function UploadBatchesPage({
         </div>
 
         <div className="table-wrap">
-          <table className="apartment-list-table">
+          <table className="apartment-list-table upload-batches-list-table">
             <thead>
               <tr>
-                <th>Yukleme Zamani</th>
+                <th title="Yukleme zamani">Yük.Zam.</th>
                 <th>Yukleyen</th>
-                <th>Yukleme Tipi</th>
+                <th title="Yukleme tipi">Yuk.Tipi</th>
                 <th>Dosya</th>
-                <th className="col-num">Toplam Satir</th>
-                <th className="col-num">Tahsilat</th>
-                <th className="col-num">Gider</th>
-                <th className="col-num">Atlanan</th>
-                <th className="col-num">Incelenmesi Gereken</th>
-                <th className="col-num">Siniflandirilamayanlar</th>
-                <th>Islem</th>
+                <th className="col-num" title="Toplam satir">
+                  T.Satır
+                </th>
+                <th className="col-num" title="Tahsilat">
+                  Tah.
+                </th>
+                <th className="col-num" title="Gider">
+                  Gid.
+                </th>
+                <th className="col-num" title="Atlanan">
+                  Atl.
+                </th>
+                <th className="col-num" title="Incelenmesi gereken">
+                  Inc.Ger.
+                </th>
+                <th className="col-num" title="Siniflandirilamayanlar">
+                  Sınıf
+                </th>
+                <th className="col-num" title="Bolunme (coklu-daire bolunmesi)">
+                  Böl.
+                </th>
+                <th title="Islem">İşl.</th>
               </tr>
             </thead>
             <tbody>
-              {uploadBatchRows.map((row) => (
+              {uploadBatchRows.map((row) => {
+                const kindCell = uploadBatchKindCells(row);
+                return (
                 <Fragment key={row.id}>
                   <tr id={`batch-row-${row.id}`}>
                     <td>{formatDateTr(row.uploadedAt)}</td>
-                    <td>{isGmailBatch(row) ? "Railway" : row.uploadedByName ?? row.uploadedByEmail ?? "-"}</td>
-                    <td>
-                      {isGmailBatch(row)
-                        ? "Gmail"
-                        : row.kind === "BANK_STATEMENT_UPLOAD"
-                          ? "Banka Ekstresi Upload"
-                          : "Toplu Odeme Upload"}
+                    <td title={isGmailBatch(row) ? "Railway (Gmail)" : (row.uploadedByName ?? row.uploadedByEmail ?? "") || undefined}>
+                      {isGmailBatch(row) ? "Railway" : row.uploadedByName ?? row.uploadedByEmail ?? "-"}
                     </td>
-                    <td>{row.fileName}</td>
+                    <td title={kindCell.full}>{kindCell.short}</td>
+                    <td title={row.fileName}>{row.fileName}</td>
                     <td className="col-num">{row.totalRows}</td>
                     <td className="col-num">{row.createdPaymentCount}</td>
                     <td className="col-num">{row.createdExpenseCount}</td>
                     <td className="col-num">{row.skippedCount}</td>
                     <td className="col-num">{row.manualReviewCount > 0 ? row.manualReviewCount : "-"}</td>
                     <td className="col-num">{row.unclassifiedCount > 0 ? row.unclassifiedCount : "-"}</td>
+                    <td className="col-num">
+                      {(row.splitPaymentLineCount ?? 0) > 0 ? row.splitPaymentLineCount : "-"}
+                    </td>
                     <td className="actions-cell">
                       <button
                         className="btn btn-ghost"
@@ -300,7 +326,7 @@ export function UploadBatchesPage({
 
                   {expandedBatchId === row.id && (
                     <tr>
-                      <td colSpan={11}>
+                      <td colSpan={12}>
                         <div className="card table-card compact-row-top-gap">
                           <h4>Yukleme Detayi</h4>
                           {detailsLoadingBatchId === row.id && <p className="small">Detaylar yukleniyor...</p>}
@@ -446,11 +472,12 @@ export function UploadBatchesPage({
                     </tr>
                   )}
                 </Fragment>
-              ))}
+              );
+              })}
 
               {uploadBatchRows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="empty">
+                  <td colSpan={12} className="empty">
                     Yukleme kaydi yok
                   </td>
                 </tr>

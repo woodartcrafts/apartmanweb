@@ -989,31 +989,39 @@ async function reconcileApartmentPaymentLinks(apartmentId: string): Promise<Reco
     for (const source of paymentSources) {
       let remainingToAllocate = source.amount;
 
-      for (const targetCharge of chargeBalances) {
-        if (remainingToAllocate <= 0.0001) {
+      while (remainingToAllocate > 0.01) {
+        const openCharges = chargeBalances.filter((charge) => charge.remaining > 0.01);
+        if (openCharges.length === 0) {
           break;
         }
-        if (targetCharge.remaining <= 0.0001) {
-          continue;
+
+        const exactCandidates = openCharges.filter(
+          (charge) => Math.abs(charge.remaining - remainingToAllocate) <= 0.01
+        );
+        const fifoFirst = chargeBalances.find((charge) => charge.remaining > 0.01);
+        const chosen =
+          exactCandidates.length === 1 ? exactCandidates[0] : fifoFirst;
+        if (!chosen) {
+          break;
         }
 
-        const allocate = Math.min(remainingToAllocate, targetCharge.remaining);
+        const allocate = Math.min(remainingToAllocate, chosen.remaining);
         const rounded = Number(allocate.toFixed(2));
         if (rounded <= 0) {
-          continue;
+          break;
         }
 
         await tx.paymentItem.create({
           data: {
             paymentId: source.paymentId,
-            chargeId: targetCharge.chargeId,
+            chargeId: chosen.chargeId,
             amount: rounded,
           },
         });
 
         createdPaymentItemCount += 1;
         remainingToAllocate = Number((remainingToAllocate - rounded).toFixed(2));
-        targetCharge.remaining = Number((targetCharge.remaining - rounded).toFixed(2));
+        chosen.remaining = Number((chosen.remaining - rounded).toFixed(2));
       }
 
       if (remainingToAllocate > 0.01) {
@@ -2030,6 +2038,18 @@ function extractDoorNoFromDescription(
     return matchedDoorCandidates[0].doorNo;
   }
 
+  // İş Bankası FAST vb.: "12/74" çoğunlukla ref + daire; iki daire değil. Tarih parçası (28/04/...)
+  // ile karışmayı sınırla.
+  const branchRefDoor = extractBranchReferenceSuffixDoorNo(description, doorNoSet);
+  if (branchRefDoor) {
+    return branchRefDoor;
+  }
+
+  const explicitDoor = extractSingleExplicitPrefixedDoorNoFromDescription(description, doorNoSet);
+  if (explicitDoor) {
+    return explicitDoor;
+  }
+
   return null;
 }
 
@@ -2431,6 +2451,36 @@ function parseDoorNosFromFreeText(value: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * FAST / Havale: "12/74" iki daire değil; çoğu zaman sıra/ref + tek daire (burada 74).
+ * Yanlış tarih/DM parçası (28/04/…) (?!\/) ile elenir. Küçük sağ sayılar (≤12) daire ile
+ * gün/ay karıştığı için sadece sağ ≥ 13 ise bu kalıpla daire yakalanır; "D:8" vb. kurallardan çözülür.
+ */
+function extractBranchReferenceSuffixDoorNo(description: string, doorNoSet: Set<string>): string | null {
+  const text = normalizeDoorPatternText(description.trim());
+  if (!text.trim()) {
+    return null;
+  }
+
+  const re = /\b(\d{1,2})\/(\d{1,4})\b(?!\s*\/\s*\d{4}\b)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    const rawRight = match[2] ?? "";
+    const rightNum = Number(rawRight);
+    if (!Number.isFinite(rightNum) || rightNum < 13) {
+      continue;
+    }
+
+    const candidate = normalizeDoorNoForCompare(rawRight);
+    if (!doorNoSet.has(candidate)) {
+      continue;
+    }
+    return candidate;
+  }
+
+  return null;
+}
+
 function normalizeDoorPatternText(value: string): string {
   return value
     .toLocaleLowerCase("tr")
@@ -2442,15 +2492,38 @@ function normalizeDoorPatternText(value: string): string {
     .replace(/Ã§/g, "c");
 }
 
+/**
+ * Çoklu daire bölme ve tek daire eşleştirme için ortak kalıplar (normalize edilmiş metin üzerinde).
+ * "d" için ayırıcı veya boşluk şart — "d0ğalgaz" gibi PDF bozması daire sayısı değildir.
+ */
+function collectExplicitPrefixedDoorCapturesFromNormalizedText(text: string): string[] {
+  return [
+    ...text.matchAll(/\bdaire(?:ler)?\s*[:#\-\/.]?\s*0*(\d{1,4})\b/g),
+    ...text.matchAll(/\bd\s*[#:\/\.\-]\s*0*(\d{1,4})\b/g),
+    ...text.matchAll(/\bd\s+0*(\d{1,4})\b/g),
+  ].map((m) => m[1]);
+}
+
+function extractSingleExplicitPrefixedDoorNoFromDescription(description: string, doorNoSet: Set<string>): string | null {
+  const text = normalizeDoorPatternText(description.trim());
+  if (!text.trim()) {
+    return null;
+  }
+
+  const unique = [
+    ...new Set(collectExplicitPrefixedDoorCapturesFromNormalizedText(text).map((x) => normalizeDoorNoForCompare(x))),
+  ].filter((doorNo) => doorNoSet.has(doorNo));
+
+  return unique.length === 1 ? unique[0] : null;
+}
+
 function extractDoorNosFromDescriptionForSplit(description: string): string[] {
   const text = normalizeDoorPatternText(description.trim());
   if (!text.trim()) {
     return [];
   }
 
-  const explicitPrefixedDoorNos = [...text.matchAll(/\b(?:d|daire)\s*[:#\-\/.]?\s*0*(\d{1,4})\b/g)].map(
-    (match) => match[1]
-  );
+  const explicitPrefixedDoorNos = collectExplicitPrefixedDoorCapturesFromNormalizedText(text);
 
   const groupedByKeyword = [
     ...text.matchAll(/\b(?:d|daire|daireler)\b[^\d]{0,6}((?:\d{1,4}\s*(?:,|ve|veya|&|\/|-)\s*)+\d{1,4})/g),
@@ -2458,7 +2531,8 @@ function extractDoorNosFromDescriptionForSplit(description: string): string[] {
 
   const compactPairs = [
     ...text.matchAll(/\bd\s*0*(\d{1,4})\s*(?:ve|veya|\/|&|-)\s*0*(\d{1,4})\b/g),
-    ...text.matchAll(/\b0*(\d{1,4})\s*(?:ve|veya|\/|&)\s*0*(\d{1,4})\b/g),
+    // "/" burada yok: "12/74" banka ref + tek daire; iki daire bölüşümü değil (ve "28/04/…" riski).
+    ...text.matchAll(/\b0*(\d{1,4})\s*(?:ve|veya|&)\s*0*(\d{1,4})\b/g),
   ].flatMap((match) => [match[1], match[2]]);
 
   const merged = [...new Set([...explicitPrefixedDoorNos, ...groupedByKeyword, ...compactPairs])];
@@ -3392,6 +3466,10 @@ async function processBankStatementImport(params: {
     const rowNo = current.rowNo;
     const reference = row.reference?.trim();
     const isSplitPaymentRow = row.entryType === "PAYMENT" && (row.isAutoSplit === true || Number.isFinite(row.splitSourceRowNo));
+    const splitNoteTag =
+      isSplitPaymentRow && row.splitSourceRowNo != null && Number.isFinite(row.splitSourceRowNo)
+        ? `BANK_SPLIT:R${row.splitSourceRowNo}`
+        : undefined;
 
     try {
       if (row.entryType === "PAYMENT") {
@@ -3437,6 +3515,7 @@ async function processBankStatementImport(params: {
             row.description ? `BANK_DESC:${row.description}` : undefined,
             `UNCLASSIFIED_COLLECTION:${uncategorizedCollectionCode}`,
             "UNAPPLIED:NO_DOOR_NO",
+            splitNoteTag,
           ].filter(Boolean) as string[];
 
           await prisma.payment.create({
@@ -3464,6 +3543,7 @@ async function processBankStatementImport(params: {
             detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
             `UNCLASSIFIED_COLLECTION:${uncategorizedCollectionCode}`,
             "UNAPPLIED:APARTMENT_NOT_FOUND",
+            splitNoteTag,
           ].filter(Boolean) as string[];
 
           await prisma.payment.create({
@@ -3498,6 +3578,7 @@ async function processBankStatementImport(params: {
             row.description ? `BANK_DESC:${row.description}` : undefined,
             detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
             "UNAPPLIED:NO_OPEN_DEBT",
+            splitNoteTag,
           ].filter(Boolean) as string[];
 
           await prisma.payment.create({
@@ -3524,16 +3605,14 @@ async function processBankStatementImport(params: {
         let orderedCharges = openCharges;
 
         if (exactCharges.length === 1) {
-          const exactChargeIdx = openCharges.indexOf(exactCharges[0]);
-          if (exactChargeIdx === 0) {
-            // Exact match is already the oldest open charge — safe to use directly.
-            orderedCharges = exactCharges;
-          } else {
-            // There are older unsettled charges before the exact match.
-            // Use FIFO so the older partial debts are cleared first, then the
-            // remainder is applied to the matched charge.
-            orderedCharges = openCharges;
-            autoMatchHintReason = "FIFO_OLDER_PRIORITY";
+          // Tek bir borç kalemi ödeme tutarına birebir eşleşiyorsa onu HER ZAMAN önce kapatırız.
+          // Yoksa daha eski (ör. aynı döneme ait başka tür borç üzerinde FIFO) doğalgaz dekontunun
+          // tamamı yanlışlıkla aidata yazılabilir.
+          const exact = exactCharges[0];
+          const others = openCharges.filter((charge) => charge.chargeId !== exact.chargeId);
+          orderedCharges = [exact, ...others];
+          if (others.length > 0 && openCharges[0]?.chargeId !== exact.chargeId) {
+            autoMatchHintReason = "UNIQUE_EXACT_PRIORITY";
           }
         } else if (exactCharges.length > 1) {
           // Deterministic tie-breaker: close the oldest exact-matching debt first.
@@ -3629,6 +3708,7 @@ async function processBankStatementImport(params: {
           detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
           autoMatchHintReason ? `AUTO_MATCH:${autoMatchHintReason}` : undefined,
           remainingToAllocate > 0.01 ? `UNAPPLIED:OVERPAYMENT:${remainingToAllocate.toFixed(2)}` : undefined,
+          splitNoteTag,
         ].filter(Boolean) as string[];
 
         await prisma.$transaction(async (tx) => {
@@ -7499,6 +7579,46 @@ router.get("/reports/summary", async (_req, res) => {
     }
   };
 
+  const fetchStatementBatchForBalanceMatch = async () => {
+    const select = {
+      id: true,
+      fileName: true,
+      uploadedAt: true,
+      statementClosingBalance: true,
+    } as const;
+    try {
+      const newestBankStatement = await prisma.importBatch.findFirst({
+        where: { kind: ImportBatchType.BANK_STATEMENT_UPLOAD },
+        orderBy: [{ uploadedAt: "desc" }],
+        select,
+      });
+      if (newestBankStatement?.statementClosingBalance != null) {
+        return newestBankStatement;
+      }
+      return await prisma.importBatch.findFirst({
+        where: {
+          kind: ImportBatchType.BANK_STATEMENT_UPLOAD,
+          statementClosingBalance: { not: null },
+        },
+        orderBy: [{ uploadedAt: "desc" }],
+        select,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      const missingBalanceColumn =
+        message.includes("statementClosingBalance") || message.includes("P2022") || message.includes("column");
+      if (!missingBalanceColumn) {
+        throw err;
+      }
+
+      console.warn(
+        "[reports-summary] statementClosingBalance column unavailable for statement batch lookup, skipping",
+        err
+      );
+      return null;
+    }
+  };
+
   const [
     apartmentCount,
     residentCount,
@@ -7511,6 +7631,7 @@ router.get("/reports/summary", async (_req, res) => {
     latestBankPayment,
     latestBankExpense,
     latestUploadBatches,
+    latestBankStatementBatchForBalanceMatch,
     topExpenseGroups,
     latestBankTransferPayments,
     latestBankTransferExpenses,
@@ -7562,6 +7683,7 @@ router.get("/reports/summary", async (_req, res) => {
       select: { spentAt: true },
     }),
     fetchLatestUploadBatchesForSummary(),
+    fetchStatementBatchForBalanceMatch(),
     prisma.expense.groupBy({
       by: ["expenseItemId"],
       _sum: { amount: true },
@@ -7869,17 +7991,18 @@ router.get("/reports/summary", async (_req, res) => {
     unclassifiedCount: summaryUnclassifiedCountMap[b.id] ?? 0,
   }));
 
-  // Prefer the most recent bank statement batch that has a parsed closing balance.
-  // Batches with null statementClosingBalance (e.g. empty-day PDFs) are skipped so the
-  // icon is not suppressed just because the latest PDF had no extractable balance.
-  const latestBankStatementBatch = latestUploadBatchesWithReview.find(
-    (batch) => batch.kind === ImportBatchType.BANK_STATEMENT_UPLOAD && batch.statementClosingBalance !== null
-  );
+  // Prefer the most recently uploaded BANK_STATEMENT batch when it already has a parsed
+  // closing balance; otherwise fall back to the newest statement batch where closing is known.
+  const statementBalanceMatchBatch = latestBankStatementBatchForBalanceMatch;
   const latestStatementClosingBalance =
-    latestBankStatementBatch && latestBankStatementBatch.statementClosingBalance !== null
-      ? Number(Number(latestBankStatementBatch.statementClosingBalance).toFixed(2))
+    statementBalanceMatchBatch && statementBalanceMatchBatch.statementClosingBalance !== null
+      ? Number(Number(statementBalanceMatchBatch.statementClosingBalance).toFixed(2))
       : null;
   const estimatedBankBalanceRounded = Number(estimatedBankBalance.toFixed(2));
+  const statementBalanceDelta =
+    latestStatementClosingBalance !== null
+      ? Number((estimatedBankBalanceRounded - latestStatementClosingBalance).toFixed(2))
+      : null;
   const isEstimatedBalanceMatchingLatestStatement =
     latestStatementClosingBalance !== null
       ? Math.abs(estimatedBankBalanceRounded - latestStatementClosingBalance) <= 0.01
@@ -7891,6 +8014,10 @@ router.get("/reports/summary", async (_req, res) => {
       estimatedBalance: estimatedBankBalanceRounded,
       latestStatementClosingBalance,
       isEstimatedBalanceMatchingLatestStatement,
+      statementBalanceDelta,
+      statementMatchBatchId: statementBalanceMatchBatch?.id ?? null,
+      statementMatchFileName: statementBalanceMatchBatch?.fileName ?? null,
+      statementMatchUploadedAt: statementBalanceMatchBatch?.uploadedAt?.toISOString() ?? null,
       totalBankIn: Number(bankInTotal.toFixed(2)),
       totalBankOut: Number(bankOutTotal.toFixed(2)),
       latestMovementAt: latestBankMovementAt,

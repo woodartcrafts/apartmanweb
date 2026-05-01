@@ -3,6 +3,79 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 
+function extractBankRefKeyFromPaymentNote(note: string | null): string | null {
+  if (!note) {
+    return null;
+  }
+  const match = note.match(/(?:^|\|)\s*(?:BANK_REF|REF):\s*([^|]+)/i);
+  return match?.[1]?.trim().replace(/\s+/g, " ") || null;
+}
+
+/**
+ * Aynı yüklemenin çoklu-daire böldüğü tahsilat satırlarının sayısı.
+ * Yeni içe aktarımlarda BANK_SPLIT: ile işaretlenir; eski veride aynı batch + aynı BANK_REF iki kez ise heuristik olarak sayılır.
+ */
+async function computeSplitPaymentLineCounts(batchIds: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  for (const id of batchIds) {
+    result.set(id, 0);
+  }
+  if (batchIds.length === 0) {
+    return result;
+  }
+
+  const payments = await prisma.payment.findMany({
+    where: { importBatchId: { in: batchIds } },
+    select: { importBatchId: true, note: true },
+  });
+
+  const taggedBatchIds = new Set<string>();
+  const refAccum = new Map<string, Map<string, number>>();
+
+  for (const p of payments) {
+    const bid = p.importBatchId;
+    if (!bid) {
+      continue;
+    }
+
+    const note = p.note ?? "";
+    if (note.includes("BANK_SPLIT:")) {
+      taggedBatchIds.add(bid);
+      result.set(bid, (result.get(bid) ?? 0) + 1);
+      continue;
+    }
+
+    const ref = extractBankRefKeyFromPaymentNote(note);
+    if (!ref) {
+      continue;
+    }
+    if (!refAccum.has(bid)) {
+      refAccum.set(bid, new Map());
+    }
+    const m = refAccum.get(bid)!;
+    m.set(ref, (m.get(ref) ?? 0) + 1);
+  }
+
+  for (const bid of batchIds) {
+    if (taggedBatchIds.has(bid)) {
+      continue;
+    }
+    const m = refAccum.get(bid);
+    if (!m) {
+      continue;
+    }
+    let sum = 0;
+    for (const cnt of m.values()) {
+      if (cnt >= 2) {
+        sum += cnt;
+      }
+    }
+    result.set(bid, sum);
+  }
+
+  return result;
+}
+
 type UploadBatchRoutesDeps = {
   refreshChargeStatusesForIds: (chargeIds: string[]) => Promise<void>;
 };
@@ -130,6 +203,8 @@ router.get("/upload-batches", async (req, res) => {
     }
   }
 
+  const splitPaymentLineCountMap = await computeSplitPaymentLineCounts(batchIds);
+
   return res.json(
     batches.map((batch) => ({
       id: batch.id,
@@ -145,20 +220,13 @@ router.get("/upload-batches", async (req, res) => {
       skippedCount: batch.skippedCount,
       manualReviewCount: manualReviewCountMap[batch.id] ?? 0,
       unclassifiedCount: unclassifiedCountMap[batch.id] ?? 0,
+      splitPaymentLineCount: splitPaymentLineCountMap.get(batch.id) ?? 0,
     }))
   );
 });
 
 router.get("/upload-batches/:batchId/details", async (req, res) => {
   const { batchId } = req.params;
-
-  const extractPaymentReference = (note: string | null): string | null => {
-    if (!note) {
-      return null;
-    }
-    const match = note.match(/(?:^|\|)\s*(?:BANK_REF|REF):\s*([^|]+)/i);
-    return match?.[1]?.trim() || null;
-  };
 
   const batch = await prisma.importBatch.findUnique({
     where: { id: batchId },
@@ -241,7 +309,7 @@ router.get("/upload-batches/:batchId/details", async (req, res) => {
       paidAt: payment.paidAt,
       totalAmount: Number(payment.totalAmount),
       method: payment.method,
-      reference: extractPaymentReference(payment.note),
+      reference: extractBankRefKeyFromPaymentNote(payment.note),
       note: payment.note,
       apartmentLabels: [
         ...new Set(

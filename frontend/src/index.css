@@ -4249,6 +4249,92 @@ button:active:not(:disabled) {
   min-width: 700px;
 }
 
+/* Yukleme partileri — ilk 3 sutun dar; Dosya kalan yerde tek satir (... ile) */
+.upload-batches-list-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.upload-batches-list-table th:nth-child(1),
+.upload-batches-list-table td:nth-child(1),
+.upload-batches-list-table th:nth-child(2),
+.upload-batches-list-table td:nth-child(2),
+.upload-batches-list-table th:nth-child(3),
+.upload-batches-list-table td:nth-child(3) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
+.upload-batches-list-table th:nth-child(1),
+.upload-batches-list-table td:nth-child(1) {
+  width: 6.85rem;
+  max-width: 6.85rem;
+}
+
+.upload-batches-list-table th:nth-child(2),
+.upload-batches-list-table td:nth-child(2) {
+  width: 7rem;
+  max-width: 7rem;
+}
+
+.upload-batches-list-table th:nth-child(3),
+.upload-batches-list-table td:nth-child(3) {
+  width: 5.85rem;
+  max-width: 5.85rem;
+}
+
+.upload-batches-list-table th:nth-child(4),
+.upload-batches-list-table td:nth-child(4) {
+  min-width: 0;
+  width: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.upload-batches-list-table .actions-cell .btn {
+  white-space: nowrap;
+}
+
+.staff-open-aidat-upload-table.reports-home-uploads-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.staff-open-aidat-upload-table.reports-home-uploads-table th:nth-child(2),
+.staff-open-aidat-upload-table.reports-home-uploads-table td:nth-child(2),
+.staff-open-aidat-upload-table.reports-home-uploads-table th:nth-child(3),
+.staff-open-aidat-upload-table.reports-home-uploads-table td:nth-child(3) {
+  width: 6.85rem;
+  max-width: 6.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.staff-open-aidat-upload-table.reports-home-uploads-table .dash-upload-filename {
+  max-width: none;
+  display: block;
+}
+
+.staff-open-aidat-upload-table.reports-home-uploads-table th:nth-child(1),
+.staff-open-aidat-upload-table.reports-home-uploads-table td:nth-child(1) {
+  width: 10.75rem;
+  max-width: 10.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.staff-open-aidat-upload-table.reports-home-uploads-table th:nth-child(4),
+.staff-open-aidat-upload-table.reports-home-uploads-table td:nth-child(4) {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .upload-row-goto-btn {
   padding: 2px 7px;
   font-size: 0.78rem;
@@ -4305,8 +4391,10 @@ button:active:not(:disabled) {
 
 .staff-open-aidat-upload-table td:nth-child(4),
 .staff-open-aidat-upload-table th:nth-child(4) {
-  white-space: normal;
-  min-width: 260px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .staff-mobile-links-page .staff-mobile-links-card {
@@ -5602,6 +5690,10 @@ button:active:not(:disabled) {
   .dash-upload-filename {
     max-width: 140px;
   }
+
+  .staff-open-aidat-upload-table .dash-upload-filename {
+    max-width: none;
+  }
 }
 
 @media (max-width: 480px) {
@@ -6681,6 +6773,8 @@ td {
 }
 
 .overdue-payments-wrap {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
 }
 
@@ -6710,61 +6804,85 @@ td {
   margin-left: auto;
 }
 
+/* Gecikmis borclar: sutun nth-child yanlis sirada genislik uygular (Malik ile Borc Tipi ic ice). Tablo kart geneliginde yayilir. */
 .overdue-payments-table {
-  min-width: 1120px;
-  table-layout: fixed;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  table-layout: auto;
 }
 
 .overdue-payments-table th,
 .overdue-payments-table td {
-  padding: 7px 6px;
+  padding: 7px 8px;
   font-size: 0.78rem;
-  line-height: 1.18;
+  line-height: 1.25;
+  vertical-align: top;
+}
+
+.overdue-payments-table thead th.overdue-col-door,
+.overdue-payments-table tbody td.overdue-col-door {
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  box-shadow: 1px 0 0 rgb(24 61 104 / 0.08);
   white-space: nowrap;
 }
 
-.overdue-payments-table th:nth-child(1),
-.overdue-payments-table td:nth-child(1) {
-  width: 78px;
+.overdue-payments-table thead th.overdue-col-door {
+  top: 0;
+  z-index: 24;
+  background: #e8edf3;
 }
 
-.overdue-payments-table th:nth-child(2),
-.overdue-payments-table td:nth-child(2) {
-  width: 58px;
+.overdue-payments-table tbody td.overdue-col-door {
+  background: #ffffff;
 }
 
-.overdue-payments-table th:nth-child(3),
-.overdue-payments-table td:nth-child(3) {
-  width: 130px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.overdue-payments-table tbody tr:nth-child(even) td.overdue-col-door {
+  background: #fbfdff;
 }
 
-.overdue-payments-table th:nth-child(4),
-.overdue-payments-table td:nth-child(4) {
-  width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.overdue-payments-table tbody tr:hover td.overdue-col-door {
+  background: #eef4fa;
 }
 
-.overdue-payments-table th:nth-child(5),
-.overdue-payments-table td:nth-child(5),
-.overdue-payments-table th:nth-child(6),
-.overdue-payments-table td:nth-child(6),
-.overdue-payments-table th:nth-child(7),
-.overdue-payments-table td:nth-child(7),
-.overdue-payments-table th:nth-child(8),
-.overdue-payments-table td:nth-child(8),
-.overdue-payments-table th:nth-child(9),
-.overdue-payments-table td:nth-child(9),
-.overdue-payments-table th:nth-child(10),
-.overdue-payments-table td:nth-child(10) {
-  width: 86px;
+.overdue-col-door {
+  min-width: 3.75rem;
+  width: 1%;
 }
 
-.overdue-payments-table th:nth-child(11),
-.overdue-payments-table td:nth-child(11) {
-  width: auto;
+.overdue-col-owner {
+  min-width: 9rem;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.overdue-col-charge-type {
+  min-width: 5.5rem;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.overdue-col-period,
+.overdue-col-due {
+  white-space: nowrap;
+  width: 1%;
+  min-width: 4rem;
+}
+
+.overdue-col-days,
+.overdue-col-amount,
+.overdue-col-paid,
+.overdue-col-remaining {
+  white-space: nowrap;
+  width: 1%;
+  min-width: 4.75rem;
+}
+
+.overdue-col-description {
+  min-width: 10rem;
+  width: 30%;
   white-space: normal;
   word-break: break-word;
 }
@@ -8148,8 +8266,6 @@ details.cc-excluded-card[open] > .cc-excluded-summary::after {
 .payment-list-table td:nth-child(1),
 .expense-report-table th:nth-child(1),
 .expense-report-table td:nth-child(1),
-.overdue-payments-table th:nth-child(1),
-.overdue-payments-table td:nth-child(1),
 .monthly-balance-matrix-table th:nth-child(1),
 .monthly-balance-matrix-table td:nth-child(1),
 .reference-search-table th:nth-child(1),
@@ -8162,7 +8278,6 @@ details.cc-excluded-card[open] > .cc-excluded-summary::after {
 
 .payment-list-table tbody tr:nth-child(even) td:nth-child(1),
 .expense-report-table tbody tr:nth-child(even) td:nth-child(1),
-.overdue-payments-table tbody tr:nth-child(even) td:nth-child(1),
 .monthly-balance-matrix-table tbody tr:nth-child(even) td:nth-child(1),
 .reference-search-table tbody tr:nth-child(even) td:nth-child(1) {
   background: #fbfdff;
@@ -8179,7 +8294,6 @@ details.cc-excluded-card[open] > .cc-excluded-summary::after {
 
 .payment-list-table th:nth-child(1),
 .expense-report-table th:nth-child(1),
-.overdue-payments-table th:nth-child(1),
 .reference-search-table th:nth-child(1) {
   z-index: 24;
   top: 0;
@@ -10271,15 +10385,28 @@ td.empty {
     -webkit-overflow-scrolling: touch;
   }
 
-  .report-page .table-wrap > table,
-  .report-page table.report-compact-table,
+  .report-page .table-wrap > table:not(.overdue-payments-table),
+  .report-page table.report-compact-table:not(.overdue-payments-table),
   .report-page .monthly-balance-matrix-table,
   .report-page .reference-search-table,
-  .report-page .overdue-payments-table,
   .report-page .charge-consistency-table,
   .report-page .bulk-correct-edit-table {
     width: max-content;
     min-width: 620px;
+  }
+
+  .report-page .overdue-payments-wrap {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .report-page .overdue-payments-wrap .overdue-payments-table {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-width: 620px;
+    table-layout: auto;
   }
 
   .report-page .staff-open-aidat-upload-table {
@@ -10289,13 +10416,16 @@ td.empty {
 }
 
 @media (max-width: 480px) {
-  .report-page .table-wrap > table,
-  .report-page table.report-compact-table,
+  .report-page .table-wrap > table:not(.overdue-payments-table),
+  .report-page table.report-compact-table:not(.overdue-payments-table),
   .report-page .monthly-balance-matrix-table,
   .report-page .reference-search-table,
-  .report-page .overdue-payments-table,
   .report-page .charge-consistency-table,
   .report-page .bulk-correct-edit-table {
+    min-width: 540px;
+  }
+
+  .report-page .overdue-payments-wrap .overdue-payments-table {
     min-width: 540px;
   }
 
