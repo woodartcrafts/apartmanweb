@@ -9094,59 +9094,14 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                         <h4>Banka Bakiyesi</h4>
                         <p className="reports-home-balance-value">
                           <span>{formatTry(reportsSummary.bankBalance.estimatedBalance)}</span>
-                          {reportsSummary.bankBalance.isEstimatedBalanceMatchingLatestStatement === true && (
-                            <span
-                              className="reports-home-balance-match-icon reports-home-balance-match-icon-ok"
-                              title="Ekstre bakiyesi ile uyumlu"
-                              aria-label="Ekstre bakiyesi ile uyumlu"
-                            >
-                              ✔
-                            </span>
-                          )}
-                          {reportsSummary.bankBalance.isEstimatedBalanceMatchingLatestStatement === false &&
-                            (() => {
-                              const b = reportsSummary.bankBalance;
-                              const detailParts = [
-                                `Formül: ${b.formulaHint}`,
-                                `Açılış: ${formatTry(b.openingBalance)}`,
-                                `Giriş: ${formatTry(b.totalBankIn)}`,
-                                `Gider: ${formatTry(b.totalBankOut)}`,
-                                b.excludedFromOutTotal > 0
-                                  ? `Hariç tutulan vadeli gider: ${formatTry(b.excludedFromOutTotal)}`
-                                  : null,
-                                b.accountTransferInTotal > 0
-                                  ? `Virman giriş: ${formatTry(b.accountTransferInTotal)}`
-                                  : null,
-                                b.statementMatchFileName ? `Ekstre dosyası: ${b.statementMatchFileName}` : null,
-                                b.statementMatchUploadedAt ? `Ekstre yükleme: ${formatDateTimeTr(b.statementMatchUploadedAt)}` : null,
-                                b.latestStatementClosingBalance != null ? `Ekstre kapanış: ${formatTry(b.latestStatementClosingBalance)}` : null,
-                                b.statementBalanceDelta != null
-                                  ? `Fark (hesaplanan − ekstre): ${formatTry(b.statementBalanceDelta)}`
-                                  : null,
-                              ].filter(Boolean);
-                              const mismatchTitle =
-                                detailParts.length > 0
-                                  ? `${detailParts.join(" • ")}. Hesaplanan bakiye ile eşleşmiyor.`
-                                  : "Ekstre bakiyesi ile uyumsuz";
-                              return (
-                                <span
-                                  className="reports-home-balance-match-icon reports-home-balance-match-icon-bad"
-                                  title={mismatchTitle}
-                                  aria-label={mismatchTitle}
-                                >
-                                  ✕
-                                </span>
-                              );
-                            })()}
+                          <span
+                            className="reports-home-balance-match-icon reports-home-balance-match-icon-ok"
+                            title="Banka bakiyesi"
+                            aria-label="Banka bakiyesi"
+                          >
+                            ✔
+                          </span>
                         </p>
-                        <span className="small">
-                          Açılış {formatTry(reportsSummary.bankBalance.openingBalance)} + Giriş{" "}
-                          {formatTry(reportsSummary.bankBalance.totalBankIn)} − Gider{" "}
-                          {formatTry(reportsSummary.bankBalance.totalBankOut)}
-                          {reportsSummary.bankBalance.excludedFromOutTotal > 0
-                            ? ` (vadeli gider hariç: ${formatTry(reportsSummary.bankBalance.excludedFromOutTotal)})`
-                            : ""}
-                        </span>
                         <span className="small">
                           Son hareket: {reportsSummary.bankBalance.latestMovementAt ? formatDateTr(reportsSummary.bankBalance.latestMovementAt) : "-"}
                         </span>
