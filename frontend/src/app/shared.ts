@@ -668,6 +668,7 @@ export type ReportsSummaryResponse = {
   snapshotAt: string;
   bankBalance: {
     estimatedBalance: number;
+    openingBalance: number;
     latestStatementClosingBalance: number | null;
     isEstimatedBalanceMatchingLatestStatement: boolean | null;
     statementBalanceDelta: number | null;
@@ -676,6 +677,13 @@ export type ReportsSummaryResponse = {
     statementMatchUploadedAt: string | null;
     totalBankIn: number;
     totalBankOut: number;
+    excludedFromInTotal: number;
+    excludedFromOutTotal: number;
+    accountTransferInTotal: number;
+    accountTransferOutTotal: number;
+    vadeliClosureInTotal: number;
+    nonBankTransferVirmanInCount: number;
+    formulaHint: string;
     latestMovementAt: string | null;
   };
   collectionsAndExpenses: {

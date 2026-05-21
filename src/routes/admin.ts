@@ -39,6 +39,8 @@ import {
   prismaExcludeAccountTransferPayments,
 } from "../utils/accountTransfer";
 import {
+  buildBankBalanceAuditRows,
+  computeOperatingBankBalanceSnapshot,
   computeOperatingBankTotals,
   isExcludedFromBankCashInNote,
   isExcludedFromBankCashOutDescription,
@@ -7909,8 +7911,19 @@ router.get("/reports/summary", async (_req, res) => {
     }
   }
 
-  const { bankInTotal, bankOutTotal } = await computeOperatingBankTotals();
-  const estimatedBankBalance = bankInTotal - bankOutTotal;
+  const bankBalanceSnapshot = await computeOperatingBankBalanceSnapshot();
+  const {
+    openingBalance: bankOpeningBalance,
+    bankInTotal,
+    bankOutTotal,
+    estimatedBalance: estimatedBankBalance,
+    excludedFromInTotal: bankExcludedFromInTotal,
+    excludedFromOutTotal: bankExcludedFromOutTotal,
+    accountTransferInTotal: bankAccountTransferInTotal,
+    accountTransferOutTotal: bankAccountTransferOutTotal,
+    vadeliClosureInTotal: bankVadeliClosureInTotal,
+    nonBankTransferVirmanInCount: bankNonBankTransferVirmanInCount,
+  } = bankBalanceSnapshot;
 
   const kucukApartmentCount = apartmentsForOverview.filter((x) => x.type === ApartmentType.KUCUK).length;
   const buyukApartmentCount = apartmentsForOverview.filter((x) => x.type === ApartmentType.BUYUK).length;
@@ -8050,14 +8063,22 @@ router.get("/reports/summary", async (_req, res) => {
     snapshotAt: now,
     bankBalance: {
       estimatedBalance: estimatedBankBalanceRounded,
+      openingBalance: bankOpeningBalance,
+      totalBankIn: Number(bankInTotal.toFixed(2)),
+      totalBankOut: Number(bankOutTotal.toFixed(2)),
+      excludedFromInTotal: bankExcludedFromInTotal,
+      excludedFromOutTotal: bankExcludedFromOutTotal,
+      accountTransferInTotal: bankAccountTransferInTotal,
+      accountTransferOutTotal: bankAccountTransferOutTotal,
+      vadeliClosureInTotal: bankVadeliClosureInTotal,
+      nonBankTransferVirmanInCount: bankNonBankTransferVirmanInCount,
+      formulaHint: "Acilis + Giris - Gider (vadeli kapama giderleri haric)",
       latestStatementClosingBalance,
       isEstimatedBalanceMatchingLatestStatement,
       statementBalanceDelta,
       statementMatchBatchId: statementBalanceMatchBatch?.id ?? null,
       statementMatchFileName: statementBalanceMatchBatch?.fileName ?? null,
       statementMatchUploadedAt: statementBalanceMatchBatch?.uploadedAt?.toISOString() ?? null,
-      totalBankIn: Number(bankInTotal.toFixed(2)),
-      totalBankOut: Number(bankOutTotal.toFixed(2)),
       latestMovementAt: latestBankMovementAt,
     },
     collectionsAndExpenses: {
@@ -8102,6 +8123,53 @@ router.get("/reports/summary", async (_req, res) => {
       latestSpentAt: item._max.spentAt,
     })),
     topOverdueApartments,
+  });
+});
+
+router.get("/reports/bank-balance-audit", async (req, res) => {
+  const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : 80;
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 10), 300) : 80;
+
+  const [snapshot, rows] = await Promise.all([
+    computeOperatingBankBalanceSnapshot(),
+    buildBankBalanceAuditRows(limit),
+  ]);
+
+  const statementBatch = await prisma.importBatch.findFirst({
+    where: {
+      kind: ImportBatchType.BANK_STATEMENT_UPLOAD,
+      statementClosingBalance: { not: null },
+    },
+    orderBy: [{ uploadedAt: "desc" }],
+    select: {
+      id: true,
+      fileName: true,
+      uploadedAt: true,
+      statementClosingBalance: true,
+    },
+  });
+
+  const latestStatementClosingBalance =
+    statementBatch?.statementClosingBalance != null
+      ? Number(Number(statementBatch.statementClosingBalance).toFixed(2))
+      : null;
+
+  return res.json({
+    snapshotAt: new Date(),
+    snapshot,
+    latestStatement: statementBatch
+      ? {
+          batchId: statementBatch.id,
+          fileName: statementBatch.fileName,
+          uploadedAt: statementBatch.uploadedAt.toISOString(),
+          closingBalance: latestStatementClosingBalance,
+          deltaVsEstimated:
+            latestStatementClosingBalance != null
+              ? Number((snapshot.estimatedBalance - latestStatementClosingBalance).toFixed(2))
+              : null,
+        }
+      : null,
+    rows,
   });
 });
 
@@ -8282,7 +8350,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
 
   const movementPaymentRows = paymentRows.filter((row) => !row.isOpeningBalance);
   const operatingExpenseRows = expenses.filter(
-    (row) => !isExcludedFromBankCashOutDescription(row.description)
+    (row) => !isExcludedFromBankCashOutDescription(row.description, row.reference)
   );
 
   const rows = [
@@ -8420,16 +8488,8 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
     };
   }
 
-  const [expenseBeforeYearAgg, openingBeforeYearAgg, openingInYearAgg, paymentsInYearRaw, expensesInYearRaw] =
+  const [openingBeforeYearAgg, openingInYearAgg, paymentsInYearRaw, expensesInYearRaw, previousExpenseTotalRaw] =
     await Promise.all([
-    prisma.expense.aggregate({
-      where: {
-        paymentMethod: PaymentMethod.BANK_TRANSFER,
-        spentAt: { lt: yearStart },
-        ...prismaExcludeAccountTransferExpenses,
-      },
-      _sum: { amount: true },
-    }),
     prisma.payment.aggregate({
       where: {
         method: PaymentMethod.BANK_TRANSFER,
@@ -8478,6 +8538,7 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
       },
       orderBy: [{ spentAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     }),
+    sumOperatingBankExpensesOut({ spentAt: { lt: yearStart } }),
   ]);
 
   const openingBeforeYear = Number(openingBeforeYearAgg._sum.totalAmount ?? 0);
@@ -8488,7 +8549,7 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
     paidAt: { lt: yearStart },
     NOT: { note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX } },
   });
-  const previousExpenseTotal = Number(expenseBeforeYearAgg._sum.amount ?? 0);
+  const previousExpenseTotal = previousExpenseTotalRaw;
 
   const paymentsInYear = paymentsInYearRaw
     .filter((row) => !row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX))
@@ -8503,13 +8564,15 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
       };
     });
 
-  const expensesInYear = expensesInYearRaw.map((row) => ({
-    id: row.id,
-    date: row.spentAt,
-    amount: Number(row.amount),
-    description: row.description ?? row.expenseItem.name,
-    reference: row.reference,
-  }));
+  const expensesInYear = expensesInYearRaw
+    .filter((row) => !isExcludedFromBankCashOutDescription(row.description, row.reference))
+    .map((row) => ({
+      id: row.id,
+      date: row.spentAt,
+      amount: Number(row.amount),
+      description: row.description ?? row.expenseItem.name,
+      reference: row.reference,
+    }));
 
   let incomeRunningYear = 0;
   let expenseRunningYear = 0;

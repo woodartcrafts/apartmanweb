@@ -58,7 +58,7 @@ describe("operatingBankBalance", () => {
       )
     ).toBe(true);
     expect(
-      isExcludedFromBankCashOutDescription("1188 0543501 numaralı hesap kapama")
+      isExcludedFromBankCashOutDescription("1188 0543501 numaralı hesap kapama", null)
     ).toBe(true);
   });
 

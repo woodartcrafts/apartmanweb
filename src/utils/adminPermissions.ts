@@ -301,6 +301,7 @@ export function mapRequestPathToAdminPage(pathname: string, method?: string): Ad
   if (pathname.startsWith("/reports/monthly-ledger")) return "REPORTS_MONTHLY_LEDGER";
   if (pathname.startsWith("/reports/fractional")) return "REPORTS_FRACTIONAL";
   if (pathname.startsWith("/reports/reference-search")) return "REPORTS_REFERENCE_SEARCH";
+  if (pathname.startsWith("/reports/bank-balance-audit")) return "REPORTS_SUMMARY";
   if (pathname.startsWith("/reports/bank-reconciliation")) return "REPORTS_BANK_MOVEMENTS";
   if (pathname.startsWith("/reports/bank-movements")) return "REPORTS_BANK_MOVEMENTS";
   if (pathname.startsWith("/reports")) return "REPORTS_SUMMARY";
