@@ -48,8 +48,8 @@ export function isAccountTransferPaymentNote(note: string | null | undefined): b
   return parseAccountTransferDirectionFromText(note) !== null;
 }
 
-function noteHasVadeliClosureHint(note: string): boolean {
-  const normalized = toAsciiLower(note);
+export function noteHasVadeliClosureHint(text: string): boolean {
+  const normalized = toAsciiLower(text);
   return (
     normalized.includes("hesap kapama") ||
     normalized.includes("hesap kapan") ||

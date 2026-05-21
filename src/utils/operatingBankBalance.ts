@@ -1,5 +1,6 @@
 import { PaymentMethod, type Prisma } from "@prisma/client";
 import { prisma } from "../db";
+import { noteHasVadeliClosureHint, parseAccountTransferDirectionFromText } from "./accountTransfer";
 
 /** Sistem acilis kayitlari tahsilat toplamina dahil edilmez; banka kasasina dahil edilmez. */
 const OPENING_BALANCE_PAYMENT_NOTE_PREFIX = "OPENING_BALANCE|";
@@ -22,6 +23,27 @@ export function isExcludedFromBankCashInNote(note: string | null | undefined): b
   return false;
 }
 
+/**
+ * TL banka kasa cikisindan haric tutulacak giderler.
+ * Vadeli hesap kapamasi (vadeli hesaptan cikis) TL kasayi azaltmaz; karsilik tahsilat zaten TL girisidir.
+ */
+export function isExcludedFromBankCashOutDescription(description: string | null | undefined): boolean {
+  if (!description) {
+    return false;
+  }
+
+  const direction = parseAccountTransferDirectionFromText(description);
+  if (direction === "VADELI_TO_TL") {
+    return true;
+  }
+
+  if (direction === "TL_TO_VADELI") {
+    return false;
+  }
+
+  return noteHasVadeliClosureHint(description);
+}
+
 function sumPaymentRows(rows: Array<{ totalAmount: Prisma.Decimal | number; note: string | null }>): number {
   return Number(
     rows
@@ -31,8 +53,13 @@ function sumPaymentRows(rows: Array<{ totalAmount: Prisma.Decimal | number; note
   );
 }
 
-function sumExpenseRows(rows: Array<{ amount: Prisma.Decimal | number }>): number {
-  return Number(rows.reduce((sum, row) => sum + Number(row.amount), 0).toFixed(2));
+function sumExpenseRows(rows: Array<{ amount: Prisma.Decimal | number; description: string | null }>): number {
+  return Number(
+    rows
+      .filter((row) => !isExcludedFromBankCashOutDescription(row.description))
+      .reduce((sum, row) => sum + Number(row.amount), 0)
+      .toFixed(2)
+  );
 }
 
 export async function sumOperatingBankPaymentsIn(where: Prisma.PaymentWhereInput = {}): Promise<number> {
@@ -57,6 +84,7 @@ export async function sumOperatingBankExpensesOut(where: Prisma.ExpenseWhereInpu
     },
     select: {
       amount: true,
+      description: true,
     },
   });
   return sumExpenseRows(rows);

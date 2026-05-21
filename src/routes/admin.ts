@@ -38,7 +38,13 @@ import {
   prismaExcludeAccountTransferExpenses,
   prismaExcludeAccountTransferPayments,
 } from "../utils/accountTransfer";
-import { computeOperatingBankTotals, sumOperatingBankPaymentsIn, sumOperatingBankExpensesOut } from "../utils/operatingBankBalance";
+import {
+  computeOperatingBankTotals,
+  isExcludedFromBankCashInNote,
+  isExcludedFromBankCashOutDescription,
+  sumOperatingBankPaymentsIn,
+  sumOperatingBankExpensesOut,
+} from "../utils/operatingBankBalance";
 import {
   mapRequestMethodToAdminAction,
   mapRequestPathToAdminPage,
@@ -8182,7 +8188,12 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
     }),
   ]);
 
-  const paymentRows = payments.map((row) => {
+  const operatingPayments = payments.filter(
+    (row) =>
+      !row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX) && !isExcludedFromBankCashInNote(row.note)
+  );
+
+  const paymentRows = operatingPayments.map((row) => {
       const isOpeningBalance = Boolean(row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX));
       const parts = (row.note ?? "")
         .split(" | ")
@@ -8270,10 +8281,13 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
     });
 
   const movementPaymentRows = paymentRows.filter((row) => !row.isOpeningBalance);
+  const operatingExpenseRows = expenses.filter(
+    (row) => !isExcludedFromBankCashOutDescription(row.description)
+  );
 
   const rows = [
     ...movementPaymentRows,
-    ...expenses.map((row) => ({
+    ...operatingExpenseRows.map((row) => ({
       id: row.id,
       occurredAt: row.spentAt,
       entryType: "OUT" as const,
@@ -8299,7 +8313,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
     });
 
   const totalIn = movementPaymentRows.reduce((sum, row) => sum + row.amount, 0);
-  const totalOut = expenses.reduce((sum, row) => sum + Number(row.amount), 0);
+  const totalOut = operatingExpenseRows.reduce((sum, row) => sum + Number(row.amount), 0);
   const openingBalance = Number(openingAgg._sum.totalAmount ?? 0);
   const priorIn = await sumOperatingBankPaymentsIn(fromDate ? { paidAt: { lt: fromDate } } : {});
   const priorOut = await sumOperatingBankExpensesOut(fromDate ? { spentAt: { lt: fromDate } } : {});
@@ -8322,7 +8336,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       openingDate: openingDate ? openingDate.toISOString() : null,
       paymentCount: movementPaymentRows.length,
       expenseCount: expenses.length,
-      movementCount: movementPaymentRows.length + expenses.length,
+      movementCount: movementPaymentRows.length + operatingExpenseRows.length,
     },
     rows: rows.map((row) => ({
       id: row.id,

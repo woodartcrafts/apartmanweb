@@ -6,7 +6,7 @@ import {
   isLikelyVadeliClosureUnclassifiedPaymentNote,
   parseAccountTransferDirectionFromText,
 } from "./accountTransfer";
-import { isExcludedFromBankCashInNote } from "./operatingBankBalance";
+import { isExcludedFromBankCashInNote, isExcludedFromBankCashOutDescription } from "./operatingBankBalance";
 
 describe("accountTransfer utils", () => {
   it("detects vadeli account closure descriptions", () => {
@@ -49,5 +49,22 @@ describe("operatingBankBalance", () => {
     const note =
       "BANK_DESC:1188 0543501 numaralı hesap kapama | ACCOUNT_TRANSFER:VADELI_TO_TL | UNAPPLIED:NO_DOOR_NO";
     expect(isExcludedFromBankCashInNote(note)).toBe(false);
+  });
+
+  it("excludes vadeli closure counterpart expenses from bank cash out", () => {
+    expect(
+      isExcludedFromBankCashOutDescription(
+        "1188 0567107 numaralı hesap kapama | ACCOUNT_TRANSFER:VADELI_TO_TL"
+      )
+    ).toBe(true);
+    expect(
+      isExcludedFromBankCashOutDescription("1188 0543501 numaralı hesap kapama")
+    ).toBe(true);
+  });
+
+  it("keeps TL to vadeli transfer expenses in bank cash out", () => {
+    expect(
+      isExcludedFromBankCashOutDescription("Vadeli hesaba aktarim | ACCOUNT_TRANSFER:TL_TO_VADELI")
+    ).toBe(false);
   });
 });
