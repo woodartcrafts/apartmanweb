@@ -4229,6 +4229,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         loadUnclassifiedRows({ silent: true }),
         fetchAccountTransfers(accountTransferFilter),
         fetchPaymentList(paymentListFilter),
+        fetchReportsSummary({ silent: true }),
       ]);
       setMessage(`Tahsilat hesaplar arasi virman olarak isaretlendi (${direction})`);
     } catch (err) {
@@ -4253,6 +4254,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         loadUnclassifiedRows({ silent: true }),
         fetchAccountTransfers(accountTransferFilter),
         fetchExpenseReport(expenseReportFilter),
+        fetchReportsSummary({ silent: true }),
       ]);
       setMessage(`Gider hesaplar arasi virman olarak isaretlendi (${direction})`);
     } catch (err) {
@@ -4284,6 +4286,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       await Promise.all([
         fetchAccountTransfers(accountTransferFilter),
         fetchUploadBatches(uploadBatchFilter, { silent: true }),
+        fetchReportsSummary({ silent: true }),
       ]);
       setMessage("Kayit hesaplar arasi virman olarak isaretlendi");
     } catch (err) {

@@ -37,6 +37,8 @@ import {
   isAccountTransferPaymentNote,
   prismaExcludeAccountTransferExpenses,
   prismaExcludeAccountTransferPayments,
+  prismaExcludeFromOperatingBankPayments,
+  isAccountTransferExpenseDescription,
 } from "../utils/accountTransfer";
 import {
   mapRequestMethodToAdminAction,
@@ -7706,7 +7708,7 @@ router.get("/reports/summary", async (_req, res) => {
     }),
     prisma.expense.aggregate({ _sum: { amount: true } }),
     prisma.payment.aggregate({
-      where: { method: PaymentMethod.BANK_TRANSFER, ...prismaExcludeAccountTransferPayments },
+      where: { method: PaymentMethod.BANK_TRANSFER, ...prismaExcludeFromOperatingBankPayments },
       _sum: { totalAmount: true },
     }),
     prisma.expense.aggregate({
@@ -7714,12 +7716,12 @@ router.get("/reports/summary", async (_req, res) => {
       _sum: { amount: true },
     }),
     prisma.payment.findFirst({
-      where: { method: PaymentMethod.BANK_TRANSFER },
+      where: { method: PaymentMethod.BANK_TRANSFER, ...prismaExcludeFromOperatingBankPayments },
       orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
       select: { paidAt: true },
     }),
     prisma.expense.findFirst({
-      where: { paymentMethod: PaymentMethod.BANK_TRANSFER },
+      where: { paymentMethod: PaymentMethod.BANK_TRANSFER, ...prismaExcludeAccountTransferExpenses },
       orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
       select: { spentAt: true },
     }),
@@ -7823,14 +7825,16 @@ router.get("/reports/summary", async (_req, res) => {
         Boolean(row)
     );
 
-  const latestBankExpenseRows = latestBankTransferExpenses.map((row) => ({
-    id: row.id,
-    occurredAt: row.spentAt,
-    createdAt: row.createdAt,
-    movementType: "EXPENSE" as const,
-    amount: Number(row.amount.toFixed(2)),
-    description: row.description?.trim() || "Banka Gideri",
-  }));
+  const latestBankExpenseRows = latestBankTransferExpenses
+    .filter((row) => !isAccountTransferExpenseDescription(row.description))
+    .map((row) => ({
+      id: row.id,
+      occurredAt: row.spentAt,
+      createdAt: row.createdAt,
+      movementType: "EXPENSE" as const,
+      amount: Number(row.amount.toFixed(2)),
+      description: row.description?.trim() || "Banka Gideri",
+    }));
 
   const latestBankMovements = [...latestBankPaymentRows, ...latestBankExpenseRows]
     .sort((a, b) => {

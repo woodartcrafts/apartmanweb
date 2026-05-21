@@ -48,6 +48,23 @@ export function isAccountTransferPaymentNote(note: string | null | undefined): b
   return parseAccountTransferDirectionFromText(note) !== null;
 }
 
+/** Siniflandirilamayan ama aciklamasi vadeli hesap kapamasi olan tahsilatlar (henuz virman isaretlenmemis). */
+export function isLikelyVadeliClosureUnclassifiedPaymentNote(note: string | null | undefined): boolean {
+  if (!note) {
+    return false;
+  }
+  const upper = note.toUpperCase();
+  if (!upper.includes("UNCLASSIFIED_COLLECTION:")) {
+    return false;
+  }
+  const normalized = toAsciiLower(note);
+  return normalized.includes("hesap kapama") || normalized.includes("hesap kapan");
+}
+
+export function isExcludedFromOperatingBankBalancePaymentNote(note: string | null | undefined): boolean {
+  return isAccountTransferPaymentNote(note) || isLikelyVadeliClosureUnclassifiedPaymentNote(note);
+}
+
 export function isAccountTransferExpenseDescription(description: string | null | undefined): boolean {
   return parseAccountTransferDirectionFromText(description) !== null;
 }
@@ -152,3 +169,23 @@ export const prismaExcludeAccountTransferPayments = {
 export const prismaExcludeAccountTransferExpenses = {
   NOT: { description: { contains: ACCOUNT_TRANSFER_NOTE_PREFIX } },
 } satisfies Prisma.ExpenseWhereInput;
+
+/** Ana sayfa banka bakiyesi ve son hareket: virman + hesap kapamasi siniflandirilamayan tahsilatlar. */
+export const prismaExcludeFromOperatingBankPayments = {
+  NOT: {
+    OR: [
+      { note: { contains: ACCOUNT_TRANSFER_NOTE_PREFIX } },
+      {
+        AND: [
+          { note: { contains: "UNCLASSIFIED_COLLECTION:" } },
+          {
+            OR: [
+              { note: { contains: "hesap kapama", mode: "insensitive" } },
+              { note: { contains: "hesap kapan", mode: "insensitive" } },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+} satisfies Prisma.PaymentWhereInput;

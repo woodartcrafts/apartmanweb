@@ -3,6 +3,7 @@ import {
   buildAccountTransferPaymentNote,
   detectAccountTransferFromBankDescription,
   isAccountTransferPaymentNote,
+  isLikelyVadeliClosureUnclassifiedPaymentNote,
   parseAccountTransferDirectionFromText,
 } from "./accountTransfer";
 
@@ -11,6 +12,13 @@ describe("accountTransfer utils", () => {
     expect(
       detectAccountTransferFromBankDescription("1188 0543501 numaralı hesap kapama | UNCLASSIFIED")
     ).toBe("VADELI_TO_TL");
+  });
+
+  it("detects unclassified hesap kapama notes for operating bank exclusion", () => {
+    const note =
+      "BANK_DESC:1188 0543501 numaralı hesap kapama | UNCLASSIFIED_COLLECTION:SINIFLANDIRILAMAYAN_TAHSILATLAR | UNAPPLIED:NO_DOOR_NO";
+    expect(isLikelyVadeliClosureUnclassifiedPaymentNote(note)).toBe(true);
+    expect(isAccountTransferPaymentNote(note)).toBe(false);
   });
 
   it("builds payment note without unclassified tags", () => {
