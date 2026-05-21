@@ -2,6 +2,11 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
+import {
+  isAccountTransferExpenseDescription,
+  isAccountTransferPaymentNote,
+  parseAccountTransferDirectionFromText,
+} from "../utils/accountTransfer";
 
 function extractBankRefKeyFromPaymentNote(note: string | null): string | null {
   if (!note) {
@@ -172,6 +177,7 @@ router.get("/upload-batches", async (req, res) => {
           where: {
             importBatchId: { in: batchIds },
             note: { contains: "UNCLASSIFIED_COLLECTION:" },
+            NOT: { note: { contains: "ACCOUNT_TRANSFER:" } },
           },
           _count: { _all: true },
         }),
@@ -180,6 +186,7 @@ router.get("/upload-batches", async (req, res) => {
           where: {
             importBatchId: { in: batchIds },
             expenseItem: { code: "SINIFLANDIRILAMAYAN_GIDERLER" },
+            NOT: { description: { contains: "ACCOUNT_TRANSFER:" } },
           },
           _count: { _all: true },
         }),
@@ -311,6 +318,8 @@ router.get("/upload-batches/:batchId/details", async (req, res) => {
       method: payment.method,
       reference: extractBankRefKeyFromPaymentNote(payment.note),
       note: payment.note,
+      isAccountTransfer: isAccountTransferPaymentNote(payment.note),
+      accountTransferDirection: parseAccountTransferDirectionFromText(payment.note),
       apartmentLabels: [
         ...new Set(
           payment.itemLinks.map((item) => `${item.charge.apartment.block.name}/${item.charge.apartment.doorNo}`)
@@ -325,6 +334,8 @@ router.get("/upload-batches/:batchId/details", async (req, res) => {
       expenseItemName: expense.expenseItem.name,
       description: expense.description,
       reference: expense.reference,
+      isAccountTransfer: isAccountTransferExpenseDescription(expense.description),
+      accountTransferDirection: parseAccountTransferDirectionFromText(expense.description),
     })),
   });
 });

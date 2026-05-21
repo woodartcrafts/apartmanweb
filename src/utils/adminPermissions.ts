@@ -69,6 +69,7 @@ export type AdminPageKey =
   | "RESIDENT_CONTENT"
   | "CORRECTIONS"
   | "UNCLASSIFIED"
+  | "ACCOUNT_TRANSFERS"
   | "MANUAL_CLOSURES"
   | "AUDIT_LOGS"
   | "MEETING"
@@ -144,6 +145,7 @@ export const ADMIN_PAGE_DEFINITIONS: Array<{ key: AdminPageKey; label: string }>
   { key: "BANK_STATEMENT_IMPORT", label: "Banka / Ekstre / Banka Ekstresi Yukle" },
   { key: "BANK_STATEMENT_VIEW", label: "Banka / Ekstre / Banka Ekstre Goruntule" },
   { key: "UPLOAD_BATCHES", label: "Banka / Ekstre / Yukleme Gecmisi" },
+  { key: "ACCOUNT_TRANSFERS", label: "Banka / Hesaplar Arasi Virman" },
   { key: "CHECK_CHARGE_CONSISTENCY", label: "Kontrol / Finans Kontrolleri / Tahakkuk Kontrol" },
   { key: "CHECK_DOOR_MISMATCH", label: "Kontrol / Finans Kontrolleri / Banka Eslestirme Kontrolu" },
   { key: "CHECK_BANK_STATEMENT", label: "Kontrol / Finans Kontrolleri / Banka Ekstresi Karsilastirma" },
@@ -314,6 +316,7 @@ export function mapRequestPathToAdminPage(pathname: string, method?: string): Ad
   if (pathname.startsWith("/bank-statement")) return "BANK_STATEMENT_IMPORT";
   if (pathname.startsWith("/initial-balances")) return "BANK_INITIAL_BALANCES";
   if (pathname.startsWith("/upload-batches")) return "UPLOAD_BATCHES";
+  if (pathname.startsWith("/account-transfers")) return "ACCOUNT_TRANSFERS";
   if (pathname.startsWith("/banks")) return "BANKS";
 
   if (pathname.startsWith("/reconcile/door-mismatch")) return "CHECK_DOOR_MISMATCH";

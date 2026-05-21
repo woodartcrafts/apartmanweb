@@ -67,6 +67,7 @@ export type AdminPageKey =
   | "RESIDENT_CONTENT"
   | "CORRECTIONS"
   | "UNCLASSIFIED"
+  | "ACCOUNT_TRANSFERS"
   | "MANUAL_CLOSURES"
   | "AUDIT_LOGS"
   | "MEETING"
@@ -556,6 +557,21 @@ export type UnclassifiedPaymentRow = PaymentListRow;
 
 export type UnclassifiedExpenseRow = ExpenseReportRow;
 
+export type AccountTransferDirection = "VADELI_TO_TL" | "TL_TO_VADELI";
+
+export type AccountTransferRow = {
+  id: string;
+  movementType: "PAYMENT" | "EXPENSE";
+  occurredAt: string;
+  amount: number;
+  method: PaymentMethod;
+  direction: AccountTransferDirection;
+  directionLabel: string;
+  reference: string | null;
+  description: string;
+  importBatchId: string | null;
+};
+
 export type AdminActionLogRow = {
   id: string;
   createdAt: string;
@@ -631,6 +647,8 @@ export type UploadBatchDetailsResponse = {
     method: PaymentMethod;
     reference: string | null;
     note: string | null;
+    isAccountTransfer?: boolean;
+    accountTransferDirection?: AccountTransferDirection | null;
     apartmentLabels: string[];
   }>;
   expenses: Array<{
@@ -641,6 +659,8 @@ export type UploadBatchDetailsResponse = {
     expenseItemName: string;
     description: string | null;
     reference: string | null;
+    isAccountTransfer?: boolean;
+    accountTransferDirection?: AccountTransferDirection | null;
   }>;
 };
 

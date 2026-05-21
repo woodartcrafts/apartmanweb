@@ -7,6 +7,7 @@ const defaults = [
   { code: "ELEKTRIK", name: "Elektrik" },
   { code: "SU", name: "Su" },
   { code: "SINIFLANDIRILAMAYAN_GIDERLER", name: "Siniflandirilamayan Giderler" },
+  { code: "HESAPLAR_ARASI_VIRMAN", name: "Hesaplar Arasi Virman" },
 ];
 
 async function main() {

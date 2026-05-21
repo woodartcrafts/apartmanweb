@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import {
   formatDateTr,
   formatTry,
+  type AccountTransferDirection,
   type UploadBatchDetailsResponse,
   type UploadBatchKind,
   type UploadBatchRow,
@@ -42,6 +43,11 @@ type UploadBatchesPageProps = {
     movementType: "PAYMENT" | "EXPENSE";
     movementId: string;
   }) => Promise<void>;
+  markMovementAsAccountTransfer: (input: {
+    movementType: "PAYMENT" | "EXPENSE";
+    movementId: string;
+    direction: AccountTransferDirection;
+  }) => Promise<void>;
 };
 
 export function UploadBatchesPage({
@@ -58,6 +64,7 @@ export function UploadBatchesPage({
   deleteUploadBatch,
   editUploadBatchMovement,
   deleteUploadBatchMovement,
+  markMovementAsAccountTransfer,
 }: UploadBatchesPageProps) {
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
   const [detailsLoadingBatchId, setDetailsLoadingBatchId] = useState<string | null>(null);
@@ -346,6 +353,8 @@ export function UploadBatchesPage({
                                     reference: payment.reference,
                                     detailMain: payment.apartmentLabels.join(" | ") || "-",
                                     detailText: cleanPaymentNote(payment.note),
+                                    isAccountTransfer: payment.isAccountTransfer === true,
+                                    accountTransferDirection: payment.accountTransferDirection ?? null,
                                   })
                                 );
                                 const sortedExpenses = sortByDateDesc(detailsByBatchId[row.id].expenses, (x) => x.spentAt).map(
@@ -358,6 +367,8 @@ export function UploadBatchesPage({
                                     reference: expense.reference,
                                     detailMain: expense.expenseItemName,
                                     detailText: expense.description ?? "-",
+                                    isAccountTransfer: expense.isAccountTransfer === true,
+                                    accountTransferDirection: expense.accountTransferDirection ?? null,
                                   })
                                 );
                                 const combinedRows = [...sortedPayments, ...sortedExpenses].sort((a, b) => {
@@ -395,7 +406,13 @@ export function UploadBatchesPage({
                                         className={entry.rowType === "EXPENSE" ? "upload-batch-detail-expense-row" : undefined}
                                       >
                                         <td>{formatDateTr(entry.occurredAt)}</td>
-                                        <td>{entry.rowType === "PAYMENT" ? "Tahsilat" : "Gider"}</td>
+                                        <td>
+                                          {entry.isAccountTransfer
+                                            ? "Virman"
+                                            : entry.rowType === "PAYMENT"
+                                              ? "Tahsilat"
+                                              : "Gider"}
+                                        </td>
                                         <td>
                                           <span
                                             className="truncate-cell truncate-method"
@@ -422,6 +439,27 @@ export function UploadBatchesPage({
                                           </span>
                                         </td>
                                         <td className="actions-cell">
+                                          {!entry.isAccountTransfer && (
+                                            <button
+                                              className="btn btn-ghost btn-compact"
+                                              type="button"
+                                              disabled={loading}
+                                              onClick={() =>
+                                                void markMovementAsAccountTransfer({
+                                                  movementType: entry.rowType,
+                                                  movementId: entry.id,
+                                                  direction:
+                                                    entry.accountTransferDirection ??
+                                                    (entry.rowType === "PAYMENT" ? "VADELI_TO_TL" : "TL_TO_VADELI"),
+                                                }).then(async () => {
+                                                  const refreshed = await fetchUploadBatchDetails(row.id);
+                                                  setDetailsByBatchId((prev) => ({ ...prev, [row.id]: refreshed }));
+                                                })
+                                              }
+                                            >
+                                              Virman
+                                            </button>
+                                          )}
                                           <button
                                             className="btn btn-ghost btn-compact"
                                             type="button"

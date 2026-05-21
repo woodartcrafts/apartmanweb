@@ -29,6 +29,15 @@ import adminUserAccessRoutes from "./adminUserAccessRoutes";
 import { createAdminResidentContentRoutes } from "./adminResidentContentRoutes";
 import { createAdminBankRoutes } from "./adminBankRoutes";
 import { createAdminUploadBatchRoutes } from "./adminUploadBatchRoutes";
+import { createAdminAccountTransferRoutes } from "./adminAccountTransferRoutes";
+import {
+  ACCOUNT_TRANSFER_NOTE_PREFIX,
+  buildAccountTransferPaymentNote,
+  detectAccountTransferFromBankDescription,
+  isAccountTransferPaymentNote,
+  prismaExcludeAccountTransferExpenses,
+  prismaExcludeAccountTransferPayments,
+} from "../utils/accountTransfer";
 import {
   mapRequestMethodToAdminAction,
   mapRequestPathToAdminPage,
@@ -3510,6 +3519,31 @@ async function processBankStatementImport(params: {
           enteredDoorNo || extractDoorNoFromDescription(row.description, doorNoSet, activeDoorNoRules) || undefined;
         if (!detectedDoorNo) {
           const method = row.paymentMethod ?? derivePaymentMethod(row.txType);
+          const transferDirection = detectAccountTransferFromBankDescription(row.description);
+          if (transferDirection) {
+            const note = buildAccountTransferPaymentNote({
+              reference: reference ?? undefined,
+              description: row.description ?? undefined,
+              direction: transferDirection,
+              splitNoteTag,
+            });
+
+            await prisma.payment.create({
+              data: {
+                importBatchId: batch.id,
+                paidAt: row.occurredAt,
+                method,
+                note,
+                totalAmount: Number(row.amount.toFixed(2)),
+                createdById: uploadedById,
+              },
+            });
+
+            paymentCreatedCount += 1;
+            infos.push(`Satir ${rowNo}: Hesaplar arasi virman olarak kaydedildi (${transferDirection})`);
+            continue;
+          }
+
           const noteParts = [
             reference ? `BANK_REF:${reference}` : undefined,
             row.description ? `BANK_DESC:${row.description}` : undefined,
@@ -6139,6 +6173,7 @@ router.post("/actions/undo/:actionId", async (req, res) => {
 });
 
 
+router.use(createAdminAccountTransferRoutes());
 router.use(createAdminUploadBatchRoutes({ refreshChargeStatusesForIds }));
 
 router.post("/payments/upload", upload.single("file"), async (req, res) => {
@@ -7670,8 +7705,14 @@ router.get("/reports/summary", async (_req, res) => {
       _sum: { totalAmount: true },
     }),
     prisma.expense.aggregate({ _sum: { amount: true } }),
-    prisma.payment.aggregate({ where: { method: PaymentMethod.BANK_TRANSFER }, _sum: { totalAmount: true } }),
-    prisma.expense.aggregate({ where: { paymentMethod: PaymentMethod.BANK_TRANSFER }, _sum: { amount: true } }),
+    prisma.payment.aggregate({
+      where: { method: PaymentMethod.BANK_TRANSFER, ...prismaExcludeAccountTransferPayments },
+      _sum: { totalAmount: true },
+    }),
+    prisma.expense.aggregate({
+      where: { paymentMethod: PaymentMethod.BANK_TRANSFER, ...prismaExcludeAccountTransferExpenses },
+      _sum: { amount: true },
+    }),
     prisma.payment.findFirst({
       where: { method: PaymentMethod.BANK_TRANSFER },
       orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
@@ -7729,6 +7770,9 @@ router.get("/reports/summary", async (_req, res) => {
   const latestBankPaymentRows = latestBankTransferPayments
     .map((row) => {
       if (row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX)) {
+        return null;
+      }
+      if (isAccountTransferPaymentNote(row.note)) {
         return null;
       }
 
@@ -7955,6 +7999,7 @@ router.get("/reports/summary", async (_req, res) => {
           where: {
             importBatchId: { in: summaryBatchIds },
             note: { contains: "UNCLASSIFIED_COLLECTION:" },
+            NOT: { note: { contains: ACCOUNT_TRANSFER_NOTE_PREFIX } },
           },
           _count: { _all: true },
         }),
@@ -7963,6 +8008,7 @@ router.get("/reports/summary", async (_req, res) => {
           where: {
             importBatchId: { in: summaryBatchIds },
             expenseItem: { code: "SINIFLANDIRILAMAYAN_GIDERLER" },
+            NOT: { description: { contains: ACCOUNT_TRANSFER_NOTE_PREFIX } },
           },
           _count: { _all: true },
         }),

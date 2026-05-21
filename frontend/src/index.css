@@ -6208,6 +6208,13 @@ td {
   text-overflow: ellipsis;
 }
 
+.unclassified-action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 11rem;
+}
+
 .unclassified-inline-edit {
   display: flex;
   align-items: center;

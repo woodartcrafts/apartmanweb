@@ -4,6 +4,7 @@ import {
   formatTry,
   type ApartmentOption,
   type ExpenseItemDefinition,
+  type AccountTransferDirection,
   type UnclassifiedExpenseRow,
   type UnclassifiedPaymentRow,
 } from "../../app/shared";
@@ -18,6 +19,8 @@ type UnclassifiedItemsPageProps = {
   refresh: () => Promise<void>;
   savePaymentDoorNo: (row: UnclassifiedPaymentRow, doorNo: string) => Promise<void>;
   saveExpenseItem: (row: UnclassifiedExpenseRow, expenseItemId: string) => Promise<void>;
+  markPaymentAsAccountTransfer: (row: UnclassifiedPaymentRow, direction: AccountTransferDirection) => Promise<void>;
+  markExpenseAsAccountTransfer: (row: UnclassifiedExpenseRow, direction: AccountTransferDirection) => Promise<void>;
 };
 
 type MixedRow =
@@ -82,9 +85,17 @@ export function UnclassifiedItemsPage({
   refresh,
   savePaymentDoorNo,
   saveExpenseItem,
+  markPaymentAsAccountTransfer,
+  markExpenseAsAccountTransfer,
 }: UnclassifiedItemsPageProps) {
   const [paymentDoorDrafts, setPaymentDoorDrafts] = useState<Record<string, string>>({});
   const [expenseItemDrafts, setExpenseItemDrafts] = useState<Record<string, string>>({});
+  const [paymentTransferDirectionDrafts, setPaymentTransferDirectionDrafts] = useState<
+    Record<string, AccountTransferDirection>
+  >({});
+  const [expenseTransferDirectionDrafts, setExpenseTransferDirectionDrafts] = useState<
+    Record<string, AccountTransferDirection>
+  >({});
 
   const activeExpenseItems =
     expenseItemOptions.filter((x) => x.isActive).length > 0 ? expenseItemOptions.filter((x) => x.isActive) : expenseItemOptions;
@@ -136,8 +147,8 @@ export function UnclassifiedItemsPage({
         </div>
 
         <p className="small">
-          Bu ekranda sadece siniflandirilamayan kayitlar listelenir. Tahsilatta sadece daire no, giderde sadece gider kalemi
-          duzeltilir.
+          Siniflandirilamayan kayitlar listelenir. Aidat tahsilati icin daire no, gider icin kalem secin. Vadeli↔TL aktarimlari
+          icin <b>Hesaplar arasi virman</b> kullanin (daire no gerekmez).
         </p>
 
         <div className="table-wrap compact-row-top-gap">
@@ -195,14 +206,43 @@ export function UnclassifiedItemsPage({
                           </div>
                         </td>
                         <td>
-                          <button
-                            className="btn btn-primary"
-                            type="button"
-                            disabled={loading || !draftDoor.trim()}
-                            onClick={() => void savePaymentDoorNo(row.payment, draftDoor)}
-                          >
-                            Kaydet
-                          </button>
+                          <div className="unclassified-action-stack">
+                            <button
+                              className="btn btn-primary"
+                              type="button"
+                              disabled={loading || !draftDoor.trim()}
+                              onClick={() => void savePaymentDoorNo(row.payment, draftDoor)}
+                            >
+                              Daire Kaydet
+                            </button>
+                            <div className="unclassified-inline-edit">
+                              <select
+                                value={paymentTransferDirectionDrafts[row.id] ?? "VADELI_TO_TL"}
+                                onChange={(e) =>
+                                  setPaymentTransferDirectionDrafts((prev) => ({
+                                    ...prev,
+                                    [row.id]: e.target.value as AccountTransferDirection,
+                                  }))
+                                }
+                              >
+                                <option value="VADELI_TO_TL">Vadeli → TL</option>
+                                <option value="TL_TO_VADELI">TL → Vadeli</option>
+                              </select>
+                              <button
+                                className="btn btn-ghost"
+                                type="button"
+                                disabled={loading}
+                                onClick={() =>
+                                  void markPaymentAsAccountTransfer(
+                                    row.payment,
+                                    paymentTransferDirectionDrafts[row.id] ?? "VADELI_TO_TL"
+                                  )
+                                }
+                              >
+                                Virman Yap
+                              </button>
+                            </div>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -238,14 +278,43 @@ export function UnclassifiedItemsPage({
                         </div>
                       </td>
                       <td>
-                        <button
-                          className="btn btn-primary"
-                          type="button"
-                          disabled={loading || !draftExpenseItemId}
-                          onClick={() => void saveExpenseItem(row.expense, draftExpenseItemId)}
-                        >
-                          Kaydet
-                        </button>
+                        <div className="unclassified-action-stack">
+                          <button
+                            className="btn btn-primary"
+                            type="button"
+                            disabled={loading || !draftExpenseItemId}
+                            onClick={() => void saveExpenseItem(row.expense, draftExpenseItemId)}
+                          >
+                            Kalem Kaydet
+                          </button>
+                          <div className="unclassified-inline-edit">
+                            <select
+                              value={expenseTransferDirectionDrafts[row.id] ?? "TL_TO_VADELI"}
+                              onChange={(e) =>
+                                setExpenseTransferDirectionDrafts((prev) => ({
+                                  ...prev,
+                                  [row.id]: e.target.value as AccountTransferDirection,
+                                }))
+                              }
+                            >
+                              <option value="VADELI_TO_TL">Vadeli → TL</option>
+                              <option value="TL_TO_VADELI">TL → Vadeli</option>
+                            </select>
+                            <button
+                              className="btn btn-ghost"
+                              type="button"
+                              disabled={loading}
+                              onClick={() =>
+                                void markExpenseAsAccountTransfer(
+                                  row.expense,
+                                  expenseTransferDirectionDrafts[row.id] ?? "TL_TO_VADELI"
+                                )
+                              }
+                            >
+                              Virman Yap
+                            </button>
+                          </div>
+                        </div>
                       </td>
                     </tr>
                   );

@@ -180,11 +180,16 @@ export function PaymentEntryPage({
 
   async function onSubmitPayment(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
-    await onCreatePayment({
-      ...paymentForm,
-      method: selectedMethod,
-      items: paymentForm.items,
-    });
+    try {
+      await onCreatePayment({
+        ...paymentForm,
+        method: selectedMethod,
+        items: paymentForm.items,
+      });
+      resetPaymentEntryForm();
+    } catch {
+      // Hata mesaji AdminPage.onCreatePayment icinde gosterilir; form verisi korunur.
+    }
   }
 
   const selectedPaymentTotal = paymentForm.items.reduce((sum, item) => sum + Number(item.amount), 0);

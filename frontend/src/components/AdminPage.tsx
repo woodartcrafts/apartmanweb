@@ -82,6 +82,8 @@ import {
   type UploadBatchDetailsResponse,
   type UploadBatchRow,
   type UploadBatchUploader,
+  type AccountTransferDirection,
+  type AccountTransferRow,
   type UnclassifiedExpenseRow,
   type UnclassifiedPaymentRow,
 } from "../app/shared";
@@ -253,6 +255,11 @@ const StaffContactEditPage = lazy(() =>
 const UnclassifiedItemsPage = lazy(() =>
   import("./admin/UnclassifiedItemsPage").then((module) => ({
     default: module.UnclassifiedItemsPage,
+  }))
+);
+const AccountTransfersPage = lazy(() =>
+  import("./admin/AccountTransfersPage").then((module) => ({
+    default: module.AccountTransfersPage,
   }))
 );
 const MeetingGuidePage = lazy(() =>
@@ -622,6 +629,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [unclassifiedPaymentRows, setUnclassifiedPaymentRows] = useState<UnclassifiedPaymentRow[]>([]);
   const [unclassifiedExpenseRows, setUnclassifiedExpenseRows] = useState<UnclassifiedExpenseRow[]>([]);
   const [unclassifiedPageLoading, setUnclassifiedPageLoading] = useState<boolean>(false);
+  const [accountTransferRows, setAccountTransferRows] = useState<AccountTransferRow[]>([]);
+  const [accountTransferFilter, setAccountTransferFilter] = useState({ from: "", to: "" });
   const [paymentListFilter, setPaymentListFilter] = useState({
     from: "",
     to: "",
@@ -1059,6 +1068,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/bank-statement": "BANK_STATEMENT_IMPORT",
       "/admin/banks/statement-view": "BANK_STATEMENT_VIEW",
       "/admin/upload-batches": "UPLOAD_BATCHES",
+      "/admin/account-transfers": "ACCOUNT_TRANSFERS",
       "/admin/reports/charge-consistency": "CHECK_CHARGE_CONSISTENCY",
       "/admin/reconcile/door-mismatch-report": "CHECK_DOOR_MISMATCH",
       "/admin/reports/bank-statement": "CHECK_BANK_STATEMENT",
@@ -1127,6 +1137,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       { path: "/admin/bank-statement", key: "BANK_STATEMENT_IMPORT" },
       { path: "/admin/banks/statement-view", key: "BANK_STATEMENT_VIEW" },
       { path: "/admin/upload-batches", key: "UPLOAD_BATCHES" },
+      { path: "/admin/account-transfers", key: "ACCOUNT_TRANSFERS" },
       { path: "/admin/reports/charge-consistency", key: "CHECK_CHARGE_CONSISTENCY" },
       { path: "/admin/reconcile/door-mismatch-report", key: "CHECK_DOOR_MISMATCH" },
       { path: "/admin/reports/bank-statement", key: "CHECK_BANK_STATEMENT" },
@@ -4066,6 +4077,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
       const unclassifiedPayments = payments.filter((row) => {
         const note = (row.note ?? "").toUpperCase();
+        if (note.includes("ACCOUNT_TRANSFER:")) {
+          return false;
+        }
         return (
           note.includes("UNCLASSIFIED_COLLECTION:SINIFLANDIRILAMAYAN_TAHSILATLAR") ||
           note.includes("UNAPPLIED:NO_DOOR_NO") ||
@@ -4075,6 +4089,10 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
       const unclassifiedExpenses = expenses.filter((row) => {
         if (row.source === "CHARGE_DISTRIBUTION") {
+          return false;
+        }
+        const description = (row.description ?? "").toUpperCase();
+        if (description.includes("ACCOUNT_TRANSFER:")) {
           return false;
         }
         if (uncategorizedExpenseItemId) {
@@ -4170,6 +4188,108 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     } catch (err) {
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Gider duzeltmesi kaydedilemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchAccountTransfers(filter = accountTransferFilter): Promise<void> {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filter.from) {
+        params.set("from", dateInputToIso(filter.from));
+      }
+      if (filter.to) {
+        params.set("to", dateInputToIso(filter.to));
+      }
+      const endpoint = `/api/admin/account-transfers${params.toString() ? `?${params.toString()}` : ""}`;
+      const rows = await authorizedRequest<AccountTransferRow[]>(endpoint);
+      setAccountTransferRows(rows);
+      setMessage(`Hesaplar arasi virman listesi guncellendi (${rows.length} kayit)`);
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Virman listesi alinamadi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function markPaymentAsAccountTransfer(
+    row: UnclassifiedPaymentRow,
+    direction: AccountTransferDirection
+  ): Promise<void> {
+    setLoading(true);
+    try {
+      await authorizedRequest(`/api/admin/account-transfers/payments/${row.id}/mark`, {
+        method: "POST",
+        payload: { direction },
+      });
+      await Promise.all([
+        loadUnclassifiedRows({ silent: true }),
+        fetchAccountTransfers(accountTransferFilter),
+        fetchPaymentList(paymentListFilter),
+      ]);
+      setMessage(`Tahsilat hesaplar arasi virman olarak isaretlendi (${direction})`);
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Virman isaretlenemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function markExpenseAsAccountTransfer(
+    row: UnclassifiedExpenseRow,
+    direction: AccountTransferDirection
+  ): Promise<void> {
+    setLoading(true);
+    try {
+      await authorizedRequest(`/api/admin/account-transfers/expenses/${row.id}/mark`, {
+        method: "POST",
+        payload: { direction },
+      });
+      await Promise.all([
+        loadUnclassifiedRows({ silent: true }),
+        fetchAccountTransfers(accountTransferFilter),
+        fetchExpenseReport(expenseReportFilter),
+      ]);
+      setMessage(`Gider hesaplar arasi virman olarak isaretlendi (${direction})`);
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Virman isaretlenemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function markUploadBatchMovementAsAccountTransfer(input: {
+    movementType: "PAYMENT" | "EXPENSE";
+    movementId: string;
+    direction: AccountTransferDirection;
+  }): Promise<void> {
+    setLoading(true);
+    try {
+      if (input.movementType === "PAYMENT") {
+        await authorizedRequest(`/api/admin/account-transfers/payments/${input.movementId}/mark`, {
+          method: "POST",
+          payload: { direction: input.direction },
+        });
+      } else {
+        await authorizedRequest(`/api/admin/account-transfers/expenses/${input.movementId}/mark`, {
+          method: "POST",
+          payload: { direction: input.direction },
+        });
+      }
+      await Promise.all([
+        fetchAccountTransfers(accountTransferFilter),
+        fetchUploadBatches(uploadBatchFilter, { silent: true }),
+      ]);
+      setMessage("Kayit hesaplar arasi virman olarak isaretlendi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Virman isaretlenemedi");
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -6811,6 +6931,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     } catch (err) {
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Odeme kaydi basarisiz");
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -8266,6 +8387,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       return;
     }
 
+    if (path === "/admin/account-transfers") {
+      void fetchAccountTransfers();
+      return;
+    }
+
     // Statement pages, apartment list, and bulk correction list are manual-run.
 
     if (path === "/admin/charges/bulk-correct/edit") {
@@ -8821,6 +8947,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/upload-batches">
               Yukleme Kayitlari
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/account-transfers">
+              Hesaplar Arasi Virman
             </NavLink>
           </div>
         </details>
@@ -12642,6 +12771,21 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 deleteUploadBatch={deleteUploadBatch}
                 editUploadBatchMovement={editUploadBatchMovement}
                 deleteUploadBatchMovement={deleteUploadBatchMovement}
+                markMovementAsAccountTransfer={markUploadBatchMovementAsAccountTransfer}
+              />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/account-transfers"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <AccountTransfersPage
+                loading={loading}
+                rows={accountTransferRows}
+                filter={accountTransferFilter}
+                setFilter={setAccountTransferFilter}
+                refresh={() => fetchAccountTransfers()}
               />
             </Suspense>
           }
@@ -13839,6 +13983,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 refresh={() => loadUnclassifiedRows()}
                 savePaymentDoorNo={saveUnclassifiedPaymentDoorNo}
                 saveExpenseItem={saveUnclassifiedExpenseItem}
+                markPaymentAsAccountTransfer={markPaymentAsAccountTransfer}
+                markExpenseAsAccountTransfer={markExpenseAsAccountTransfer}
               />
             </Suspense>
           }
