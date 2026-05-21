@@ -6,6 +6,7 @@ import {
   isLikelyVadeliClosureUnclassifiedPaymentNote,
   parseAccountTransferDirectionFromText,
 } from "./accountTransfer";
+import { isExcludedFromBankCashInNote } from "./operatingBankBalance";
 
 describe("accountTransfer utils", () => {
   it("detects vadeli account closure descriptions", () => {
@@ -14,7 +15,7 @@ describe("accountTransfer utils", () => {
     ).toBe("VADELI_TO_TL");
   });
 
-  it("detects unclassified hesap kapama notes for operating bank exclusion", () => {
+  it("detects unclassified hesap kapama notes", () => {
     const note =
       "BANK_DESC:1188 0543501 numaralı hesap kapama | UNCLASSIFIED_COLLECTION:SINIFLANDIRILAMAYAN_TAHSILATLAR | UNAPPLIED:NO_DOOR_NO";
     expect(isLikelyVadeliClosureUnclassifiedPaymentNote(note)).toBe(true);
@@ -40,5 +41,13 @@ describe("accountTransfer utils", () => {
     expect(note).not.toContain("UNAPPLIED:");
     expect(isAccountTransferPaymentNote(note)).toBe(true);
     expect(parseAccountTransferDirectionFromText(note)).toBe("VADELI_TO_TL");
+  });
+});
+
+describe("operatingBankBalance", () => {
+  it("includes account transfer payments in bank cash in", () => {
+    const note =
+      "BANK_DESC:1188 0543501 numaralı hesap kapama | ACCOUNT_TRANSFER:VADELI_TO_TL | UNAPPLIED:NO_DOOR_NO";
+    expect(isExcludedFromBankCashInNote(note)).toBe(false);
   });
 });

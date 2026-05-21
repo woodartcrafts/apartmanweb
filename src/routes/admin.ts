@@ -37,9 +37,6 @@ import {
   isAccountTransferPaymentNote,
   prismaExcludeAccountTransferExpenses,
   prismaExcludeAccountTransferPayments,
-  prismaExcludeFromOperatingBankPayments,
-  isAccountTransferExpenseDescription,
-  isExcludedFromOperatingBankBalancePaymentNote,
 } from "../utils/accountTransfer";
 import { computeOperatingBankTotals, sumOperatingBankPaymentsIn, sumOperatingBankExpensesOut } from "../utils/operatingBankBalance";
 import {
@@ -7708,7 +7705,7 @@ router.get("/reports/summary", async (_req, res) => {
     }),
     prisma.expense.aggregate({ _sum: { amount: true } }),
     prisma.payment.findFirst({
-      where: { method: PaymentMethod.BANK_TRANSFER, ...prismaExcludeFromOperatingBankPayments },
+      where: { method: PaymentMethod.BANK_TRANSFER },
       orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
       select: { paidAt: true },
     }),
@@ -7766,10 +7763,6 @@ router.get("/reports/summary", async (_req, res) => {
       if (row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX)) {
         return null;
       }
-      if (isAccountTransferPaymentNote(row.note)) {
-        return null;
-      }
-
       const parts = (row.note ?? "")
         .split(" | ")
         .map((x) => x.trim())
@@ -7817,9 +7810,7 @@ router.get("/reports/summary", async (_req, res) => {
         Boolean(row)
     );
 
-  const latestBankExpenseRows = latestBankTransferExpenses
-    .filter((row) => !isAccountTransferExpenseDescription(row.description))
-    .map((row) => ({
+  const latestBankExpenseRows = latestBankTransferExpenses.map((row) => ({
       id: row.id,
       occurredAt: row.spentAt,
       createdAt: row.createdAt,
@@ -8191,9 +8182,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
     }),
   ]);
 
-  const paymentRows = payments
-    .filter((row) => !isExcludedFromOperatingBankBalancePaymentNote(row.note))
-    .map((row) => {
+  const paymentRows = payments.map((row) => {
       const isOpeningBalance = Boolean(row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX));
       const parts = (row.note ?? "")
         .split(" | ")
@@ -8282,11 +8271,9 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
 
   const movementPaymentRows = paymentRows.filter((row) => !row.isOpeningBalance);
 
-  const operatingExpenses = expenses.filter((row) => !isAccountTransferExpenseDescription(row.description));
-
   const rows = [
     ...movementPaymentRows,
-    ...operatingExpenses.map((row) => ({
+    ...expenses.map((row) => ({
       id: row.id,
       occurredAt: row.spentAt,
       entryType: "OUT" as const,
@@ -8312,7 +8299,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
     });
 
   const totalIn = movementPaymentRows.reduce((sum, row) => sum + row.amount, 0);
-  const totalOut = operatingExpenses.reduce((sum, row) => sum + Number(row.amount), 0);
+  const totalOut = expenses.reduce((sum, row) => sum + Number(row.amount), 0);
   const openingBalance = Number(openingAgg._sum.totalAmount ?? 0);
   const priorIn = await sumOperatingBankPaymentsIn(fromDate ? { paidAt: { lt: fromDate } } : {});
   const priorOut = await sumOperatingBankExpensesOut(fromDate ? { spentAt: { lt: fromDate } } : {});
@@ -8334,8 +8321,8 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       startingBalance: Number(startingBalance.toFixed(2)),
       openingDate: openingDate ? openingDate.toISOString() : null,
       paymentCount: movementPaymentRows.length,
-      expenseCount: operatingExpenses.length,
-      movementCount: movementPaymentRows.length + operatingExpenses.length,
+      expenseCount: expenses.length,
+      movementCount: movementPaymentRows.length + expenses.length,
     },
     rows: rows.map((row) => ({
       id: row.id,
@@ -8490,11 +8477,7 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
   const previousExpenseTotal = Number(expenseBeforeYearAgg._sum.amount ?? 0);
 
   const paymentsInYear = paymentsInYearRaw
-    .filter(
-      (row) =>
-        !row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX) &&
-        !isExcludedFromOperatingBankBalancePaymentNote(row.note)
-    )
+    .filter((row) => !row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX))
     .map((row) => {
       const parsedNote = parsePaymentLedgerNote(row.note);
       return {
@@ -8506,9 +8489,7 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
       };
     });
 
-  const expensesInYear = expensesInYearRaw
-    .filter((row) => !isAccountTransferExpenseDescription(row.description))
-    .map((row) => ({
+  const expensesInYear = expensesInYearRaw.map((row) => ({
     id: row.id,
     date: row.spentAt,
     amount: Number(row.amount),

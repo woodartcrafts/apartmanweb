@@ -70,6 +70,10 @@ export function isLikelyVadeliClosureUnclassifiedPaymentNote(note: string | null
   return upper.includes("UNCLASSIFIED_COLLECTION:") || upper.includes("UNAPPLIED:NO_DOOR_NO");
 }
 
+/**
+ * @deprecated Banka kasa bakiyesi icin isExcludedFromBankCashInNote kullanin (virman dahil).
+ * Aidat/siniflandirma raporlari icin virman ve hesap kapamasi ayri degerlendirilir.
+ */
 export function isExcludedFromOperatingBankBalancePaymentNote(note: string | null | undefined): boolean {
   return isAccountTransferPaymentNote(note) || isLikelyVadeliClosureUnclassifiedPaymentNote(note);
 }
