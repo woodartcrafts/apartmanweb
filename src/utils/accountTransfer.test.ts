@@ -21,6 +21,11 @@ describe("accountTransfer utils", () => {
     expect(isAccountTransferPaymentNote(note)).toBe(false);
   });
 
+  it("detects hesap kapama with only UNAPPLIED tag", () => {
+    const note = "BANK_DESC:1188 0567107 numaralı hesap kapama | UNAPPLIED:NO_DOOR_NO";
+    expect(isLikelyVadeliClosureUnclassifiedPaymentNote(note)).toBe(true);
+  });
+
   it("builds payment note without unclassified tags", () => {
     const note = buildAccountTransferPaymentNote({
       reference: "ABC123",

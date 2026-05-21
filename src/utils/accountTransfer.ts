@@ -48,17 +48,26 @@ export function isAccountTransferPaymentNote(note: string | null | undefined): b
   return parseAccountTransferDirectionFromText(note) !== null;
 }
 
-/** Siniflandirilamayan ama aciklamasi vadeli hesap kapamasi olan tahsilatlar (henuz virman isaretlenmemis). */
+function noteHasVadeliClosureHint(note: string): boolean {
+  const normalized = toAsciiLower(note);
+  return (
+    normalized.includes("hesap kapama") ||
+    normalized.includes("hesap kapan") ||
+    normalized.includes("hesap kapatma") ||
+    (normalized.includes("numarali hesap") && normalized.includes("kapam"))
+  );
+}
+
+/** Siniflandirilamayan / dagitimsiz ama aciklamasi vadeli hesap kapamasi olan tahsilatlar (henuz virman isaretlenmemis). */
 export function isLikelyVadeliClosureUnclassifiedPaymentNote(note: string | null | undefined): boolean {
   if (!note) {
     return false;
   }
-  const upper = note.toUpperCase();
-  if (!upper.includes("UNCLASSIFIED_COLLECTION:")) {
+  if (!noteHasVadeliClosureHint(note)) {
     return false;
   }
-  const normalized = toAsciiLower(note);
-  return normalized.includes("hesap kapama") || normalized.includes("hesap kapan");
+  const upper = note.toUpperCase();
+  return upper.includes("UNCLASSIFIED_COLLECTION:") || upper.includes("UNAPPLIED:NO_DOOR_NO");
 }
 
 export function isExcludedFromOperatingBankBalancePaymentNote(note: string | null | undefined): boolean {

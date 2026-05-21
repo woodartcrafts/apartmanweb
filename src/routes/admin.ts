@@ -39,7 +39,9 @@ import {
   prismaExcludeAccountTransferPayments,
   prismaExcludeFromOperatingBankPayments,
   isAccountTransferExpenseDescription,
+  isExcludedFromOperatingBankBalancePaymentNote,
 } from "../utils/accountTransfer";
+import { computeOperatingBankTotals, sumOperatingBankPaymentsIn, sumOperatingBankExpensesOut } from "../utils/operatingBankBalance";
 import {
   mapRequestMethodToAdminAction,
   mapRequestPathToAdminPage,
@@ -7663,8 +7665,6 @@ router.get("/reports/summary", async (_req, res) => {
     openCharges,
     paymentTotalAgg,
     expenseTotalAgg,
-    bankInAgg,
-    bankOutAgg,
     latestBankPayment,
     latestBankExpense,
     latestUploadBatches,
@@ -7707,14 +7707,6 @@ router.get("/reports/summary", async (_req, res) => {
       _sum: { totalAmount: true },
     }),
     prisma.expense.aggregate({ _sum: { amount: true } }),
-    prisma.payment.aggregate({
-      where: { method: PaymentMethod.BANK_TRANSFER, ...prismaExcludeFromOperatingBankPayments },
-      _sum: { totalAmount: true },
-    }),
-    prisma.expense.aggregate({
-      where: { paymentMethod: PaymentMethod.BANK_TRANSFER, ...prismaExcludeAccountTransferExpenses },
-      _sum: { amount: true },
-    }),
     prisma.payment.findFirst({
       where: { method: PaymentMethod.BANK_TRANSFER, ...prismaExcludeFromOperatingBankPayments },
       orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
@@ -7920,8 +7912,7 @@ router.get("/reports/summary", async (_req, res) => {
     }
   }
 
-  const bankInTotal = Number(bankInAgg._sum.totalAmount ?? 0);
-  const bankOutTotal = Number(bankOutAgg._sum.amount ?? 0);
+  const { bankInTotal, bankOutTotal } = await computeOperatingBankTotals();
   const estimatedBankBalance = bankInTotal - bankOutTotal;
 
   const kucukApartmentCount = apartmentsForOverview.filter((x) => x.type === ApartmentType.KUCUK).length;
@@ -8148,7 +8139,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
         }
       : undefined;
 
-  const [payments, expenses, expenseAgg, openingAgg, priorPaymentAgg, priorExpenseAgg] = await Promise.all([
+  const [payments, expenses, openingAgg] = await Promise.all([
     prisma.payment.findMany({
       where: {
         method: PaymentMethod.BANK_TRANSFER,
@@ -8190,13 +8181,6 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       },
       orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
     }),
-    prisma.expense.aggregate({
-      where: {
-        paymentMethod: PaymentMethod.BANK_TRANSFER,
-        ...(spentAtFilter ? { spentAt: spentAtFilter } : {}),
-      },
-      _sum: { amount: true },
-    }),
     prisma.payment.aggregate({
       where: {
         method: PaymentMethod.BANK_TRANSFER,
@@ -8205,23 +8189,11 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       _sum: { totalAmount: true },
       _min: { paidAt: true },
     }),
-    prisma.payment.aggregate({
-      where: {
-        method: PaymentMethod.BANK_TRANSFER,
-        ...(fromDate ? { paidAt: { lt: fromDate } } : {}),
-      },
-      _sum: { totalAmount: true },
-    }),
-    prisma.expense.aggregate({
-      where: {
-        paymentMethod: PaymentMethod.BANK_TRANSFER,
-        ...(fromDate ? { spentAt: { lt: fromDate } } : {}),
-      },
-      _sum: { amount: true },
-    }),
   ]);
 
-  const paymentRows = payments.map((row) => {
+  const paymentRows = payments
+    .filter((row) => !isExcludedFromOperatingBankBalancePaymentNote(row.note))
+    .map((row) => {
       const isOpeningBalance = Boolean(row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX));
       const parts = (row.note ?? "")
         .split(" | ")
@@ -8310,9 +8282,11 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
 
   const movementPaymentRows = paymentRows.filter((row) => !row.isOpeningBalance);
 
+  const operatingExpenses = expenses.filter((row) => !isAccountTransferExpenseDescription(row.description));
+
   const rows = [
     ...movementPaymentRows,
-    ...expenses.map((row) => ({
+    ...operatingExpenses.map((row) => ({
       id: row.id,
       occurredAt: row.spentAt,
       entryType: "OUT" as const,
@@ -8338,10 +8312,10 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
     });
 
   const totalIn = movementPaymentRows.reduce((sum, row) => sum + row.amount, 0);
-  const totalOut = Number(expenseAgg._sum.amount ?? 0);
+  const totalOut = operatingExpenses.reduce((sum, row) => sum + Number(row.amount), 0);
   const openingBalance = Number(openingAgg._sum.totalAmount ?? 0);
-  const priorIn = Number(priorPaymentAgg._sum.totalAmount ?? 0);
-  const priorOut = Number(priorExpenseAgg._sum.amount ?? 0);
+  const priorIn = await sumOperatingBankPaymentsIn(fromDate ? { paidAt: { lt: fromDate } } : {});
+  const priorOut = await sumOperatingBankExpensesOut(fromDate ? { spentAt: { lt: fromDate } } : {});
   const startingBalance = fromDate ? priorIn - priorOut : openingBalance;
   const openingDate = openingAgg._min.paidAt;
 
@@ -8360,8 +8334,8 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       startingBalance: Number(startingBalance.toFixed(2)),
       openingDate: openingDate ? openingDate.toISOString() : null,
       paymentCount: movementPaymentRows.length,
-      expenseCount: expenses.length,
-      movementCount: movementPaymentRows.length + expenses.length,
+      expenseCount: operatingExpenses.length,
+      movementCount: movementPaymentRows.length + operatingExpenses.length,
     },
     rows: rows.map((row) => ({
       id: row.id,
@@ -8445,28 +8419,13 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
     };
   }
 
-  const [
-    incomeBeforeYearAgg,
-    expenseBeforeYearAgg,
-    openingBeforeYearAgg,
-    openingInYearAgg,
-    paymentsInYearRaw,
-    expensesInYearRaw,
-  ] = await Promise.all([
-    prisma.payment.aggregate({
-      where: {
-        method: PaymentMethod.BANK_TRANSFER,
-        paidAt: { lt: yearStart },
-        NOT: {
-          note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX },
-        },
-      },
-      _sum: { totalAmount: true },
-    }),
+  const [expenseBeforeYearAgg, openingBeforeYearAgg, openingInYearAgg, paymentsInYearRaw, expensesInYearRaw] =
+    await Promise.all([
     prisma.expense.aggregate({
       where: {
         paymentMethod: PaymentMethod.BANK_TRANSFER,
         spentAt: { lt: yearStart },
+        ...prismaExcludeAccountTransferExpenses,
       },
       _sum: { amount: true },
     }),
@@ -8524,11 +8483,18 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
   const openingInYear = Number(openingInYearAgg._sum.totalAmount ?? 0);
   const openingBalanceForYear = Number((openingBeforeYear + openingInYear).toFixed(2));
 
-  const previousIncomeTotal = Number(incomeBeforeYearAgg._sum.totalAmount ?? 0);
+  const previousIncomeTotal = await sumOperatingBankPaymentsIn({
+    paidAt: { lt: yearStart },
+    NOT: { note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX } },
+  });
   const previousExpenseTotal = Number(expenseBeforeYearAgg._sum.amount ?? 0);
 
   const paymentsInYear = paymentsInYearRaw
-    .filter((row) => !row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX))
+    .filter(
+      (row) =>
+        !row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX) &&
+        !isExcludedFromOperatingBankBalancePaymentNote(row.note)
+    )
     .map((row) => {
       const parsedNote = parsePaymentLedgerNote(row.note);
       return {
@@ -8540,7 +8506,9 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
       };
     });
 
-  const expensesInYear = expensesInYearRaw.map((row) => ({
+  const expensesInYear = expensesInYearRaw
+    .filter((row) => !isAccountTransferExpenseDescription(row.description))
+    .map((row) => ({
     id: row.id,
     date: row.spentAt,
     amount: Number(row.amount),
