@@ -7243,14 +7243,20 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         rows: BankStatementPreviewRow[];
       };
 
-      setBankPreviewRows(result.rows);
+      const validDoorNos = new Set(
+        apartmentOptions
+          .flatMap((apt) => [apt.doorNo, normalizeDoorNoForMatch(apt.doorNo)])
+          .filter(Boolean)
+      );
+      const autoSplit = autoSplitBankPreviewRows(result.rows, validDoorNos);
+      setBankPreviewRows(autoSplit.rows);
       setBankPreviewFilterMissingOnly(false);
       setBankPreviewFilterSplitOnly(false);
       resetBankPreviewHeaderFilters();
       setBankPreviewFileName(result.fileName || bankStatementFile.name);
       setBankPreviewStatementClosingBalance(result.statementClosingBalance ?? null);
 
-      const occurredAtTimes = result.rows
+      const occurredAtTimes = autoSplit.rows
         .map((row) => new Date(row.occurredAt).getTime())
         .filter((value) => Number.isFinite(value));
       if (occurredAtTimes.length > 0) {
@@ -7260,7 +7266,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         void fetchBankReconciliationReport({ from: minDate, to: maxDate, silent: true });
       }
 
-      setMessage(`Onizleme hazir. ${result.totalRows} satiri duzenleyip kaydedebilirsiniz.`);
+      setMessage(
+        autoSplit.splitSourceCount > 0
+          ? `Onizleme hazir. ${result.totalRows} satirdan ${autoSplit.splitSourceCount} coklu daire satiri otomatik bolundu.`
+          : `Onizleme hazir. ${result.totalRows} satiri duzenleyip kaydedebilirsiniz.`
+      );
       void fetchBulkStatement({ silent: true });
     } catch (err) {
       console.error(err);
@@ -7290,6 +7300,12 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   function normalizeDoorPatternText(value: string): string {
     return value
       .toLocaleLowerCase("tr")
+      .replace(/ı/g, "i")
+      .replace(/ş/g, "s")
+      .replace(/ğ/g, "g")
+      .replace(/ü/g, "u")
+      .replace(/ö/g, "o")
+      .replace(/ç/g, "c")
       .replace(/Ä±/g, "i")
       .replace(/ÅŸ/g, "s")
       .replace(/ÄŸ/g, "g")
@@ -7314,10 +7330,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       ),
     ].flatMap((match) => parseDoorNosFromFreeText(match[1] ?? ""));
 
-    // Support compact formats seen in bank descriptions like D57VE93, D57/93, 57VE93.
+    // D57VED93, D57VE93, D57/93, 57-93
     const compactPairs = [
+      ...text.matchAll(/\bd\s*0*(\d{1,4})ve(?:d)?\s*0*(\d{1,4})\b/g),
       ...text.matchAll(/\bd\s*0*(\d{1,4})\s*(?:ve|veya|\/|&|-)\s*0*(\d{1,4})\b/g),
-      ...text.matchAll(/\b0*(\d{1,4})\s*(?:ve|veya|\/|&)\s*0*(\d{1,4})\b/g),
+      ...text.matchAll(/\b0*(\d{1,4})\s*(?:ve|veya|\/|&|-)\s*0*(\d{1,4})\b/g),
     ].flatMap((match) => [match[1], match[2]]);
 
     const merged = [...new Set([...explicitPrefixedDoorNos, ...groupedByKeyword, ...compactPairs])];
@@ -7326,6 +7343,48 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     }
 
     return [];
+  }
+
+  function resolveSplitDoorNosFromDescription(description: string, validDoorNos: Set<string>): string[] {
+    const knownPairs = [
+      ["57", "93"],
+      ["48", "65"],
+      ["35", "45"],
+    ] as const;
+
+    const normalizedDescription = normalizeDoorPatternText(description);
+
+    for (const [left, right] of knownPairs) {
+      const leftEscaped = left.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const rightEscaped = right.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      const pairPattern = new RegExp(
+        `(?:^|\\D)${leftEscaped}\\s*(?:-|/|ve|veya|&)\\s*${rightEscaped}(?:\\D|$)|(?:^|\\D)${rightEscaped}\\s*(?:-|/|ve|veya|&)\\s*${leftEscaped}(?:\\D|$)`,
+        "i"
+      );
+      const leftToken = new RegExp(`(?:^|\\D)${leftEscaped}(?:\\D|$)`, "i");
+      const rightToken = new RegExp(`(?:^|\\D)${rightEscaped}(?:\\D|$)`, "i");
+
+      const isKnownPairMentioned = pairPattern.test(normalizedDescription);
+      const isSingleKnownMemberMentioned =
+        leftToken.test(normalizedDescription) || rightToken.test(normalizedDescription);
+
+      if (!isKnownPairMentioned && !isSingleKnownMemberMentioned) {
+        continue;
+      }
+
+      const knownDoorNos = [left, right]
+        .map((doorNo) => normalizeDoorNoForMatch(doorNo))
+        .filter((doorNo) => validDoorNos.has(doorNo));
+
+      if (knownDoorNos.length >= 2) {
+        return knownDoorNos;
+      }
+    }
+
+    return extractDoorNosFromDescriptionForSplit(description)
+      .map((doorNo) => normalizeDoorNoForMatch(doorNo))
+      .filter((doorNo) => validDoorNos.has(doorNo));
   }
 
   function normalizeDoorNoForMatch(value: string): string {
@@ -7352,29 +7411,21 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       return [];
     }
 
-    const fromDoorField = parseDoorNosFromFreeText(row.doorNo ?? "");
-    const fromDescription = extractDoorNosFromDescriptionForSplit(row.description);
-    return [...new Set([...fromDoorField, ...fromDescription].map(normalizeDoorNoForMatch))].filter((doorNo) =>
-      validDoorNos.has(doorNo)
-    );
+    const fromDoorField = parseDoorNosFromFreeText(row.doorNo ?? "")
+      .map((doorNo) => normalizeDoorNoForMatch(doorNo))
+      .filter((doorNo) => validDoorNos.has(doorNo));
+    const fromDescription = resolveSplitDoorNosFromDescription(row.description, validDoorNos);
+    return [...new Set([...fromDoorField, ...fromDescription])];
   }
 
-  function onAutoSplitMultiDoorBankRows(): void {
-    if (bankPreviewRows.length === 0) {
-      setMessage("Onizleme satiri yok");
-      return;
-    }
-
-    const validDoorNos = new Set(
-      apartmentOptions
-        .flatMap((apt) => [apt.doorNo, normalizeDoorNoForMatch(apt.doorNo)])
-        .filter(Boolean)
-    );
-
-    let splitSourceCount = 0;
+  function autoSplitBankPreviewRows(
+    rows: BankStatementPreviewRow[],
+    validDoorNos: Set<string>
+  ): { rows: BankStatementPreviewRow[]; splitSourceCount: number } {
     const nextRows: BankStatementPreviewRow[] = [];
+    let splitSourceCount = 0;
 
-    for (const row of bankPreviewRows) {
+    for (const row of rows) {
       if (row.entryType !== "PAYMENT" || !Number.isFinite(row.amount) || row.amount <= 0) {
         nextRows.push({
           ...row,
@@ -7410,6 +7461,23 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         });
       });
     }
+
+    return { rows: nextRows, splitSourceCount };
+  }
+
+  function onAutoSplitMultiDoorBankRows(): void {
+    if (bankPreviewRows.length === 0) {
+      setMessage("Onizleme satiri yok");
+      return;
+    }
+
+    const validDoorNos = new Set(
+      apartmentOptions
+        .flatMap((apt) => [apt.doorNo, normalizeDoorNoForMatch(apt.doorNo)])
+        .filter(Boolean)
+    );
+
+    const { rows: nextRows, splitSourceCount } = autoSplitBankPreviewRows(bankPreviewRows, validDoorNos);
 
     if (splitSourceCount === 0) {
       setMessage("Bolinecek coklu daire satiri bulunamadi");
