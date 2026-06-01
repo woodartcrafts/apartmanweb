@@ -875,6 +875,7 @@ export type BankReconciliationReportResponse = {
     net: number;
     openingBalance: number;
     startingBalance: number;
+    closingBalance: number;
     openingDate: string | null;
     paymentCount: number;
     expenseCount: number;

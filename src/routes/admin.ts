@@ -44,6 +44,8 @@ import {
   computeOperatingBankTotals,
   isExcludedFromBankCashInNote,
   isExcludedFromBankCashOutDescription,
+  isOperatingBankPaymentRow,
+  sumOpeningBankBalance,
   sumOperatingBankPaymentsIn,
   sumOperatingBankExpensesOut,
 } from "../utils/operatingBankBalance";
@@ -8204,16 +8206,16 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
         }
       : undefined;
 
-  const [payments, expenses, openingAgg] = await Promise.all([
+  const [payments, expenses, openingBalance, openingDatePayment] = await Promise.all([
     prisma.payment.findMany({
       where: {
-        method: PaymentMethod.BANK_TRANSFER,
         ...(paidAtFilter ? { paidAt: paidAtFilter } : {}),
       },
       select: {
         id: true,
         paidAt: true,
         totalAmount: true,
+        method: true,
         note: true,
         createdAt: true,
         importBatch: {
@@ -8246,19 +8248,19 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       },
       orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
     }),
-    prisma.payment.aggregate({
-      where: {
-        method: PaymentMethod.BANK_TRANSFER,
-        note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX },
-      },
-      _sum: { totalAmount: true },
-      _min: { paidAt: true },
+    sumOpeningBankBalance(),
+    prisma.payment.findFirst({
+      where: { note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX } },
+      orderBy: [{ paidAt: "asc" }],
+      select: { paidAt: true },
     }),
   ]);
 
   const operatingPayments = payments.filter(
     (row) =>
-      !row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX) && !isExcludedFromBankCashInNote(row.note)
+      isOperatingBankPaymentRow(row) &&
+      !row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX) &&
+      !isExcludedFromBankCashInNote(row.note)
   );
 
   const paymentRows = operatingPayments.map((row) => {
@@ -8378,15 +8380,17 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
         return createdDiff;
       }
       return b.id.localeCompare(a.id);
-    });
+    })
+    .slice(0, limit);
 
-  const totalIn = movementPaymentRows.reduce((sum, row) => sum + row.amount, 0);
-  const totalOut = operatingExpenseRows.reduce((sum, row) => sum + Number(row.amount), 0);
-  const openingBalance = Number(openingAgg._sum.totalAmount ?? 0);
+  const totalIn = Number(movementPaymentRows.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
+  const totalOut = Number(operatingExpenseRows.reduce((sum, row) => sum + Number(row.amount), 0).toFixed(2));
   const priorIn = await sumOperatingBankPaymentsIn(fromDate ? { paidAt: { lt: fromDate } } : {});
   const priorOut = await sumOperatingBankExpensesOut(fromDate ? { spentAt: { lt: fromDate } } : {});
-  const startingBalance = fromDate ? priorIn - priorOut : openingBalance;
-  const openingDate = openingAgg._min.paidAt;
+  const startingBalance = fromDate
+    ? Number((openingBalance + priorIn - priorOut).toFixed(2))
+    : Number(openingBalance.toFixed(2));
+  const closingBalance = Number((startingBalance + totalIn - totalOut).toFixed(2));
 
   return res.json({
     snapshotAt: new Date(),
@@ -8396,14 +8400,15 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       limit,
     },
     totals: {
-      totalIn: Number(totalIn.toFixed(2)),
-      totalOut: Number(totalOut.toFixed(2)),
+      totalIn,
+      totalOut,
       net: Number((totalIn - totalOut).toFixed(2)),
       openingBalance: Number(openingBalance.toFixed(2)),
-      startingBalance: Number(startingBalance.toFixed(2)),
-      openingDate: openingDate ? openingDate.toISOString() : null,
+      startingBalance,
+      closingBalance,
+      openingDate: openingDatePayment?.paidAt?.toISOString() ?? null,
       paymentCount: movementPaymentRows.length,
-      expenseCount: expenses.length,
+      expenseCount: operatingExpenseRows.length,
       movementCount: movementPaymentRows.length + operatingExpenseRows.length,
     },
     rows: rows.map((row) => ({
