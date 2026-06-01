@@ -42,6 +42,7 @@ import {
   buildBankBalanceAuditRows,
   computeOperatingBankBalanceSnapshot,
   computeOperatingBankTotals,
+  computeRunningBalancesByMovementId,
   isExcludedFromBankCashInNote,
   isExcludedFromBankCashOutDescription,
   isOperatingBankPaymentRow,
@@ -8355,7 +8356,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
     (row) => !isExcludedFromBankCashOutDescription(row.description, row.reference)
   );
 
-  const rows = [
+  const ledgerRows = [
     ...movementPaymentRows,
     ...operatingExpenseRows.map((row) => ({
       id: row.id,
@@ -8369,19 +8370,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       fileName: row.importBatch?.fileName ?? null,
       createdAt: row.createdAt,
     })),
-  ]
-    .sort((a, b) => {
-      const occurredDiff = b.occurredAt.getTime() - a.occurredAt.getTime();
-      if (occurredDiff !== 0) {
-        return occurredDiff;
-      }
-      const createdDiff = b.createdAt.getTime() - a.createdAt.getTime();
-      if (createdDiff !== 0) {
-        return createdDiff;
-      }
-      return b.id.localeCompare(a.id);
-    })
-    .slice(0, limit);
+  ];
 
   const totalIn = Number(movementPaymentRows.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
   const totalOut = Number(operatingExpenseRows.reduce((sum, row) => sum + Number(row.amount), 0).toFixed(2));
@@ -8391,6 +8380,24 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
     ? Number((openingBalance + priorIn - priorOut).toFixed(2))
     : Number(openingBalance.toFixed(2));
   const closingBalance = Number((startingBalance + totalIn - totalOut).toFixed(2));
+  const runningBalanceById = computeRunningBalancesByMovementId(ledgerRows, startingBalance);
+
+  const rows = [...ledgerRows]
+    .sort((a, b) => {
+      const occurredDiff = b.occurredAt.getTime() - a.occurredAt.getTime();
+      if (occurredDiff !== 0) {
+        return occurredDiff;
+      }
+      const createdDiff = b.createdAt.getTime() - a.createdAt.getTime();
+      if (createdDiff !== 0) {
+        return createdDiff;
+      }
+      if (a.entryType !== b.entryType) {
+        return a.entryType === "IN" ? 1 : -1;
+      }
+      return b.id.localeCompare(a.id);
+    })
+    .slice(0, limit);
 
   return res.json({
     snapshotAt: new Date(),
@@ -8416,12 +8423,14 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       occurredAt: row.occurredAt.toISOString(),
       entryType: row.entryType,
       amount: Number(row.amount.toFixed(2)),
+      runningBalance: runningBalanceById.get(row.id) ?? startingBalance,
       description: row.description,
       reference: row.reference,
       isOpeningBalance: row.isOpeningBalance,
       source: row.source,
       fileName: row.fileName,
     })),
+    allTimeBalance: fromDate || toDateExclusive ? null : closingBalance,
   });
 });
 

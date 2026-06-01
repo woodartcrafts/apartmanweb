@@ -855,6 +855,7 @@ export type BankReconciliationRow = {
   occurredAt: string;
   entryType: "IN" | "OUT";
   amount: number;
+  runningBalance: number;
   description: string | null;
   reference: string | null;
   isOpeningBalance: boolean;
@@ -882,6 +883,7 @@ export type BankReconciliationReportResponse = {
     movementCount: number;
   };
   rows: BankReconciliationRow[];
+  allTimeBalance: number | null;
 };
 
 export type MonthlyLedgerPrintRow = {

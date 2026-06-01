@@ -680,7 +680,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [bankStatementViewOpeningBalance, setBankStatementViewOpeningBalance] = useState(0);
   const [bankStatementViewTotals, setBankStatementViewTotals] =
     useState<BankReconciliationReportResponse["totals"] | null>(null);
-  const [bankStatementViewFilter, setBankStatementViewFilter] = useState(() => getCurrentMonthDateRange());
+  const [bankStatementViewFilter, setBankStatementViewFilter] = useState({ from: "", to: "" });
+  const [bankStatementViewAllTimeBalance, setBankStatementViewAllTimeBalance] = useState<number | null>(null);
   const [uploadBatchUploaders, setUploadBatchUploaders] = useState<UploadBatchUploader[]>([]);
   const [reportsSummary, setReportsSummary] = useState<ReportsSummaryResponse | null>(null);
   const [reportsSummaryLoading, setReportsSummaryLoading] = useState(false);
@@ -4852,6 +4853,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       setBankStatementViewRows(data.rows);
       setBankStatementViewTotals(data.totals);
       setBankStatementViewOpeningBalance(data.totals.startingBalance);
+      setBankStatementViewAllTimeBalance(data.allTimeBalance ?? null);
     } catch (err) {
       console.error(err);
       if (!silent) {
@@ -5869,7 +5871,22 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     setLoading(true);
     try {
       await fetchBankStatementViewRows(nextFilter);
-      setMessage("Banka hareketleri filtresi bu aya alindi");
+      setMessage("Banka hareketleri: bu ay listelendi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Banka hareketleri listelenemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadBankStatementViewAllTime(): Promise<void> {
+    const nextFilter = { from: "", to: "" };
+    setBankStatementViewFilter(nextFilter);
+    setLoading(true);
+    try {
+      await fetchBankStatementViewRows(nextFilter);
+      setMessage("Banka hareketleri: tum zamanlar (ana sayfa bakiyesi)");
     } catch (err) {
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Banka hareketleri listelenemedi");
@@ -8369,10 +8386,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       return;
     }
 
-    if (path === "/admin/banks/statement-view") {
-      const initialFilter = getCurrentMonthDateRange();
-      setBankStatementViewFilter(initialFilter);
-      void fetchBankStatementViewRows(initialFilter, { silent: true });
+    if (path === "/admin/reports/bank-movements" || path === "/admin/banks/statement-view") {
+      void loadBankStatementViewAllTime();
       return;
     }
 
@@ -13518,10 +13533,12 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 rows={bankStatementViewRows}
                 openingBalance={bankStatementViewOpeningBalance}
                 totals={bankStatementViewTotals}
+                allTimeBalance={bankStatementViewAllTimeBalance}
                 filter={bankStatementViewFilter}
                 setFilter={setBankStatementViewFilter}
                 runQuery={runBankStatementViewQuery}
                 resetToCurrentMonth={resetBankStatementViewToCurrentMonth}
+                loadAllTime={loadBankStatementViewAllTime}
               />
             </Suspense>
           }
@@ -13891,10 +13908,12 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 rows={bankStatementViewRows}
                 openingBalance={bankStatementViewOpeningBalance}
                 totals={bankStatementViewTotals}
+                allTimeBalance={bankStatementViewAllTimeBalance}
                 filter={bankStatementViewFilter}
                 setFilter={setBankStatementViewFilter}
                 runQuery={runBankStatementViewQuery}
                 resetToCurrentMonth={resetBankStatementViewToCurrentMonth}
+                loadAllTime={loadBankStatementViewAllTime}
               />
             </Suspense>
           }

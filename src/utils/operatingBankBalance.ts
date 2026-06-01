@@ -240,6 +240,48 @@ export async function computeOperatingBankBalanceSnapshot(): Promise<OperatingBa
   };
 }
 
+export type BankMovementSortable = {
+  id: string;
+  occurredAt: Date;
+  createdAt: Date;
+  entryType: "IN" | "OUT";
+};
+
+export function compareBankMovementsChronologically(a: BankMovementSortable, b: BankMovementSortable): number {
+  const occurredDiff = a.occurredAt.getTime() - b.occurredAt.getTime();
+  if (occurredDiff !== 0) {
+    return occurredDiff;
+  }
+
+  const createdDiff = a.createdAt.getTime() - b.createdAt.getTime();
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+
+  if (a.entryType !== b.entryType) {
+    return a.entryType === "IN" ? -1 : 1;
+  }
+
+  return a.id.localeCompare(b.id);
+}
+
+export function computeRunningBalancesByMovementId(
+  rows: Array<BankMovementSortable & { amount: number }>,
+  startingBalance: number
+): Map<string, number> {
+  const sorted = [...rows].sort(compareBankMovementsChronologically);
+  const balanceById = new Map<string, number>();
+  let running = Number(startingBalance.toFixed(2));
+
+  for (const row of sorted) {
+    const signedAmount = row.entryType === "IN" ? Number(row.amount) : -Number(row.amount);
+    running = Number((running + signedAmount).toFixed(2));
+    balanceById.set(row.id, running);
+  }
+
+  return balanceById;
+}
+
 export type BankBalanceAuditRow = {
   id: string;
   movementType: "PAYMENT" | "EXPENSE";

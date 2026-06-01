@@ -20,10 +20,12 @@ type BankStatementViewPageProps = {
   rows?: BankReconciliationRow[];
   openingBalance: number;
   totals?: BankStatementViewTotals | null;
+  allTimeBalance?: number | null;
   filter: BankStatementViewFilterState;
   setFilter: Dispatch<SetStateAction<BankStatementViewFilterState>>;
   runQuery: () => Promise<void>;
   resetToCurrentMonth: () => Promise<void>;
+  loadAllTime: () => Promise<void>;
 };
 
 export function BankStatementViewPage({
@@ -31,12 +33,15 @@ export function BankStatementViewPage({
   rows,
   openingBalance,
   totals,
+  allTimeBalance,
   filter,
   setFilter,
   runQuery,
   resetToCurrentMonth,
+  loadAllTime,
 }: BankStatementViewPageProps) {
   const safeRows = Array.isArray(rows) ? rows : [];
+  const hasDateFilter = Boolean(filter.from || filter.to);
 
   const sortedRows = useMemo(
     () =>
@@ -56,25 +61,7 @@ export function BankStatementViewPage({
     [safeRows]
   );
 
-  const balanceByRowId = useMemo(() => {
-    const byId = new Map<string, number>();
-    const rowsByDateAsc = [...safeRows].sort((a, b) => {
-      const dateCompare = new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime();
-      if (dateCompare !== 0) {
-        return dateCompare;
-      }
-      return a.id.localeCompare(b.id, "tr", { sensitivity: "base" });
-    });
-
-    let runningBalance = Number(openingBalance);
-    for (const row of rowsByDateAsc) {
-      const signedAmount = row.entryType === "IN" ? Number(row.amount) : -Number(row.amount);
-      runningBalance += signedAmount;
-      byId.set(row.id, runningBalance);
-    }
-
-    return byId;
-  }, [safeRows, openingBalance]);
+  const displayBalance = hasDateFilter ? totals?.closingBalance : (allTimeBalance ?? totals?.closingBalance);
 
   return (
     <section className="dashboard report-page bank-statement-view-page">
@@ -85,34 +72,50 @@ export function BankStatementViewPage({
             <button className="btn btn-primary btn-run" type="button" onClick={() => void runQuery()} disabled={loading}>
               Listele
             </button>
+            <button className="btn btn-ghost" type="button" onClick={() => void loadAllTime()} disabled={loading}>
+              Tum Zamanlar
+            </button>
             <button className="btn btn-ghost" type="button" onClick={() => void resetToCurrentMonth()} disabled={loading}>
-              Temizle
+              Bu Ay
             </button>
           </div>
         </div>
 
         <p className="small">
-          Sistemdeki banka hareketleri listelenir. Bakiye sutunu donem devirinden itibaren kumulatif hesaplanir (ana sayfa ile
-          ayni kurallar: acilis + giris - gider, vadeli kapama giderleri haric).
+          Bakiye sutunu sunucuda hesaplanir (ana sayfa ile ayni kurallar). Tarih filtresi yokken guncel banka bakiyesi ana
+          sayfadaki ile ayni olmalidir.
         </p>
+
+        {displayBalance != null && !hasDateFilter && (
+          <article className="card stat stat-tone-good compact-row-top-gap">
+            <h4>Guncel Banka Bakiyesi</h4>
+            <p className="reports-home-balance-value">
+              <span>{formatTry(displayBalance)}</span>
+              <span className="reports-home-balance-match-icon reports-home-balance-match-icon-ok" aria-hidden="true">
+                ✔
+              </span>
+            </p>
+            <span className="small">Ana sayfa banka bakiyesi ile karsilastirin</span>
+          </article>
+        )}
 
         {totals && (
           <div className="stats-grid compact-row-top-gap bank-statement-totals-grid">
             <article className="card stat stat-tone-good">
-              <h4>Donem Devir</h4>
+              <h4>{hasDateFilter ? "Donem Devir" : "Acilis + Onceki"}</h4>
               <p>{formatTry(totals.startingBalance)}</p>
               <span className="small">Sistem acilis: {formatTry(totals.openingBalance)}</span>
             </article>
             <article className="card stat stat-tone-good">
-              <h4>Donem Girisi</h4>
+              <h4>{hasDateFilter ? "Donem Girisi" : "Toplam Giris"}</h4>
               <p>{formatTry(totals.totalIn)}</p>
             </article>
             <article className="card stat stat-tone-warn">
-              <h4>Donem Cikisi</h4>
+              <h4>{hasDateFilter ? "Donem Cikisi" : "Toplam Cikis"}</h4>
               <p>{formatTry(totals.totalOut)}</p>
             </article>
             <article className={`card stat ${totals.closingBalance >= 0 ? "stat-tone-good" : "stat-tone-danger"}`}>
-              <h4>Donem Sonu Bakiye</h4>
+              <h4>{hasDateFilter ? "Donem Sonu Bakiye" : "Hesaplanan Bakiye"}</h4>
               <p>{formatTry(totals.closingBalance)}</p>
               <span className="small">Devir + giris - cikis</span>
             </article>
@@ -152,10 +155,24 @@ export function BankStatementViewPage({
               </tr>
             </thead>
             <tbody>
+              <tr className="bank-statement-devir-row">
+                <td>{filter.from || (hasDateFilter ? "-" : "Tum")}</td>
+                <td>Devir</td>
+                <td className="col-num">-</td>
+                <td className="col-num">{formatTry(openingBalance)}</td>
+                <td>
+                  {hasDateFilter
+                    ? "Donem basi devir (acilis + filtreden onceki hareketler)"
+                    : "Acilis bakiyesi (hareketler oncesi)"}
+                </td>
+                <td>-</td>
+                <td>Sistem</td>
+              </tr>
+
               {sortedRows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="empty">
-                    Kayit bulunamadi
+                    Kayit bulunamadi — Listele veya Tum Zamanlar
                   </td>
                 </tr>
               ) : (
@@ -167,12 +184,10 @@ export function BankStatementViewPage({
                       {row.entryType === "OUT" ? "-" : ""}
                       {formatTry(row.amount)}
                     </td>
-                    <td className={`col-num ${(balanceByRowId.get(row.id) ?? 0) < 0 ? "col-num-negative" : ""}`}>
-                      {formatTry(balanceByRowId.get(row.id) ?? 0)}
+                    <td className={`col-num ${row.runningBalance < 0 ? "col-num-negative" : ""}`}>
+                      {formatTry(row.runningBalance)}
                     </td>
-                    <td title={row.description ?? "-"}>
-                      {row.description ?? "-"}
-                    </td>
+                    <td title={row.description ?? "-"}>{row.description ?? "-"}</td>
                     <td className="bank-statement-cell-reference" title={row.reference ?? "-"}>
                       {row.reference ?? "-"}
                     </td>
@@ -195,16 +210,6 @@ export function BankStatementViewPage({
                   </tr>
                 ))
               )}
-
-              <tr className="bank-statement-devir-row">
-                <td>{filter.from || "-"}</td>
-                <td>Devir</td>
-                <td className="col-num">-</td>
-                <td className="col-num">{formatTry(openingBalance)}</td>
-                <td>Donem basi devir bakiyesi (acilis + onceki hareketler)</td>
-                <td>-</td>
-                <td>Sistem</td>
-              </tr>
             </tbody>
           </table>
         </div>
