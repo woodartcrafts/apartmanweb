@@ -1526,15 +1526,7 @@ function parseAmount(raw: unknown): number | null {
 }
 
 function normalizeHeader(value: string): string {
-  return value
-    .toLocaleLowerCase("tr")
-    .replace(/Ä±/g, "i")
-    .replace(/ÅŸ/g, "s")
-    .replace(/ÄŸ/g, "g")
-    .replace(/Ã¼/g, "u")
-    .replace(/Ã¶/g, "o")
-    .replace(/Ã§/g, "c")
-    .replace(/[^a-z0-9]+/g, "");
+  return toAsciiLower(value).replace(/[^a-z0-9]+/g, "");
 }
 
 function extractChargeInvoiceFileName(description: string | null | undefined): string | null {
