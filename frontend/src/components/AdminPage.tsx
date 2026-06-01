@@ -678,10 +678,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [uploadBatchRows, setUploadBatchRows] = useState<UploadBatchRow[]>([]);
   const [bankStatementViewRows, setBankStatementViewRows] = useState<BankReconciliationRow[]>([]);
   const [bankStatementViewOpeningBalance, setBankStatementViewOpeningBalance] = useState(0);
-  const [bankStatementViewTotals, setBankStatementViewTotals] =
-    useState<BankReconciliationReportResponse["totals"] | null>(null);
-  const [bankStatementViewFilter, setBankStatementViewFilter] = useState({ from: "", to: "" });
-  const [bankStatementViewAllTimeBalance, setBankStatementViewAllTimeBalance] = useState<number | null>(null);
+  const [bankStatementViewFilter, setBankStatementViewFilter] = useState(() => getCurrentMonthDateRange());
   const [uploadBatchUploaders, setUploadBatchUploaders] = useState<UploadBatchUploader[]>([]);
   const [reportsSummary, setReportsSummary] = useState<ReportsSummaryResponse | null>(null);
   const [reportsSummaryLoading, setReportsSummaryLoading] = useState(false);
@@ -4851,9 +4848,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       const endpoint = `/api/admin/reports/bank-reconciliation?${params.toString()}`;
       const data = await authorizedRequest<BankReconciliationReportResponse>(endpoint);
       setBankStatementViewRows(data.rows);
-      setBankStatementViewTotals(data.totals);
       setBankStatementViewOpeningBalance(data.totals.startingBalance);
-      setBankStatementViewAllTimeBalance(data.allTimeBalance ?? null);
     } catch (err) {
       console.error(err);
       if (!silent) {
@@ -8387,7 +8382,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     }
 
     if (path === "/admin/reports/bank-movements" || path === "/admin/banks/statement-view") {
-      void loadBankStatementViewAllTime();
+      const initialFilter = getCurrentMonthDateRange();
+      setBankStatementViewFilter(initialFilter);
+      void fetchBankStatementViewRows(initialFilter, { silent: true });
       return;
     }
 
@@ -13532,8 +13529,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 loading={loading}
                 rows={bankStatementViewRows}
                 openingBalance={bankStatementViewOpeningBalance}
-                totals={bankStatementViewTotals}
-                allTimeBalance={bankStatementViewAllTimeBalance}
                 filter={bankStatementViewFilter}
                 setFilter={setBankStatementViewFilter}
                 runQuery={runBankStatementViewQuery}
@@ -13907,8 +13902,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 loading={loading}
                 rows={bankStatementViewRows}
                 openingBalance={bankStatementViewOpeningBalance}
-                totals={bankStatementViewTotals}
-                allTimeBalance={bankStatementViewAllTimeBalance}
                 filter={bankStatementViewFilter}
                 setFilter={setBankStatementViewFilter}
                 runQuery={runBankStatementViewQuery}
