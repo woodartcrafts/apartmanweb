@@ -8384,10 +8384,11 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
   const runningBalanceById = computeRunningBalancesByMovementId(ledgerRows, startingBalance);
 
   const rowsChronological = [...ledgerRows].sort(compareBankMovementsChronologically);
-  const rows =
+  const rowsLimited =
     rowsChronological.length > limit
       ? rowsChronological.slice(rowsChronological.length - limit)
       : rowsChronological;
+  const rows = [...rowsLimited].reverse();
 
   return res.json({
     snapshotAt: new Date(),

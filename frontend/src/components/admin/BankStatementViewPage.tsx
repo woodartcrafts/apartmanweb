@@ -48,8 +48,7 @@ export function BankStatementViewPage({
         </div>
 
         <p className="small">
-          Hareketler eskiden yeniye siralanir. Bakiye sutunu her satirda islem sonrasi kalan tutari gosterir (devir +
-          giris - cikis).
+          Hareketler yeniden eskiye (Z→A) siralanir. Bakiye: o islem sonrasi kalan tutar (devir + giris - cikis).
         </p>
 
         <div className="upload-batch-filter-row bank-statement-filter-row compact-row-top-gap">
@@ -85,16 +84,6 @@ export function BankStatementViewPage({
               </tr>
             </thead>
             <tbody>
-              <tr className="bank-statement-devir-row">
-                <td>{filter.from || "-"}</td>
-                <td>Devir</td>
-                <td className="col-num">-</td>
-                <td className="col-num">{formatTry(openingBalance)}</td>
-                <td>Donem basi devir bakiyesi</td>
-                <td>-</td>
-                <td>Sistem</td>
-              </tr>
-
               {safeRows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="empty">
@@ -136,6 +125,16 @@ export function BankStatementViewPage({
                   </tr>
                 ))
               )}
+
+              <tr className="bank-statement-devir-row">
+                <td>{filter.from || "-"}</td>
+                <td>Devir</td>
+                <td className="col-num">-</td>
+                <td className="col-num">{formatTry(openingBalance)}</td>
+                <td>Donem basi devir bakiyesi</td>
+                <td>-</td>
+                <td>Sistem</td>
+              </tr>
             </tbody>
           </table>
         </div>
