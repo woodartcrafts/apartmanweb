@@ -1,4 +1,4 @@
-import { useMemo, type Dispatch, type SetStateAction } from "react";
+import { type Dispatch, type SetStateAction } from "react";
 import { formatDateTr, formatTry, type BankReconciliationRow } from "../../app/shared";
 
 type BankStatementViewFilterState = {
@@ -29,24 +29,6 @@ export function BankStatementViewPage({
 }: BankStatementViewPageProps) {
   const safeRows = Array.isArray(rows) ? rows : [];
 
-  const sortedRows = useMemo(
-    () =>
-      [...safeRows].sort((a, b) => {
-        const dateCompare = new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime();
-        if (dateCompare !== 0) {
-          return dateCompare;
-        }
-
-        const typeCompare = b.entryType.localeCompare(a.entryType, "tr", { sensitivity: "base" });
-        if (typeCompare !== 0) {
-          return typeCompare;
-        }
-
-        return (b.description ?? "").localeCompare(a.description ?? "", "tr", { sensitivity: "base" });
-      }),
-    [safeRows]
-  );
-
   return (
     <section className="dashboard report-page bank-statement-view-page">
       <div className="card table-card">
@@ -65,7 +47,10 @@ export function BankStatementViewPage({
           </div>
         </div>
 
-        <p className="small">Secili tarih araligindaki banka hareketleri. Bakiye sutunu donem devirinden itibaren hesaplanir.</p>
+        <p className="small">
+          Hareketler eskiden yeniye siralanir. Bakiye sutunu her satirda islem sonrasi kalan tutari gosterir (devir +
+          giris - cikis).
+        </p>
 
         <div className="upload-batch-filter-row bank-statement-filter-row compact-row-top-gap">
           <label className="bank-statement-filter-inline">
@@ -100,14 +85,24 @@ export function BankStatementViewPage({
               </tr>
             </thead>
             <tbody>
-              {sortedRows.length === 0 ? (
+              <tr className="bank-statement-devir-row">
+                <td>{filter.from || "-"}</td>
+                <td>Devir</td>
+                <td className="col-num">-</td>
+                <td className="col-num">{formatTry(openingBalance)}</td>
+                <td>Donem basi devir bakiyesi</td>
+                <td>-</td>
+                <td>Sistem</td>
+              </tr>
+
+              {safeRows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="empty">
                     Kayit bulunamadi
                   </td>
                 </tr>
               ) : (
-                sortedRows.map((row) => (
+                safeRows.map((row) => (
                   <tr key={row.id}>
                     <td>{formatDateTr(row.occurredAt)}</td>
                     <td>{row.entryType === "IN" ? "Giris" : "Cikis"}</td>
@@ -141,16 +136,6 @@ export function BankStatementViewPage({
                   </tr>
                 ))
               )}
-
-              <tr className="bank-statement-devir-row">
-                <td>{filter.from || "-"}</td>
-                <td>Devir</td>
-                <td className="col-num">-</td>
-                <td className="col-num">{formatTry(openingBalance)}</td>
-                <td>Donem basi devir bakiyesi</td>
-                <td>-</td>
-                <td>Sistem</td>
-              </tr>
             </tbody>
           </table>
         </div>

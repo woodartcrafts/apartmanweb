@@ -853,6 +853,7 @@ export type FractionalClosureReportResponse = {
 export type BankReconciliationRow = {
   id: string;
   occurredAt: string;
+  createdAt: string;
   entryType: "IN" | "OUT";
   amount: number;
   runningBalance: number;

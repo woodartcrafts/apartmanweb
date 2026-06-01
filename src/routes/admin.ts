@@ -42,6 +42,7 @@ import {
   buildBankBalanceAuditRows,
   computeOperatingBankBalanceSnapshot,
   computeOperatingBankTotals,
+  compareBankMovementsChronologically,
   computeRunningBalancesByMovementId,
   isExcludedFromBankCashInNote,
   isExcludedFromBankCashOutDescription,
@@ -8382,22 +8383,11 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
   const closingBalance = Number((startingBalance + totalIn - totalOut).toFixed(2));
   const runningBalanceById = computeRunningBalancesByMovementId(ledgerRows, startingBalance);
 
-  const rows = [...ledgerRows]
-    .sort((a, b) => {
-      const occurredDiff = b.occurredAt.getTime() - a.occurredAt.getTime();
-      if (occurredDiff !== 0) {
-        return occurredDiff;
-      }
-      const createdDiff = b.createdAt.getTime() - a.createdAt.getTime();
-      if (createdDiff !== 0) {
-        return createdDiff;
-      }
-      if (a.entryType !== b.entryType) {
-        return a.entryType === "IN" ? 1 : -1;
-      }
-      return b.id.localeCompare(a.id);
-    })
-    .slice(0, limit);
+  const rowsChronological = [...ledgerRows].sort(compareBankMovementsChronologically);
+  const rows =
+    rowsChronological.length > limit
+      ? rowsChronological.slice(rowsChronological.length - limit)
+      : rowsChronological;
 
   return res.json({
     snapshotAt: new Date(),
@@ -8421,6 +8411,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
     rows: rows.map((row) => ({
       id: row.id,
       occurredAt: row.occurredAt.toISOString(),
+      createdAt: row.createdAt.toISOString(),
       entryType: row.entryType,
       amount: Number(row.amount.toFixed(2)),
       runningBalance: runningBalanceById.get(row.id) ?? startingBalance,
