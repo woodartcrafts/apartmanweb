@@ -7330,11 +7330,12 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       ),
     ].flatMap((match) => parseDoorNosFromFreeText(match[1] ?? ""));
 
-    // D57VED93, D57VE93, D57/93, 57-93
+    // D57VED93, D57VE93, D57/93 — sadece "d" önekli ifadelerde "-" ile ayraç tanı.
+    // Genel sayı-TIRE-sayı yok: "06-07", "Haziran 06-07" gibi tarih/aralık ifadeleri yanlış eşleşir.
     const compactPairs = [
       ...text.matchAll(/\bd\s*0*(\d{1,4})ve(?:d)?\s*0*(\d{1,4})\b/g),
       ...text.matchAll(/\bd\s*0*(\d{1,4})\s*(?:ve|veya|\/|&|-)\s*0*(\d{1,4})\b/g),
-      ...text.matchAll(/\b0*(\d{1,4})\s*(?:ve|veya|\/|&|-)\s*0*(\d{1,4})\b/g),
+      ...text.matchAll(/\b0*(\d{1,4})\s*(?:ve|veya|&)\s*0*(\d{1,4})\b/g),
     ].flatMap((match) => [match[1], match[2]]);
 
     const merged = [...new Set([...explicitPrefixedDoorNos, ...groupedByKeyword, ...compactPairs])];

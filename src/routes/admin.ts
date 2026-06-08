@@ -2539,8 +2539,8 @@ function extractDoorNosFromDescriptionForSplit(description: string): string[] {
   const compactPairs = [
     ...text.matchAll(/\bd\s*0*(\d{1,4})ve(?:d)?\s*0*(\d{1,4})\b/g),
     ...text.matchAll(/\bd\s*0*(\d{1,4})\s*(?:ve|veya|\/|&|-)\s*0*(\d{1,4})\b/g),
-    // "/" burada yok: "12/74" banka ref + tek daire; iki daire bölüşümü değil (ve "28/04/…" riski).
-    ...text.matchAll(/\b0*(\d{1,4})\s*(?:ve|veya|&|-)\s*0*(\d{1,4})\b/g),
+    // "-" burada yok: "06-07", "Haziran 06-07" gibi tarih/range ifadeleri yanlış bölünür.
+    ...text.matchAll(/\b0*(\d{1,4})\s*(?:ve|veya|&)\s*0*(\d{1,4})\b/g),
   ].flatMap((match) => [match[1], match[2]]);
 
   const merged = [...new Set([...explicitPrefixedDoorNos, ...groupedByKeyword, ...compactPairs])];
