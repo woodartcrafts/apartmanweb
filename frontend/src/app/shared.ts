@@ -860,6 +860,7 @@ export type BankReconciliationRow = {
   description: string | null;
   reference: string | null;
   isOpeningBalance: boolean;
+  category: string | null;
   source: "MANUAL" | "BANK_STATEMENT_UPLOAD" | "PAYMENT_UPLOAD";
   fileName: string | null;
 };

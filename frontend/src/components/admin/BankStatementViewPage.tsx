@@ -78,6 +78,7 @@ export function BankStatementViewPage({
                 <th>Tip</th>
                 <th className="col-num">Tutar</th>
                 <th className="col-num">Bakiye</th>
+                <th>Gider Sinifi</th>
                 <th>Aciklama</th>
                 <th>Referans</th>
                 <th>Kaynak</th>
@@ -86,7 +87,7 @@ export function BankStatementViewPage({
             <tbody>
               {safeRows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="empty">
+                  <td colSpan={8} className="empty">
                     Kayit bulunamadi
                   </td>
                 </tr>
@@ -101,6 +102,9 @@ export function BankStatementViewPage({
                     </td>
                     <td className={`col-num ${row.runningBalance < 0 ? "col-num-negative" : ""}`}>
                       {formatTry(row.runningBalance)}
+                    </td>
+                    <td className="bank-statement-cell-category" title={row.category ?? "-"}>
+                      {row.category ?? "-"}
                     </td>
                     <td title={row.description ?? "-"}>{row.description ?? "-"}</td>
                     <td className="bank-statement-cell-reference" title={row.reference ?? "-"}>
@@ -131,6 +135,7 @@ export function BankStatementViewPage({
                 <td>Devir</td>
                 <td className="col-num">-</td>
                 <td className="col-num">{formatTry(openingBalance)}</td>
+                <td>-</td>
                 <td>Donem basi devir bakiyesi</td>
                 <td>-</td>
                 <td>Sistem</td>

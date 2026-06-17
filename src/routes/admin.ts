@@ -8227,6 +8227,9 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
         description: true,
         reference: true,
         createdAt: true,
+        expenseItem: {
+          select: { name: true, code: true },
+        },
         importBatch: {
           select: {
             kind: true,
@@ -8260,6 +8263,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
 
       let parsedReference: string | null = null;
       let parsedDescription: string | null = null;
+      let parsedDoor: string | null = null;
       const freeTextParts: string[] = [];
 
       for (const part of parts) {
@@ -8292,8 +8296,12 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
           continue;
         }
 
+        if (upperPart.startsWith("DOOR:")) {
+          parsedDoor = parsedDoor ?? (part.slice(part.indexOf(":") + 1).trim() || null);
+          continue;
+        }
+
         if (
-          upperPart.startsWith("DOOR:") ||
           upperPart.startsWith("PAYMENT_UPLOAD:") ||
           upperPart.startsWith("UNAPPLIED:") ||
           upperPart.startsWith("CARRY_FORWARD:") ||
@@ -8327,6 +8335,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
         description: resolvedDescription,
         reference: parsedReference,
         isOpeningBalance,
+        category: parsedDoor ? `Daire ${parsedDoor}` : "Tahsilat",
         source:
           row.importBatch?.kind === ImportBatchType.BANK_STATEMENT_UPLOAD
             ? "BANK_STATEMENT_UPLOAD"
@@ -8353,6 +8362,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       description: row.description,
       reference: row.reference,
       isOpeningBalance: false,
+      category: row.expenseItem?.name ?? null,
       source: row.importBatch?.kind === ImportBatchType.BANK_STATEMENT_UPLOAD ? "BANK_STATEMENT_UPLOAD" : "MANUAL",
       fileName: row.importBatch?.fileName ?? null,
       createdAt: row.createdAt,
@@ -8405,6 +8415,7 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       description: row.description,
       reference: row.reference,
       isOpeningBalance: row.isOpeningBalance,
+      category: (row as { category?: string | null }).category ?? null,
       source: row.source,
       fileName: row.fileName,
     })),
