@@ -76,7 +76,8 @@ export type AdminPageKey =
   | "GUIDE_MANUAL"
   | "USER_ACCESS"
   | "OPENING_ENTRY"
-  | "LOGIN_LOGS";
+  | "LOGIN_LOGS"
+  | "SECURE_NOTES";
 
 export type AdminPagePermission = {
   visible: boolean;
@@ -162,6 +163,7 @@ export const ADMIN_PAGE_DEFINITIONS: Array<{ key: AdminPageKey; label: string }>
   { key: "USER_ACCESS", label: "Kullanici ve Yetki / Yonetim / Yonetim" },
   { key: "OPENING_ENTRY", label: "Sistem ve Duzeltme / Islemler / Acilis Kaydi" },
   { key: "LOGIN_LOGS", label: "Sistem ve Duzeltme / Izleme / Kullanici Oturumlari" },
+  { key: "SECURE_NOTES", label: "Sistem ve Duzeltme / Notlar / Sifreli Guvenli Notlar" },
 ];
 
 const ADMIN_PAGE_KEYS = new Set<AdminPageKey>(ADMIN_PAGE_DEFINITIONS.map((x) => x.key));

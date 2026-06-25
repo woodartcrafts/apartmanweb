@@ -1085,6 +1085,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/meeting": "MEETING",
       "/admin/guide/manual": "GUIDE_MANUAL",
       "/admin/opening": "OPENING_ENTRY",
+      "/admin/secure-notes": "SECURE_NOTES",
     };
 
     return mapping[path] ?? null;
@@ -1154,6 +1155,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       { path: "/admin/guide/manual", key: "GUIDE_MANUAL" },
       { path: "/admin/user-access", key: "USER_ACCESS" },
       { path: "/admin/opening", key: "OPENING_ENTRY" },
+      { path: "/admin/secure-notes", key: "SECURE_NOTES" },
     ];
 
     const firstVisible = candidates.find((item) => adminMenuPermissionMap[item.key]?.visible);

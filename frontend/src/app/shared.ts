@@ -74,7 +74,8 @@ export type AdminPageKey =
   | "GUIDE_MANUAL"
   | "USER_ACCESS"
   | "OPENING_ENTRY"
-  | "LOGIN_LOGS";
+  | "LOGIN_LOGS"
+  | "SECURE_NOTES";
 
 export type AdminPagePermission = {
   visible: boolean;
