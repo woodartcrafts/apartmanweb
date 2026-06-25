@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiBase, formatDateTimeTr, type ApartmentOption, type ResidentPasswordHistoryRow } from "../../app/shared";
+import { apiBase, formatDateTimeTr, type ApartmentOption, type ResidentPasswordHistoryRow , apiFetch } from "../../app/shared";
 
 export function ApartmentPasswordManagementPage() {
   const [loading, setLoading] = useState(false);
@@ -28,12 +28,11 @@ export function ApartmentPasswordManagementPage() {
     const method = options?.method ?? "GET";
     const payload = options?.payload;
 
-    const response = await fetch(`${apiBase}${endpoint}`, {
+    const response = await apiFetch(`${apiBase}${endpoint}`, {
       method,
       headers: {
         ...(payload ? { "Content-Type": "application/json" } : {}),
       },
-      credentials: "include",
       ...(payload ? { body: JSON.stringify(payload) } : {}),
     });
 

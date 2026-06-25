@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { apiBase, formatDateTimeTr, type ApartmentChangeLogRow, type ApartmentOption } from "../../app/shared";
+import { apiBase, formatDateTimeTr, type ApartmentChangeLogRow, type ApartmentOption , apiFetch } from "../../app/shared";
 
 type ApartmentChangeHistoryPageProps = {
   apartmentOptions: ApartmentOption[];
@@ -203,8 +203,7 @@ export function ApartmentChangeHistoryPage({ apartmentOptions }: ApartmentChange
     try {
       const results = await Promise.allSettled(
         selectedApartmentIds.map(async (apartmentId) => {
-          const res = await fetch(`${apiBase}/api/admin/apartments/${apartmentId}/change-logs?limit=500`, {
-            credentials: "include",
+          const res = await apiFetch(`${apiBase}/api/admin/apartments/${apartmentId}/change-logs?limit=500`, {
           });
           if (!res.ok) {
             const body = (await res.json().catch(() => ({}))) as { message?: string };

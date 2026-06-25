@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiBase, formatDateTimeTr, type LoginLogRow } from "../../app/shared";
+import { apiBase, formatDateTimeTr, type LoginLogRow , apiFetch } from "../../app/shared";
 
 const PAGE_SIZE = 100;
 
@@ -33,7 +33,7 @@ export function UserSessionsPage() {
         if (fromDate) params.set("from", fromDate);
         if (toDate) params.set("to", toDate);
         if (successFilter !== "") params.set("success", successFilter);
-        const res = await fetch(`${apiBase}/api/admin/login-logs?${params.toString()}`, {
+        const res = await apiFetch(`${apiBase}/api/admin/login-logs?${params.toString()}`, {
           credentials: "include",
         });
         if (!res.ok) {

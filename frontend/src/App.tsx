@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { apiBase, userStorageKey, type LoginResponse } from "./app/shared";
+import { apiBase, apiFetch, userStorageKey, writeStoredAuthToken, type LoginResponse } from "./app/shared";
 import { Silent403Error } from "./errors";
 import AdminPage from "./components/AdminPage";
 import ResidentPage from "./components/ResidentPage";
@@ -158,11 +158,12 @@ function App() {
     const raw = localStorage.getItem(userStorageKey);
     if (!raw) return;
 
-    void fetch(`${apiBase}/api/auth/me`, { credentials: "include" })
+    void apiFetch(`${apiBase}/api/auth/me`)
       .then(async (res) => {
         if (!res.ok) {
           setUser(null);
           localStorage.removeItem(userStorageKey);
+          writeStoredAuthToken(null);
           setAuthMessage("Oturum suresi doldu. Lutfen tekrar giris yapin.");
           return;
         }
@@ -240,12 +241,11 @@ function App() {
     setAuthMessage("Giris yapiliyor...");
 
     try {
-      const res = await fetch(`${apiBase}/api/auth/login`, {
+      const res = await apiFetch(`${apiBase}/api/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: "include",
         body: JSON.stringify({ identifier, password }),
       });
 
@@ -266,6 +266,9 @@ function App() {
       }
 
       const data = (await res.json()) as LoginResponse;
+      if (data.token) {
+        writeStoredAuthToken(data.token);
+      }
       setUser(data.user);
       // adminPagePermissions localStorage'a yazÄ±lmaz: backend her istekte zaten
       // DB'den kontrol eder; istemci tarafÄ±nda izin yapÄ±sÄ±nÄ± aÃ§Ä±ÄŸa Ã§Ä±karmaya gerek yok.
@@ -282,15 +285,15 @@ function App() {
   }
 
   function logout(): void {
-    void fetch(`${apiBase}/api/auth/logout`, {
+    void apiFetch(`${apiBase}/api/auth/logout`, {
       method: "POST",
-      credentials: "include",
     }).catch(() => {
       // best-effort logout request; local cleanup always continues
     });
 
     setUser(null);
     localStorage.removeItem(userStorageKey);
+    writeStoredAuthToken(null);
     setAuthMessage("Cikis yapildi");
     navigate("/");
   }

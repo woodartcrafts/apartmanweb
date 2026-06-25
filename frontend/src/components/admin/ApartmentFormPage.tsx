@@ -9,7 +9,7 @@ import {
   type ApartmentType,
   type BlockDefinition,
   type OccupancyType,
-} from "../../app/shared";
+, apiFetch } from "../../app/shared";
 
 type ApartmentFormState = {
   blockName: string;
@@ -153,12 +153,11 @@ export function ApartmentFormPage() {
     const method = options?.method ?? "GET";
     const payload = options?.payload;
 
-    const response = await fetch(`${apiBase}${endpoint}`, {
+    const response = await apiFetch(`${apiBase}${endpoint}`, {
       method,
       headers: {
         ...(payload ? { "Content-Type": "application/json" } : {}),
       },
-      credentials: "include",
       ...(payload ? { body: JSON.stringify(payload) } : {}),
     });
 

@@ -129,7 +129,7 @@ export type LoginLogListResponse = {
 export type UiMessageType = "success" | "error" | "info";
 
 export type LoginResponse = {
-  token: string;
+  token?: string;
   user: {
     id: string;
     email: string;
@@ -1255,6 +1255,36 @@ export type AdminResidentPollRow = {
 export const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
 export const tokenStorageKey = "apartmanweb_token";
 export const userStorageKey = "apartmanweb_user";
+
+export function readStoredAuthToken(): string | null {
+  return localStorage.getItem(tokenStorageKey);
+}
+
+export function writeStoredAuthToken(token: string | null): void {
+  if (token) {
+    localStorage.setItem(tokenStorageKey, token);
+  } else {
+    localStorage.removeItem(tokenStorageKey);
+  }
+}
+
+export function withAuthRequestInit(init: RequestInit = {}): RequestInit {
+  const headers = new Headers(init.headers ?? undefined);
+  const token = readStoredAuthToken();
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  return {
+    ...init,
+    credentials: init.credentials ?? "include",
+    headers,
+  };
+}
+
+export function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return fetch(input, withAuthRequestInit(init));
+}
 export const monthOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 export const paymentMethodEnumOptions: PaymentMethod[] = ["BANK_TRANSFER", "CASH", "CREDIT_CARD", "OTHER"];
 

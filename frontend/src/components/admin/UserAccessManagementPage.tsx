@@ -6,7 +6,7 @@ import {
   type AdminUserAccessListResponse,
   type AdminUserAccessRow,
   type UiMessageType,
-} from "../../app/shared";
+, apiFetch } from "../../app/shared";
 import {
   applyPermissionPreset,
   buildPermissionMap,
@@ -166,7 +166,7 @@ export function UserAccessManagementPage() {
     const method = options?.method ?? "GET";
     const payload = options?.payload;
 
-    const response = await fetch(`${apiBase}${endpoint}`, {
+    const response = await apiFetch(`${apiBase}${endpoint}`, {
       method,
       headers: {
         ...(payload ? { "Content-Type": "application/json" } : {}),

@@ -7,7 +7,7 @@ import {
   type MonthlyLedgerPrintMonth,
   type MonthlyLedgerPrintResponse,
   type MonthlyLedgerPrintRow,
-} from "../../app/shared";
+, apiFetch } from "../../app/shared";
 
 const monthLabels = [
   "Ocak",
@@ -126,8 +126,7 @@ export function MonthlyLedgerPrintPage() {
     setMessage("Defter raporu hazirlaniyor...");
 
     try {
-      const res = await fetch(`${apiBase}/api/admin/reports/monthly-ledger-print?year=${parsedYear}`, {
-        credentials: "include",
+      const res = await apiFetch(`${apiBase}/api/admin/reports/monthly-ledger-print?year=${parsedYear}`, {
       });
 
       if (!res.ok) {

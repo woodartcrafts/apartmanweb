@@ -175,6 +175,7 @@ router.post("/login", loginRateLimiter, async (req, res) => {
   });
 
   return res.json({
+    token,
     user: {
       id: user.id,
       email: user.email,

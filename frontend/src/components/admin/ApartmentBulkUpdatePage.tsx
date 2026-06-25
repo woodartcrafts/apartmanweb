@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { apiBase, type ApartmentClassDefinition, type ApartmentType, type BlockDefinition, type OccupancyType } from "../../app/shared";
+import { apiBase, type ApartmentClassDefinition, type ApartmentType, type BlockDefinition, type OccupancyType , apiFetch } from "../../app/shared";
 
 type BulkFormState = {
   apartmentClassId: string;
@@ -69,12 +69,11 @@ export function ApartmentBulkUpdatePage({
     const method = options?.method ?? "GET";
     const payload = options?.payload;
 
-    const response = await fetch(`${apiBase}${endpoint}`, {
+    const response = await apiFetch(`${apiBase}${endpoint}`, {
       method,
       headers: {
         ...(payload ? { "Content-Type": "application/json" } : {}),
       },
-      credentials: "include",
       ...(payload ? { body: JSON.stringify(payload) } : {}),
     });
 

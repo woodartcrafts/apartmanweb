@@ -4,6 +4,8 @@ import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as Reac
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import {
   apiBase,
+  apiFetch,
+  withAuthRequestInit,
   dateInputToIso,
   dateTimeInputToIso,
   formatDateTimeTr,
@@ -3301,9 +3303,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
       const endpoint = `${apiBase}/api/admin/apartments/${requestedApartmentId}/statement`;
 
-      const res = await fetch(endpoint, {
-        credentials: "include",
-      });
+      const res = await apiFetch(endpoint);
 
       if (!res.ok) {
         throw new Error("Ekstre alinamadi");
@@ -3470,14 +3470,13 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
     let res: Response;
     try {
-      res = await fetch(`${apiBase}${endpoint}`, {
+      res = await fetch(`${apiBase}${endpoint}`, withAuthRequestInit({
         method,
         headers: {
           ...(payload ? { "Content-Type": "application/json" } : {}),
         },
-        credentials: "include",
         ...(payload ? { body: JSON.stringify(payload) } : {}),
-      });
+      }));
       setApiConnectionOk(true);
     } catch {
       setApiConnectionOk(false);
@@ -7116,9 +7115,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       formData.append("file", payload.file);
       formData.append("method", payload.method);
 
-      const res = await fetch(`${apiBase}/api/admin/payments/upload`, {
+      const res = await apiFetch(`${apiBase}/api/admin/payments/upload`, {
         method: "POST",
-        credentials: "include",
         body: formData,
       });
 
@@ -7176,9 +7174,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       const formData = new FormData();
       formData.append("file", apartmentUploadFile);
 
-      const res = await fetch(`${apiBase}/api/admin/apartments/upload`, {
+      const res = await apiFetch(`${apiBase}/api/admin/apartments/upload`, {
         method: "POST",
-        credentials: "include",
         body: formData,
       });
 
@@ -7225,8 +7222,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   async function downloadApartmentUploadTemplate(): Promise<void> {
     try {
       setMessage("Daire Excel sablonu indiriliyor...");
-      const res = await fetch(`${apiBase}/api/admin/apartments/upload-template`, {
-        credentials: "include",
+      const res = await apiFetch(`${apiBase}/api/admin/apartments/upload-template`, {
       });
 
       if (!res.ok) {
@@ -7270,9 +7266,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       const formData = new FormData();
       formData.append("file", bankStatementFile);
 
-      const res = await fetch(`${apiBase}/api/admin/bank-statement/preview`, {
+      const res = await apiFetch(`${apiBase}/api/admin/bank-statement/preview`, {
         method: "POST",
-        credentials: "include",
         body: formData,
       });
 

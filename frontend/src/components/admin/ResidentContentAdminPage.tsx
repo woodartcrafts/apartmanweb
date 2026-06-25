@@ -6,7 +6,7 @@ import {
   isoToDateInput,
   type AdminResidentAnnouncementRow,
   type AdminResidentPollRow,
-} from "../../app/shared";
+, apiFetch } from "../../app/shared";
 
 type ResidentAnnouncementFormState = {
   title: string;
@@ -79,12 +79,11 @@ export function ResidentContentAdminPage() {
     const method = options?.method ?? "GET";
     const payload = options?.payload;
 
-    const response = await fetch(`${apiBase}${endpoint}`, {
+    const response = await apiFetch(`${apiBase}${endpoint}`, {
       method,
       headers: {
         ...(payload ? { "Content-Type": "application/json" } : {}),
       },
-      credentials: "include",
       ...(payload ? { body: JSON.stringify(payload) } : {}),
     });
 

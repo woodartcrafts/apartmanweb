@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { apiBase } from "../../app/shared";
+import { apiBase , apiFetch } from "../../app/shared";
 
 interface SecureNoteRow {
   id: string;
@@ -36,7 +36,7 @@ export function SecureNotesPage() {
   async function loadNotes() {
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/api/admin/secure-notes`, { credentials: "include" });
+      const res = await apiFetch(`${apiBase}/api/admin/secure-notes`, { credentials: "include" });
       if (!res.ok) throw new Error("Yuklenemedi");
       const data = await res.json();
       setNotes(data.notes ?? []);
@@ -58,7 +58,7 @@ export function SecureNotesPage() {
     }
     setRevealingId(id);
     try {
-      const res = await fetch(`${apiBase}/api/admin/secure-notes/${id}/reveal`, { credentials: "include" });
+      const res = await apiFetch(`${apiBase}/api/admin/secure-notes/${id}/reveal`, { credentials: "include" });
       if (!res.ok) throw new Error("Acilamadi");
       const data = await res.json();
       setRevealed(data);
@@ -97,7 +97,7 @@ export function SecureNotesPage() {
         : `${apiBase}/api/admin/secure-notes`;
       const method = editingId ? "PATCH" : "POST";
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -120,7 +120,7 @@ export function SecureNotesPage() {
     if (!window.confirm("Bu notu silmek istediginizden emin misiniz?")) return;
     setDeletingId(id);
     try {
-      const res = await fetch(`${apiBase}/api/admin/secure-notes/${id}`, {
+      const res = await apiFetch(`${apiBase}/api/admin/secure-notes/${id}`, {
         method: "DELETE",
         credentials: "include",
       });

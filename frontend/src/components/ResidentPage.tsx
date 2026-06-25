@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import {
   apiBase,
+  apiFetch,
   formatDateTr,
   formatTry,
   type LoginResponse,
@@ -122,8 +123,7 @@ function ResidentPage({
     setLoading(true);
     setMessage("Ekstre yukleniyor...");
     try {
-      const res = await fetch(`${apiBase}/api/resident/me/statement`, {
-        credentials: "include",
+      const res = await apiFetch(`${apiBase}/api/resident/me/statement`, {
       });
 
       if (!res.ok) {
@@ -151,8 +151,7 @@ function ResidentPage({
 
   async function fetchResidentEngagement(): Promise<void> {
     try {
-      const res = await fetch(`${apiBase}/api/resident/me/engagement`, {
-        credentials: "include",
+      const res = await apiFetch(`${apiBase}/api/resident/me/engagement`, {
       });
       if (!res.ok) {
         if (res.status === 401) { onSessionExpired(); return; }
@@ -180,8 +179,7 @@ function ResidentPage({
       const params = new URLSearchParams();
       params.set("limit", "200");
 
-      const res = await fetch(`${apiBase}/api/resident/me/expenses-report?${params.toString()}`, {
-        credentials: "include",
+      const res = await apiFetch(`${apiBase}/api/resident/me/expenses-report?${params.toString()}`, {
       });
       if (!res.ok) {
         if (res.status === 401) { onSessionExpired(); return; }
@@ -210,9 +208,8 @@ function ResidentPage({
 
     setVotingPollId(poll.id);
     try {
-      const res = await fetch(`${apiBase}/api/resident/me/polls/${poll.id}/vote`, {
+      const res = await apiFetch(`${apiBase}/api/resident/me/polls/${poll.id}/vote`, {
         method: "POST",
-        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
@@ -250,9 +247,8 @@ function ResidentPage({
 
     setPasswordSaving(true);
     try {
-      const res = await fetch(`${apiBase}/api/resident/me/password`, {
+      const res = await apiFetch(`${apiBase}/api/resident/me/password`, {
         method: "POST",
-        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { apiBase, type ApartmentDutyDefinition } from "../../app/shared";
+import { apiBase, type ApartmentDutyDefinition , apiFetch } from "../../app/shared";
 
 type ApartmentDutyFormState = {
   code: string;
@@ -34,12 +34,11 @@ export function ApartmentDutyManagementPage({
     const method = options?.method ?? "GET";
     const payload = options?.payload;
 
-    const response = await fetch(`${apiBase}${endpoint}`, {
+    const response = await apiFetch(`${apiBase}${endpoint}`, {
       method,
       headers: {
         ...(payload ? { "Content-Type": "application/json" } : {}),
       },
-      credentials: "include",
       ...(payload ? { body: JSON.stringify(payload) } : {}),
     });
 

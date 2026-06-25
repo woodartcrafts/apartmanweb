@@ -1,4 +1,4 @@
-import { apiBase } from "../../app/shared";
+import { apiBase , apiFetch } from "../../app/shared";
 
 export function MeetingGuidePage() {
   const processSteps = [
@@ -232,8 +232,7 @@ export function MeetingGuidePage() {
 
   async function downloadAutoFilledInvitation(): Promise<void> {
     try {
-      const response = await fetch(`${apiBase}/api/admin/meeting-documents/invitation`, {
-        credentials: "include",
+      const response = await apiFetch(`${apiBase}/api/admin/meeting-documents/invitation`, {
       });
 
       if (!response.ok) {
@@ -261,8 +260,7 @@ export function MeetingGuidePage() {
 
   async function downloadAutoFilledAttendanceSheet(): Promise<void> {
     try {
-      const response = await fetch(`${apiBase}/api/admin/meeting-documents/attendance-sheet`, {
-        credentials: "include",
+      const response = await apiFetch(`${apiBase}/api/admin/meeting-documents/attendance-sheet`, {
       });
 
       if (!response.ok) {
@@ -290,8 +288,7 @@ export function MeetingGuidePage() {
 
   async function downloadAutoFilledMinutes(): Promise<void> {
     try {
-      const response = await fetch(`${apiBase}/api/admin/meeting-documents/minutes`, {
-        credentials: "include",
+      const response = await apiFetch(`${apiBase}/api/admin/meeting-documents/minutes`, {
       });
 
       if (!response.ok) {
@@ -319,8 +316,7 @@ export function MeetingGuidePage() {
 
   async function downloadAutoFilledDecisionBook(): Promise<void> {
     try {
-      const response = await fetch(`${apiBase}/api/admin/meeting-documents/decision-book`, {
-        credentials: "include",
+      const response = await apiFetch(`${apiBase}/api/admin/meeting-documents/decision-book`, {
       });
 
       if (!response.ok) {
@@ -348,8 +344,7 @@ export function MeetingGuidePage() {
 
   async function downloadAutoFilledOperatingPlan(): Promise<void> {
     try {
-      const response = await fetch(`${apiBase}/api/admin/meeting-documents/operating-plan`, {
-        credentials: "include",
+      const response = await apiFetch(`${apiBase}/api/admin/meeting-documents/operating-plan`, {
       });
 
       if (!response.ok) {
@@ -377,8 +372,7 @@ export function MeetingGuidePage() {
 
   async function downloadAutoFilledNotificationList(): Promise<void> {
     try {
-      const response = await fetch(`${apiBase}/api/admin/meeting-documents/notification-list`, {
-        credentials: "include",
+      const response = await apiFetch(`${apiBase}/api/admin/meeting-documents/notification-list`, {
       });
 
       if (!response.ok) {
