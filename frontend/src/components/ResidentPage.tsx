@@ -492,7 +492,7 @@ function ResidentPage({
                       <td>{row.paymentMethod}</td>
                       <td className="col-num">{formatTry(row.amount)}</td>
                       <td className="expense-report-description" title={row.description ?? "-"}>{row.description ?? "-"}</td>
-                      <td>{row.reference ?? "-"}</td>
+                      <td className="expense-report-reference" title={row.reference ?? "-"}>{row.reference ?? "-"}</td>
                     </tr>
                   ))}
                   {selectedExpenseRows.length === 0 && (

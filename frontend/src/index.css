@@ -1006,6 +1006,61 @@ button:active:not(:disabled) {
   margin-top: 6px;
 }
 
+/* Resident gider detay tablosu: sayfaya sigsin, uzun aciklama tasmasin */
+.resident-section-expense .expense-report-table {
+  width: 100%;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+
+.resident-section-expense .expense-report-table th,
+.resident-section-expense .expense-report-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resident-section-expense .expense-report-table th:nth-child(1),
+.resident-section-expense .expense-report-table td:nth-child(1) {
+  width: 11%;
+}
+
+.resident-section-expense .expense-report-table th:nth-child(2),
+.resident-section-expense .expense-report-table td:nth-child(2) {
+  width: 15%;
+}
+
+.resident-section-expense .expense-report-table th:nth-child(3),
+.resident-section-expense .expense-report-table td:nth-child(3) {
+  width: 13%;
+}
+
+.resident-section-expense .expense-report-table th:nth-child(4),
+.resident-section-expense .expense-report-table td:nth-child(4) {
+  width: 12%;
+}
+
+.resident-section-expense .expense-report-table th:nth-child(5),
+.resident-section-expense .expense-report-table td:nth-child(5) {
+  width: 34%;
+}
+
+.resident-section-expense .expense-report-table th:nth-child(6),
+.resident-section-expense .expense-report-table td:nth-child(6) {
+  width: 15%;
+}
+
+.resident-section-expense .expense-report-table .expense-report-description,
+.resident-section-expense .expense-report-table .expense-report-reference,
+.resident-section-expense .expense-report-table td:nth-child(5),
+.resident-section-expense .expense-report-table td:nth-child(6) {
+  max-width: 0;
+  white-space: nowrap;
+}
+
+.resident-section-expense .table-wrap:has(.expense-report-table) {
+  overflow-x: hidden;
+}
+
 .resident-section-announcements .guide-list > .card,
 .resident-section-polls .guide-list > .card {
   border-style: dashed;
@@ -9905,7 +9960,8 @@ td.empty {
   }
 
   .resident-section-expense .expense-report-table {
-    min-width: 400px;
+    min-width: 0;
+    width: 100%;
   }
 
   .resident-section-expense .expense-report-table th:nth-child(1),
@@ -9940,12 +9996,13 @@ td.empty {
 
   .resident-section-expense .expense-report-table td:nth-child(5),
   .resident-section-expense .expense-report-table td:nth-child(6),
-  .resident-section-expense .expense-report-table td:nth-child(7),
   .resident-section-expense .expense-report-table th:nth-child(5),
-  .resident-section-expense .expense-report-table th:nth-child(6),
-  .resident-section-expense .expense-report-table th:nth-child(7) {
-    white-space: normal;
-    word-break: break-word;
+  .resident-section-expense .expense-report-table th:nth-child(6) {
+    max-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: normal;
   }
 
   .resident-section-expense .expense-report-table th:nth-child(1),
