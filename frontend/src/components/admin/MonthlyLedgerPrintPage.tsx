@@ -7,7 +7,8 @@ import {
   type MonthlyLedgerPrintMonth,
   type MonthlyLedgerPrintResponse,
   type MonthlyLedgerPrintRow,
-, apiFetch } from "../../app/shared";
+  apiFetch,
+} from "../../app/shared";
 
 const monthLabels = [
   "Ocak",

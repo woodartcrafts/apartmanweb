@@ -9,7 +9,8 @@ import {
   type ApartmentType,
   type BlockDefinition,
   type OccupancyType,
-, apiFetch } from "../../app/shared";
+  apiFetch,
+} from "../../app/shared";
 
 type ApartmentFormState = {
   blockName: string;

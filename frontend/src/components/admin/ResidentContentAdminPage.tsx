@@ -6,7 +6,8 @@ import {
   isoToDateInput,
   type AdminResidentAnnouncementRow,
   type AdminResidentPollRow,
-, apiFetch } from "../../app/shared";
+  apiFetch,
+} from "../../app/shared";
 
 type ResidentAnnouncementFormState = {
   title: string;

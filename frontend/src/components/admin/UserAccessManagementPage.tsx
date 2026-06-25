@@ -6,7 +6,8 @@ import {
   type AdminUserAccessListResponse,
   type AdminUserAccessRow,
   type UiMessageType,
-, apiFetch } from "../../app/shared";
+  apiFetch,
+} from "../../app/shared";
 import {
   applyPermissionPreset,
   buildPermissionMap,
