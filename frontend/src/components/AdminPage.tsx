@@ -5743,6 +5743,49 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
           padding: 0 !important;
           margin: 0 !important;
         }
+
+        /* overflow:hidden/auto on the wrapper prevents header repeat — remove for print */
+        body.monthly-balance-print-mode .monthly-balance-table-wrap {
+          overflow: visible !important;
+          border: none !important;
+          border-radius: 0 !important;
+        }
+
+        /* Fit table to full page width */
+        body.monthly-balance-print-mode .monthly-balance-matrix-table {
+          width: 100% !important;
+          min-width: 0 !important;
+          table-layout: fixed !important;
+          border-collapse: collapse !important;
+        }
+
+        /* Reduce font & padding so 12 months fit on one row */
+        body.monthly-balance-print-mode .monthly-balance-matrix-table th,
+        body.monthly-balance-print-mode .monthly-balance-matrix-table td {
+          font-size: 7.5pt !important;
+          padding: 3px 4px !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+
+        /* Daire No — narrow */
+        body.monthly-balance-print-mode .monthly-balance-matrix-table th:nth-child(1),
+        body.monthly-balance-print-mode .monthly-balance-matrix-table td:nth-child(1) {
+          width: 7% !important;
+          position: static !important;
+        }
+
+        /* Oturan — was 210px, reduce significantly for print */
+        body.monthly-balance-print-mode .monthly-balance-matrix-table th:nth-child(2),
+        body.monthly-balance-print-mode .monthly-balance-matrix-table td:nth-child(2) {
+          width: 14% !important;
+        }
+
+        /* Repeat header on every printed page */
+        body.monthly-balance-print-mode .monthly-balance-matrix-table thead {
+          display: table-header-group !important;
+        }
       }
     `;
 
