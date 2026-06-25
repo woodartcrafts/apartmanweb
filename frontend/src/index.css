@@ -949,6 +949,14 @@ button:active:not(:disabled) {
 
 .resident-section-expense .section-head {
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.resident-section-expense .section-head .btn {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .resident-section-expense .section-head h3,
