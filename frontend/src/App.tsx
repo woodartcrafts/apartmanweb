@@ -240,13 +240,16 @@ function App() {
     setAuthLoading(true);
     setAuthMessage("Giris yapiliyor...");
 
+    const trimmedIdentifier = identifier.trim();
+    const trimmedPassword = password.trim();
+
     try {
       const res = await apiFetch(`${apiBase}/api/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ identifier, password }),
+        body: JSON.stringify({ identifier: trimmedIdentifier, password: trimmedPassword }),
       });
 
       const errorPayload = (await res.clone().json().catch(() => null)) as { message?: string } | null;
@@ -266,9 +269,11 @@ function App() {
       }
 
       const data = (await res.json()) as LoginResponse;
-      if (data.token) {
-        writeStoredAuthToken(data.token);
+      if (!data.token) {
+        setAuthMessage("Oturum baslatilamadi. Sunucu guncellemesi bekleniyor olabilir; biraz sonra tekrar deneyin.");
+        return;
       }
+      writeStoredAuthToken(data.token);
       setUser(data.user);
       // adminPagePermissions localStorage'a yazÄ±lmaz: backend her istekte zaten
       // DB'den kontrol eder; istemci tarafÄ±nda izin yapÄ±sÄ±nÄ± aÃ§Ä±ÄŸa Ã§Ä±karmaya gerek yok.
@@ -278,6 +283,15 @@ function App() {
       navigate(data.user.role === "ADMIN" ? "/admin/reports" : "/resident");
     } catch (err) {
       console.error(err);
+      const message = err instanceof Error ? err.message : "";
+      if (message.includes("CORS") || message.includes("Origin is not allowed")) {
+        setAuthMessage("Baglanti hatasi (CORS). Yonetici ALLOWED_ORIGINS ayarini kontrol etmeli.");
+        return;
+      }
+      if (message.includes("Failed to fetch") || message.includes("NetworkError")) {
+        setAuthMessage("Sunucuya baglanilamadi. Internet baglantinizi kontrol edip tekrar deneyin.");
+        return;
+      }
       setAuthMessage("Giris basarisiz. Telefon/e-posta veya sifreyi kontrol et.");
     } finally {
       setAuthLoading(false);

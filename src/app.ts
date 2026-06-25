@@ -44,6 +44,7 @@ app.use(
       callback(new Error("CORS origin is not allowed"));
     },
     credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 app.use(cookieParser());

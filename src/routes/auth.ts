@@ -19,6 +19,12 @@ const loginRateLimiter = rateLimit({
   legacyHeaders: false,
   skipSuccessfulRequests: true,
   message: { message: "Cok fazla giris denemesi. Lutfen daha sonra tekrar deneyin." },
+  keyGenerator: (req) => {
+    const ip = req.ip ?? "unknown";
+    const body = req.body as { identifier?: string; email?: string } | undefined;
+    const identifier = (body?.identifier ?? body?.email ?? "").trim().toLowerCase();
+    return `${ip}:${identifier || "anon"}`;
+  },
 });
 
 function getAuthCookieOptions() {
@@ -72,6 +78,7 @@ router.post("/login", loginRateLimiter, async (req, res) => {
       email: z.string().trim().email().optional(),
       password: z
         .string()
+        .trim()
         .min(8)
         .max(128)
         .regex(/[A-Za-z]/, "Password must include at least one letter")

@@ -77,6 +77,6 @@ export const config = {
   },
   authRateLimit: {
     windowMs: toPositiveInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
-    maxAttempts: toPositiveInt(process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS, 5),
+    maxAttempts: toPositiveInt(process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS, 10),
   },
 };

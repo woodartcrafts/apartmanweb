@@ -1257,14 +1257,16 @@ export const tokenStorageKey = "apartmanweb_token";
 export const userStorageKey = "apartmanweb_user";
 
 export function readStoredAuthToken(): string | null {
-  return localStorage.getItem(tokenStorageKey);
+  return localStorage.getItem(tokenStorageKey) ?? sessionStorage.getItem(tokenStorageKey);
 }
 
 export function writeStoredAuthToken(token: string | null): void {
   if (token) {
     localStorage.setItem(tokenStorageKey, token);
+    sessionStorage.setItem(tokenStorageKey, token);
   } else {
     localStorage.removeItem(tokenStorageKey);
+    sessionStorage.removeItem(tokenStorageKey);
   }
 }
 
