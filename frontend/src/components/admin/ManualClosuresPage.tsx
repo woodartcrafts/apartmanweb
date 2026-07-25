@@ -21,7 +21,7 @@ type ManualClosuresPageProps = {
   paymentCorrectionRows: PaymentItemCorrectionRow[];
   setPaymentCorrectionRows: Dispatch<SetStateAction<PaymentItemCorrectionRow[]>>;
   paymentMethodOptions: PaymentMethodDefinition[];
-  savePaymentCorrection: (row: PaymentItemCorrectionRow) => Promise<void>;
+  savePaymentCorrection: (row: PaymentItemCorrectionRow) => Promise<boolean>;
   removePaymentCorrection: (paymentItemId: string) => Promise<void>;
   splitPaymentCorrection: (input: { paymentItemId: string; amount: number; targetChargeId: string }) => Promise<void>;
 };
@@ -41,6 +41,7 @@ export function ManualClosuresPage({
   splitPaymentCorrection,
 }: ManualClosuresPageProps) {
   const [paymentAmountDrafts, setPaymentAmountDrafts] = useState<Record<string, string>>({});
+  const [chargeIdDrafts, setChargeIdDrafts] = useState<Record<string, string>>({});
   const [splitDrafts, setSplitDrafts] = useState<Record<string, { amount: string; targetChargeId: string }>>({});
 
   const parseTrDecimal = (value: string): number => {
@@ -102,8 +103,8 @@ export function ManualClosuresPage({
           <h3>Manuel Kapama Yonetimi</h3>
         </div>
         <p className="small">
-          Her tahakkugun saginda bagli kapama satirlari gorulur. Kapamayi baska tahakkuga tasiyip kaydederek manuel dagitimi
-          yonetebilirsiniz.
+          Her tahakkugun saginda bagli kapama satirlari gorulur. Tahakkuk degistirip Kaydet ile kaydedin; kayda kadar satir
+          yerinde kalir. Tahakkuk tasimada manuel kilit otomatik acilir (yeniden eslestirme geri almaz).
         </p>
         <label>
           Daire Secimi
@@ -179,12 +180,12 @@ export function ManualClosuresPage({
                               <label>
                                 Tahakkuk
                                 <select
-                                  value={row.chargeId}
+                                  value={chargeIdDrafts[row.paymentItemId] ?? row.chargeId}
                                   onChange={(e) => {
                                     const value = e.target.value;
-                                    setPaymentCorrectionRows((prev) =>
-                                      prev.map((x) => (x.paymentItemId === row.paymentItemId ? { ...x, chargeId: value } : x))
-                                    );
+                                    // Kayda kadar satiri yerinde tut: erken regroup Kaydet'in
+                                    // yanlis/eski chargeId ile gitmesine yol aciyordu.
+                                    setChargeIdDrafts((prev) => ({ ...prev, [row.paymentItemId]: value }));
                                   }}
                                 >
                                   {chargeCorrectionRows.map((target) => (
@@ -320,7 +321,22 @@ export function ManualClosuresPage({
                                 <button
                                   className="btn btn-ghost"
                                   type="button"
-                                  onClick={() => void savePaymentCorrection(row)}
+                                  onClick={() => {
+                                    void (async () => {
+                                      const selectedChargeId = chargeIdDrafts[row.paymentItemId] ?? row.chargeId;
+                                      const ok = await savePaymentCorrection({
+                                        ...row,
+                                        chargeId: selectedChargeId,
+                                      });
+                                      if (ok) {
+                                        setChargeIdDrafts((prev) => {
+                                          const next = { ...prev };
+                                          delete next[row.paymentItemId];
+                                          return next;
+                                        });
+                                      }
+                                    })();
+                                  }}
                                   disabled={loading}
                                 >
                                   Kaydet

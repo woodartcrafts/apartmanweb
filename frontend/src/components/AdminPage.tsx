@@ -413,6 +413,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const descriptionExpenseRuleFormRef = useRef<HTMLFormElement | null>(null);
   const crossTabSyncChannelRef = useRef<BroadcastChannel | null>(null);
   const crossTabSyncDebounceRef = useRef<number | null>(null);
+  const paymentItemOriginalChargeIdsRef = useRef<Map<string, string>>(new Map());
 
   const [apartmentForm, setApartmentForm] = useState({
     blockName: "",
@@ -8155,6 +8156,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
       setChargeCorrectionRows(sortedCharges);
       setPaymentCorrectionRows(paymentItems);
+      paymentItemOriginalChargeIdsRef.current = new Map(
+        paymentItems.map((item) => [item.paymentItemId, item.chargeId])
+      );
       setSelectedChargeCorrectionIds([]);
       setSelectedPaymentCorrectionIds([]);
       if (showReadyMessage) {
@@ -8205,8 +8209,12 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     }
   }
 
-  async function savePaymentCorrection(row: PaymentItemCorrectionRow): Promise<void> {
+  async function savePaymentCorrection(row: PaymentItemCorrectionRow): Promise<boolean> {
     try {
+      const originalChargeId = paymentItemOriginalChargeIdsRef.current.get(row.paymentItemId);
+      const chargeChanged = Boolean(originalChargeId && row.chargeId !== originalChargeId);
+      const isReconcileLocked = chargeChanged ? true : row.isReconcileLocked === true;
+
       await authorizedRequest(`/api/admin/payment-items/${row.paymentItemId}`, {
         method: "PUT",
         payload: {
@@ -8215,15 +8223,22 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
           paidAt: dateInputToIso(isoToDateInput(row.paidAt)),
           method: row.method,
           note: row.note ?? undefined,
-          isReconcileLocked: row.isReconcileLocked,
+          // Tahakkuk manuel tasininca yeniden eslestirme geri almasin.
+          isReconcileLocked,
         },
       });
       await loadCorrections(correctionApartmentId, false);
       setToastMessage("Kaydedildi");
-      setMessage("Odeme kaydi guncellendi");
+      setMessage(
+        chargeChanged
+          ? "Odeme kaydi guncellendi (manuel kilit acildi)"
+          : "Odeme kaydi guncellendi"
+      );
+      return true;
     } catch (err) {
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Odeme kaydi guncellenemedi");
+      return false;
     }
   }
 

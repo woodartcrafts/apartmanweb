@@ -30,7 +30,7 @@ type CorrectionsPageProps = {
   setSelectedPaymentCorrectionIds: Dispatch<SetStateAction<string[]>>;
   paymentMethodOptions: PaymentMethodDefinition[];
   removeSelectedPaymentCorrections: () => Promise<void>;
-  savePaymentCorrection: (row: PaymentItemCorrectionRow) => Promise<void>;
+  savePaymentCorrection: (row: PaymentItemCorrectionRow) => Promise<boolean>;
   removePaymentCorrection: (paymentItemId: string) => Promise<void>;
 };
 

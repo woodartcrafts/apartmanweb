@@ -9625,18 +9625,64 @@ router.put("/payment-items/:paymentItemId", async (req, res) => {
   const isReconcileLocked = parsed.data.isReconcileLocked ?? hasManualReconcileLock(existing.payment.note);
 
   const previousChargeId = existing.chargeId;
+  const targetChargeId = parsed.data.chargeId;
+
+  const targetCharge = await prisma.charge.findUnique({
+    where: { id: targetChargeId },
+    select: { id: true, apartmentId: true },
+  });
+  if (!targetCharge) {
+    return res.status(404).json({ message: "Target charge not found" });
+  }
+
+  const existingCharge = await prisma.charge.findUnique({
+    where: { id: existing.chargeId },
+    select: { apartmentId: true },
+  });
+  if (!existingCharge || existingCharge.apartmentId !== targetCharge.apartmentId) {
+    return res.status(400).json({ message: "Target charge must belong to same apartment" });
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
-    const updatedItem = await tx.paymentItem.update({
-      where: { id: paymentItemId },
-      data: {
-        chargeId: parsed.data.chargeId,
-        amount: parsed.data.amount,
-      },
-    });
+    // Ayni odemenin hedef tahakkukta zaten satiri varsa birlestir.
+    // Aksi halde iki satir ayni (paymentId, chargeId) ile kalir; UI kafa karistirir.
+    const siblingOnTarget =
+      targetChargeId !== existing.chargeId
+        ? await tx.paymentItem.findFirst({
+            where: {
+              paymentId: existing.paymentId,
+              chargeId: targetChargeId,
+              id: { not: paymentItemId },
+            },
+          })
+        : null;
+
+    let resultItemId = paymentItemId;
+    let resultPaymentId = existing.paymentId;
+
+    if (siblingOnTarget) {
+      const mergedAmount = Number((Number(siblingOnTarget.amount) + parsed.data.amount).toFixed(2));
+      await tx.paymentItem.update({
+        where: { id: siblingOnTarget.id },
+        data: { amount: mergedAmount },
+      });
+      await tx.paymentItem.delete({ where: { id: paymentItemId } });
+      resultItemId = siblingOnTarget.id;
+      resultPaymentId = siblingOnTarget.paymentId;
+    } else {
+      const updatedItem = await tx.paymentItem.update({
+        where: { id: paymentItemId },
+        data: {
+          chargeId: targetChargeId,
+          amount: parsed.data.amount,
+        },
+      });
+      resultItemId = updatedItem.id;
+      resultPaymentId = updatedItem.paymentId;
+    }
 
     await tx.payment.update({
-      where: { id: updatedItem.paymentId },
+      where: { id: resultPaymentId },
       data: {
         paidAt: new Date(parsed.data.paidAt),
         method: parsed.data.method,
@@ -9645,18 +9691,22 @@ router.put("/payment-items/:paymentItemId", async (req, res) => {
     });
 
     const sum = await tx.paymentItem.aggregate({
-      where: { paymentId: updatedItem.paymentId },
+      where: { paymentId: resultPaymentId },
       _sum: { amount: true },
     });
 
     await tx.payment.update({
-      where: { id: updatedItem.paymentId },
+      where: { id: resultPaymentId },
       data: {
         totalAmount: Number(sum._sum.amount ?? 0),
       },
     });
 
-    return updatedItem;
+    return {
+      id: resultItemId,
+      paymentId: resultPaymentId,
+      chargeId: targetChargeId,
+    };
   });
 
   await refreshChargeStatusesForIds([...new Set([previousChargeId, updated.chargeId])]);
