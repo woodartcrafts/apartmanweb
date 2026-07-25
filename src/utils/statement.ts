@@ -45,6 +45,8 @@ type AccountingEvent = {
   periodYear: number | null;
   periodMonth: number | null;
   createdAtMs: number;
+  /** Kapamali ekstre ile uyum: ayni gunde once kapanan/az kalan borclar gelsin. */
+  remainingCents: number;
 };
 
 type PaymentAggregate = {
@@ -114,12 +116,15 @@ export async function getApartmentStatements(apartmentId: string): Promise<{
   const paymentAggregates = new Map<string, PaymentAggregate>();
 
   for (const charge of charges) {
+    const amountCents = toCents(charge.amount);
+    const paidTotalCents = charge.paymentItems.reduce((sum, item) => addMoneyCents(sum, item.amount), 0);
+
     accountingEvents.push({
       eventId: `charge:${charge.id}`,
       date: charge.dueDate,
       movementType: "BORC",
       description: buildChargeDescription(charge.chargeType.name, charge.description),
-      debit: fromCents(toCents(charge.amount)),
+      debit: fromCents(amountCents),
       credit: 0,
       chargeId: charge.id,
       paymentId: null,
@@ -127,6 +132,7 @@ export async function getApartmentStatements(apartmentId: string): Promise<{
       periodYear: charge.periodYear,
       periodMonth: charge.periodMonth,
       createdAtMs: charge.createdAt.getTime(),
+      remainingCents: Math.max(0, amountCents - paidTotalCents),
     });
 
     for (const paymentItem of charge.paymentItems) {
@@ -161,6 +167,7 @@ export async function getApartmentStatements(apartmentId: string): Promise<{
       periodYear: null,
       periodMonth: null,
       createdAtMs: payment.createdAt.getTime(),
+      remainingCents: 0,
     });
   }
 
@@ -168,6 +175,20 @@ export async function getApartmentStatements(apartmentId: string): Promise<{
     const dateDiff = a.date.getTime() - b.date.getTime();
     if (dateDiff !== 0) {
       return dateDiff;
+    }
+
+    // Ayni gun: once alacak, sonra borc — onceki kredinin hangi kalemi kapattigi okunabilsin.
+    if (a.movementType !== b.movementType) {
+      return a.movementType === "ALACAK" ? -1 : 1;
+    }
+
+    // Ayni gun borclar: kapali/az kalan once. Boylece kumulatif bakiye
+    // kapamali ekstredeki "kimde kalan var" ile uyumlu gorunur.
+    if (a.movementType === "BORC" && b.movementType === "BORC") {
+      const remainingDiff = a.remainingCents - b.remainingCents;
+      if (remainingDiff !== 0) {
+        return remainingDiff;
+      }
     }
 
     const createdDiff = a.createdAtMs - b.createdAtMs;

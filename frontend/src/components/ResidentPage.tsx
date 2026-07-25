@@ -88,17 +88,8 @@ function ResidentPage({
     return { debit, credit, balance: debit - credit };
   }, [accountingStatement]);
 
-  const sortedAccountingStatement = useMemo(
-    () =>
-      [...accountingStatement].sort((a, b) => {
-        const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
-        if (dateDiff !== 0) {
-          return dateDiff;
-        }
-        return a.movementId.localeCompare(b.movementId);
-      }),
-    [accountingStatement]
-  );
+  // Backend sirasi + bakiye birlikte gelir; yeniden siralama bakiyeyi bozar.
+  const sortedAccountingStatement = accountingStatement;
 
   const selectedExpenseItem = useMemo(
     () => expenseReport?.topItems.find((item) => item.expenseItemId === selectedExpenseItemId) ?? null,

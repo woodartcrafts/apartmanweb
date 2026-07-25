@@ -1271,17 +1271,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     return { debit, credit, balance: debit - credit };
   }, [accountingStatement]);
 
-  const sortedAccountingStatement = useMemo(
-    () =>
-      [...accountingStatement].sort((a, b) => {
-        const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
-        if (dateDiff !== 0) {
-          return dateDiff;
-        }
-        return a.movementId.localeCompare(b.movementId);
-      }),
-    [accountingStatement]
-  );
+  // Backend (getApartmentStatements) sirasi + bakiye hesabi birlikte gelir;
+  // burada yeniden siralamak bakiyeyi satirlardan koparir.
+  const sortedAccountingStatement = accountingStatement;
 
   const activeApartmentHeaderText = useMemo(() => {
     if (!statementHeaderApartmentId) {
