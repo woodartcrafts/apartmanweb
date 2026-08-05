@@ -34,8 +34,18 @@ describe("API integration", () => {
     expect(statuses.includes(429)).toBe(true);
   });
 
-  it("GET /health blocks disallowed CORS origin", async () => {
+  it("GET /health responds ok but omits CORS header for disallowed origin", async () => {
     const res = await request(app).get("/health").set("Origin", "https://evil.example");
+
+    expect(res.status).toBe(200);
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("blocks disallowed CORS origin on API routes", async () => {
+    const res = await request(app)
+      .post("/api/auth/login")
+      .set("Origin", "https://evil.example")
+      .send({ identifier: "test@test.com", password: "12345678a" });
 
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ message: "Origin is not allowed" });

@@ -38,7 +38,7 @@ function extractStaticAdminPaths(source: string): Set<string> {
 
 describe("admin menu path mapping drift guard", () => {
   it("keeps static /admin paths mapped in menuPathToPermissionKey", () => {
-    const appPath = join(process.cwd(), "frontend", "src", "App.tsx");
+    const appPath = join(process.cwd(), "frontend", "src", "components", "AdminPage.tsx");
     const source = readFileSync(appPath, "utf8");
 
     const mappingKeys = extractMappingKeys(source);
@@ -57,7 +57,7 @@ describe("admin menu path mapping drift guard", () => {
   });
 
   it("keeps mapping entries referenced by static /admin paths", () => {
-    const appPath = join(process.cwd(), "frontend", "src", "App.tsx");
+    const appPath = join(process.cwd(), "frontend", "src", "components", "AdminPage.tsx");
     const source = readFileSync(appPath, "utf8");
 
     const mappingKeys = extractMappingKeys(source);
