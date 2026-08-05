@@ -86,6 +86,8 @@ import {
   type UploadBatchUploader,
   type AccountTransferDirection,
   type AccountTransferRow,
+  type ApartmentCreditsResponse,
+  type ApplyPendingCreditsResult,
   type PaymentRefundAppliedRow,
   type PaymentRefundCandidateRow,
   type SplitCandidateRow,
@@ -277,6 +279,11 @@ const PaymentRefundsPage = lazy(() =>
 const SplitCandidatesPage = lazy(() =>
   import("./admin/SplitCandidatesPage").then((module) => ({
     default: module.SplitCandidatesPage,
+  }))
+);
+const ApartmentCreditsPage = lazy(() =>
+  import("./admin/ApartmentCreditsPage").then((module) => ({
+    default: module.ApartmentCreditsPage,
   }))
 );
 const MeetingGuidePage = lazy(() =>
@@ -655,6 +662,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [splitCandidatesTruncated, setSplitCandidatesTruncated] = useState(false);
   const [splitCandidatesIncludeDismissed, setSplitCandidatesIncludeDismissed] = useState(false);
   const [splitCandidatesPageLoading, setSplitCandidatesPageLoading] = useState(false);
+  const [apartmentCreditsData, setApartmentCreditsData] = useState<ApartmentCreditsResponse | null>(null);
+  const [apartmentCreditsPageLoading, setApartmentCreditsPageLoading] = useState(false);
   const [accountTransferFilter, setAccountTransferFilter] = useState({ from: "", to: "" });
   const [paymentListFilter, setPaymentListFilter] = useState({
     from: "",
@@ -1105,6 +1114,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/unclassified": "UNCLASSIFIED",
       "/admin/payment-refunds": "PAYMENT_REFUNDS",
       "/admin/split-candidates": "SPLIT_CANDIDATES",
+      "/admin/apartment-credits": "APARTMENT_CREDITS",
       "/admin/manual-closures": "MANUAL_CLOSURES",
       "/admin/audit-logs": "AUDIT_LOGS",
       "/admin/login-logs": "LOGIN_LOGS",
@@ -1177,6 +1187,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       { path: "/admin/unclassified", key: "UNCLASSIFIED" },
       { path: "/admin/payment-refunds", key: "PAYMENT_REFUNDS" },
       { path: "/admin/split-candidates", key: "SPLIT_CANDIDATES" },
+      { path: "/admin/apartment-credits", key: "APARTMENT_CREDITS" },
       { path: "/admin/manual-closures", key: "MANUAL_CLOSURES" },
       { path: "/admin/audit-logs", key: "AUDIT_LOGS" },
       { path: "/admin/login-logs", key: "LOGIN_LOGS" },
@@ -4453,6 +4464,56 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     } catch (err) {
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Islem yapilamadi");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchApartmentCredits(options?: { silent?: boolean }): Promise<void> {
+    const silent = options?.silent ?? false;
+    setApartmentCreditsPageLoading(true);
+    try {
+      const data = await authorizedRequest<ApartmentCreditsResponse>("/api/admin/apartment-credits");
+      setApartmentCreditsData(data);
+      if (!silent) {
+        setMessage(
+          `Bekleyen alacak: ${formatTry(data.pendingTotal)}, fazla odenmis tahakkuk: ${data.overpaidCharges.length}`
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      if (!silent) {
+        setMessage(err instanceof Error ? err.message : "Daire alacaklari yuklenemedi");
+      }
+    } finally {
+      setApartmentCreditsPageLoading(false);
+    }
+  }
+
+  async function applyPendingApartmentCredits(): Promise<void> {
+    const confirmed = window.confirm(
+      "Bekleyen daire alacaklari mevcut acik tahakkuklara islenecek. Mevcut dagitimlara dokunulmaz, sadece eksik kalan kisim eklenir. Devam edilsin mi?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await authorizedRequest<ApplyPendingCreditsResult>(
+        "/api/admin/apartment-credits/apply",
+        { method: "POST", payload: {} }
+      );
+      await fetchApartmentCredits({ silent: true });
+      setMessage(
+        result.createdItemCount > 0
+          ? `${result.appliedPaymentCount} odemeden toplam ${formatTry(result.appliedTotal)} acik tahakkuklara islendi`
+          : "Islenecek bekleyen alacak bulunamadi"
+      );
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Bekleyen alacaklar islenemedi");
       throw err;
     } finally {
       setLoading(false);
@@ -8679,6 +8740,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       return;
     }
 
+    if (path === "/admin/apartment-credits") {
+      void fetchApartmentCredits({ silent: true });
+      return;
+    }
+
     // Statement pages, apartment list, and bulk correction list are manual-run.
 
     if (path === "/admin/charges/bulk-correct/edit") {
@@ -9267,6 +9333,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/split-candidates">
               Bolunme Ihtimali Olan Tahsilatlar
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/apartment-credits">
+              Fazla Odeme ve Daire Alacaklari
             </NavLink>
           </div>
         </details>
@@ -13090,6 +13159,20 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 refresh={() => fetchSplitCandidates()}
                 splitPayment={splitCandidatePayment}
                 setDismissed={setSplitCandidateDismissed}
+              />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/apartment-credits"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <ApartmentCreditsPage
+                loading={loading}
+                pageLoading={apartmentCreditsPageLoading}
+                data={apartmentCreditsData}
+                refresh={() => fetchApartmentCredits()}
+                applyPendingCredits={applyPendingApartmentCredits}
               />
             </Suspense>
           }

@@ -24,6 +24,16 @@ describe("admin permission path mapping", () => {
     expect(mapRequestPathToAdminPage("/split-candidates/p1/dismiss", "POST")).toBe("SPLIT_CANDIDATES");
   });
 
+  it("maps apartment-credits path to APARTMENT_CREDITS", () => {
+    expect(mapRequestPathToAdminPage("/apartment-credits", "GET")).toBe("APARTMENT_CREDITS");
+    expect(mapRequestPathToAdminPage("/apartment-credits/apply", "POST")).toBe("APARTMENT_CREDITS");
+  });
+
+  it("keeps apartment routes distinct from apartment-credits", () => {
+    expect(mapRequestPathToAdminPage("/apartments", "GET")).toBe("APT_LIST");
+    expect(mapRequestPathToAdminPage("/apartment-classes", "GET")).toBe("APT_CLASSES");
+  });
+
   it("maps charge-types endpoints by method", () => {
     expect(mapRequestPathToAdminPage("/charge-types", "GET")).toBe("CHARGE_TYPES_LIST");
     expect(mapRequestPathToAdminPage("/charge-types", "POST")).toBe("CHARGE_TYPES_CREATE");

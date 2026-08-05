@@ -71,6 +71,7 @@ export type AdminPageKey =
   | "UNCLASSIFIED"
   | "PAYMENT_REFUNDS"
   | "SPLIT_CANDIDATES"
+  | "APARTMENT_CREDITS"
   | "ACCOUNT_TRANSFERS"
   | "MANUAL_CLOSURES"
   | "AUDIT_LOGS"
@@ -160,6 +161,7 @@ export const ADMIN_PAGE_DEFINITIONS: Array<{ key: AdminPageKey; label: string }>
   { key: "UNCLASSIFIED", label: "Kontrol / Finans Kontrolleri / Siniflandirilamayanlar" },
   { key: "PAYMENT_REFUNDS", label: "Kontrol / Finans Kontrolleri / Aidat Iadesi" },
   { key: "SPLIT_CANDIDATES", label: "Kontrol / Finans Kontrolleri / Bolunme Ihtimali Olan Tahsilatlar" },
+  { key: "APARTMENT_CREDITS", label: "Kontrol / Finans Kontrolleri / Fazla Odeme ve Daire Alacaklari" },
   { key: "MANUAL_CLOSURES", label: "Sistem ve Duzeltme / Islemler / Manuel Kapama Yonetimi" },
   { key: "AUDIT_LOGS", label: "Sistem ve Duzeltme / Izleme / Islem Gecmisi" },
   { key: "MEETING", label: "Toplanti / Islemler / Toplanti" },
@@ -338,6 +340,7 @@ export function mapRequestPathToAdminPage(pathname: string, method?: string): Ad
   if (pathname.startsWith("/unclassified")) return "UNCLASSIFIED";
   if (pathname.startsWith("/payment-refunds")) return "PAYMENT_REFUNDS";
   if (pathname.startsWith("/split-candidates")) return "SPLIT_CANDIDATES";
+  if (pathname.startsWith("/apartment-credits")) return "APARTMENT_CREDITS";
   if (pathname.startsWith("/manual-closures")) return "MANUAL_CLOSURES";
   if (pathname.startsWith("/audit-logs")) return "AUDIT_LOGS";
   if (pathname.startsWith("/login-logs")) return "LOGIN_LOGS";

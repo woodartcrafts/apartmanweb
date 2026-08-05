@@ -23,6 +23,35 @@ export function normalizeDoorNoForCompare(value: string | null | undefined): str
   return raw;
 }
 
+/**
+ * Elle yapilan dagitim kararlarini koruyan kilit. Mutabakat ve otomatik
+ * alacak uygulama bu etiketi tasiyan odemelere dokunmaz.
+ */
+export const MANUAL_RECONCILE_LOCK_TAG = "RECONCILE_LOCK:MANUAL";
+
+export function hasManualReconcileLock(note: string | null | undefined): boolean {
+  if (!note) {
+    return false;
+  }
+  return parsePaymentNoteParts(note).some(
+    (part) => part.trim().toUpperCase() === MANUAL_RECONCILE_LOCK_TAG
+  );
+}
+
+/**
+ * Sistem tarafindan bir daireye on-dagitim yapilmis manuel inceleme kaydi.
+ * Kilitli gorunse de otomatik dagitima acik sayilir.
+ */
+export function isSystemPreallocatedManualReview(note: string | null | undefined): boolean {
+  if (!note) {
+    return false;
+  }
+
+  return parsePaymentNoteParts(note).some(
+    (part) => part.trim().toUpperCase() === "MANUAL_REVIEW:PREALLOCATED_TO_APARTMENT"
+  );
+}
+
 export function extractDoorNoTagFromPaymentNote(note: string | null): string | null {
   const doorPart = parsePaymentNoteParts(note).find((part) => part.startsWith("DOOR:"));
   if (!doorPart) {

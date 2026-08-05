@@ -69,6 +69,7 @@ export type AdminPageKey =
   | "UNCLASSIFIED"
   | "PAYMENT_REFUNDS"
   | "SPLIT_CANDIDATES"
+  | "APARTMENT_CREDITS"
   | "ACCOUNT_TRANSFERS"
   | "MANUAL_CLOSURES"
   | "AUDIT_LOGS"
@@ -643,6 +644,53 @@ export type SplitCandidateSplitResult = {
     unappliedAmount: number;
   }>;
   affectedChargeCount: number;
+};
+
+export type ApartmentPendingCreditRow = {
+  paymentId: string;
+  paidAt: string;
+  method: PaymentMethod;
+  doorNo: string | null;
+  apartmentId: string | null;
+  apartmentLabel: string | null;
+  totalAmount: number;
+  appliedAmount: number;
+  pendingAmount: number;
+  reason: string;
+  /** null ise yeni tahakkuk olustugunda kendiliginden uygulanir. */
+  autoApplyBlocker: string | null;
+};
+
+export type OverpaidChargeRow = {
+  chargeId: string;
+  apartmentId: string;
+  doorNo: string;
+  apartmentLabel: string;
+  periodYear: number;
+  periodMonth: number;
+  chargeTypeName: string;
+  status: string;
+  amount: number;
+  paidAmount: number;
+  excessAmount: number;
+};
+
+export type ApartmentCreditsResponse = {
+  snapshotAt: string;
+  truncated: boolean;
+  pendingCredits: ApartmentPendingCreditRow[];
+  pendingTotal: number;
+  applicablePendingTotal: number;
+  overpaidCharges: OverpaidChargeRow[];
+  overpaidTotal: number;
+};
+
+export type ApplyPendingCreditsResult = {
+  appliedPaymentCount: number;
+  createdItemCount: number;
+  appliedTotal: number;
+  scannedPaymentCount: number;
+  truncated: boolean;
 };
 
 export type AdminActionLogRow = {

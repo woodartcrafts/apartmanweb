@@ -32,6 +32,7 @@ import { createAdminUploadBatchRoutes } from "./adminUploadBatchRoutes";
 import { createAdminAccountTransferRoutes } from "./adminAccountTransferRoutes";
 import { createAdminPaymentRefundRoutes } from "./adminPaymentRefundRoutes";
 import { createAdminSplitCandidateRoutes } from "./adminSplitCandidateRoutes";
+import { createAdminApartmentCreditRoutes } from "./adminApartmentCreditRoutes";
 import {
   ACCOUNT_TRANSFER_NOTE_PREFIX,
   buildAccountTransferPaymentNote,
@@ -56,13 +57,20 @@ import {
 import { buildDateRangeFilter } from "../utils/dateRange";
 import { KNOWN_SPLIT_PAIRS, detectSplitCandidateDoorNos } from "../utils/splitCandidate";
 import {
+  applyPendingApartmentCredits,
+  type ApplyPendingCreditsResult,
+} from "../utils/apartmentCredit";
+import {
   mapRequestMethodToAdminAction,
   mapRequestPathToAdminPage,
   normalizeAdminPermissionMap,
 } from "../utils/adminPermissions";
 import {
+  MANUAL_RECONCILE_LOCK_TAG,
   buildPaymentNote,
   extractDoorNoTagFromPaymentNote,
+  hasManualReconcileLock,
+  isSystemPreallocatedManualReview,
   normalizeDoorNoForCompare,
   parsePaymentNoteParts,
 } from "./adminNoteUtils";
@@ -704,15 +712,6 @@ type ReconcileApartmentResult = {
   unappliedTotal: number;
 };
 
-const MANUAL_RECONCILE_LOCK_TAG = "RECONCILE_LOCK:MANUAL";
-
-function hasManualReconcileLock(note: string | null | undefined): boolean {
-  if (!note) {
-    return false;
-  }
-  return parsePaymentNoteParts(note).some((part) => part.trim().toUpperCase() === MANUAL_RECONCILE_LOCK_TAG);
-}
-
 function stripManualReconcileLockTag(note: string | null | undefined): string | null {
   if (!note) {
     return null;
@@ -737,16 +736,6 @@ function withManualReconcileLock(note: string | null | undefined, locked: boolea
     return null;
   }
   return base.join(" | ");
-}
-
-function isSystemPreallocatedManualReview(note: string | null | undefined): boolean {
-  if (!note) {
-    return false;
-  }
-
-  return parsePaymentNoteParts(note).some(
-    (part) => part.trim().toUpperCase() === "MANUAL_REVIEW:PREALLOCATED_TO_APARTMENT"
-  );
 }
 
 type MixedPaymentReportRow = {
@@ -3973,6 +3962,48 @@ router.post("/initial-balances/apply", async (req, res) => {
   });
 });
 
+/**
+ * Yeni tahakkuk olustuktan sonra dairenin bekleyen fazla odemesini bu
+ * tahakkuklara yazar. Tahakkuklar zaten olusturuldugu icin hata durumunda
+ * istegi dusurmuyoruz; loglayip devam ediyoruz.
+ */
+async function applyPendingCreditsAfterChargeCreation(
+  apartmentIds: string[]
+): Promise<ApplyPendingCreditsResult | null> {
+  if (apartmentIds.length === 0) {
+    return null;
+  }
+
+  try {
+    const result = await applyPendingApartmentCredits({
+      apartmentIds,
+      refreshChargeStatusesForIds,
+    });
+
+    if (result.createdItemCount > 0) {
+      console.log(
+        `[apartment-credit] bekleyen fazla odeme uygulandi: ${result.appliedPaymentCount} odeme, ` +
+          `${result.createdItemCount} kalem, ${result.appliedTotal.toFixed(2)} TL`
+      );
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[apartment-credit] bekleyen fazla odeme uygulanamadi", error);
+    return null;
+  }
+}
+
+function summarizeAppliedCredits(result: ApplyPendingCreditsResult | null): {
+  appliedCreditTotal: number;
+  appliedCreditPaymentCount: number;
+} {
+  return {
+    appliedCreditTotal: result?.appliedTotal ?? 0,
+    appliedCreditPaymentCount: result?.appliedPaymentCount ?? 0,
+  };
+}
+
 router.post("/charges", async (req, res) => {
   const schema = z.object({
     apartmentId: z.string().min(1),
@@ -4051,10 +4082,13 @@ router.post("/charges", async (req, res) => {
       )
     );
 
+    const creditResult = await applyPendingCreditsAfterChargeCreation([parsed.data.apartmentId]);
+
     return res.status(201).json({
       createdCount: created.length,
       createdIds: created.map((x) => x.id),
       firstId: created[0]?.id ?? null,
+      ...summarizeAppliedCredits(creditResult),
     });
   }
 
@@ -4081,7 +4115,9 @@ router.post("/charges", async (req, res) => {
     },
   });
 
-  return res.status(201).json(charge);
+  const creditResult = await applyPendingCreditsAfterChargeCreation([parsed.data.apartmentId]);
+
+  return res.status(201).json({ ...charge, ...summarizeAppliedCredits(creditResult) });
 });
 
 router.post("/charges/bulk", async (req, res) => {
@@ -4252,12 +4288,16 @@ router.post("/charges/bulk", async (req, res) => {
   });
 
   const totalTargetCount = apartments.length * months.length;
+  const creditResult = await applyPendingCreditsAfterChargeCreation(
+    records.map((record) => record.apartmentId)
+  );
 
   return res.status(201).json({
     createdCount: result.count,
     skippedCount: totalTargetCount - result.count,
     totalTargetCount,
     months,
+    ...summarizeAppliedCredits(creditResult),
   });
 });
 
@@ -4431,10 +4471,15 @@ router.post("/charges/distributed", async (req, res) => {
     data: createRows,
   });
 
+  const creditResult = await applyPendingCreditsAfterChargeCreation(
+    createRows.map((row) => row.apartmentId)
+  );
+
   return res.status(201).json({
     createdCount: result.count,
     skippedCount: uniqueRows.length - result.count,
     totalTargetCount: uniqueRows.length,
+    ...summarizeAppliedCredits(creditResult),
   });
 });
 
@@ -6160,6 +6205,7 @@ router.use(
     pushActionLog: (input) => pushActionLog(input as any),
   })
 );
+router.use(createAdminApartmentCreditRoutes({ refreshChargeStatusesForIds }));
 router.use(createAdminUploadBatchRoutes({ refreshChargeStatusesForIds }));
 
 router.post("/payments/upload", upload.single("file"), async (req, res) => {
