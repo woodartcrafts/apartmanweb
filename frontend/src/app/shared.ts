@@ -601,6 +601,20 @@ export type PaymentRefundAppliedRow = {
   doorNos?: string[];
 };
 
+export type PaymentRefundApartmentBreakdownRow = {
+  apartmentId: string;
+  doorNo: string;
+  apartmentLabel: string;
+  reducedAmount: number;
+  reducedFromPendingCredit?: number;
+};
+
+export type PaymentRefundApplyResult = {
+  apartmentLabel: string;
+  refundAmount: number;
+  apartmentBreakdown: PaymentRefundApartmentBreakdownRow[];
+};
+
 export type SplitCandidateApartmentRef = {
   apartmentId: string;
   doorNo: string;

@@ -61,6 +61,50 @@ export function shouldExcludeExpenseFromReports(params: {
   );
 }
 
+/**
+ * Iadenin dusulebilecegi bir kaynak: ya odemenin tahakkuga yazilmamis fazlasi
+ * (daire alacagi) ya da bir tahakkuga yazili tahsilat kalemi.
+ */
+export type RefundSource = {
+  kind: "CREDIT" | "ITEM";
+  paymentId: string;
+  paymentItemId: string | null;
+  chargeId: string | null;
+  availableCents: number;
+};
+
+export type RefundReduction = RefundSource & { reducedCents: number };
+
+/**
+ * Iade tutarini verilen kaynaklardan sirayla duser.
+ *
+ * Kaynak sirasi cagiran tarafta belirlenir: once bekleyen daire alacaklari,
+ * sonra tahakkuklara yazili tahsilatlar; her grup en yeni odemeden baslar.
+ * Kaynaklar yetmezse kalan tutar `shortfallCents` olarak doner.
+ */
+export function planRefundReductions(
+  targetCents: number,
+  sources: RefundSource[]
+): { reductions: RefundReduction[]; shortfallCents: number } {
+  const reductions: RefundReduction[] = [];
+  let remaining = Math.max(0, targetCents);
+
+  for (const source of sources) {
+    if (remaining <= 0) {
+      break;
+    }
+    if (source.availableCents <= 0) {
+      continue;
+    }
+
+    const reducedCents = Math.min(remaining, source.availableCents);
+    reductions.push({ ...source, reducedCents });
+    remaining -= reducedCents;
+  }
+
+  return { reductions, shortfallCents: remaining };
+}
+
 export function buildPaymentRefundExpenseDescription(params: {
   doorNos: string | string[];
   description?: string | null;

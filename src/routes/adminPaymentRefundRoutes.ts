@@ -2,7 +2,12 @@ import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
-import { normalizeDoorNoForCompare } from "./adminNoteUtils";
+import {
+  OVERPAYMENT_NOTE_PREFIX,
+  extractDoorNoTagFromPaymentNote,
+  normalizeDoorNoForCompare,
+  withOverpaymentNote,
+} from "./adminNoteUtils";
 import {
   PAYMENT_REFUND_EXPENSE_ITEM_CODE,
   PAYMENT_REFUND_EXPENSE_ITEM_NAME,
@@ -12,7 +17,11 @@ import {
   isPaymentRefundExpenseDescription,
   parseDoorNosInput,
   parsePaymentRefundDoorsFromText,
+  planRefundReductions,
+  type RefundReduction,
+  type RefundSource,
 } from "../utils/paymentRefund";
+import { fromCents, toCents } from "../utils/money";
 
 type RefreshChargeStatuses = (
   chargeIds: string[],
@@ -98,6 +107,200 @@ async function findApartmentsByDoorNos(doorNoRaws: string[]): Promise<{
   }
 
   return { matched, missing };
+}
+
+function buildEqualAllocations(
+  apartments: ApartmentMatch[],
+  refundCents: number
+): Array<{ doorNo: string; amount: number }> {
+  const base = Math.floor(refundCents / apartments.length);
+  return apartments.map((apt, index) => ({
+    doorNo: apt.doorNo,
+    amount: fromCents(index === 0 ? refundCents - base * (apartments.length - 1) : base),
+  }));
+}
+
+type RefundPaymentSnapshot = {
+  id: string;
+  totalCents: number;
+  note: string | null;
+  itemsTotalCents: number;
+};
+
+/**
+ * Bir dairenin iade kaynaklarini en yeni odemeden baslayarak toplar.
+ *
+ * Once tahakkuga yazilmamis fazlalar (bekleyen daire alacaklari), sonra
+ * tahakkuklara yazili kalemler gelir: dagitilmamis para iade icin en dogru
+ * kaynak, tahakkuk dagitimini bozmadan geri alinabiliyor.
+ */
+async function collectRefundSources(
+  tx: Prisma.TransactionClient,
+  apartment: ApartmentMatch
+): Promise<{ sources: RefundSource[]; payments: Map<string, RefundPaymentSnapshot> }> {
+  const rows = await tx.payment.findMany({
+    where: {
+      OR: [
+        { itemLinks: { some: { charge: { apartmentId: apartment.id } } } },
+        // Dagitilmamis alacaklar daireye yalnizca not etiketiyle bagli. Buradaki
+        // filtre kaba bir on eleme ("DOOR:571" de gelir), kesin kontrol asagida.
+        {
+          AND: [
+            { itemLinks: { none: {} } },
+            { note: { contains: `DOOR:${apartment.doorNo.trim()}` } },
+          ],
+        },
+      ],
+    },
+    select: {
+      id: true,
+      totalAmount: true,
+      note: true,
+      itemLinks: {
+        select: {
+          id: true,
+          amount: true,
+          chargeId: true,
+          charge: { select: { apartmentId: true } },
+        },
+        orderBy: [{ id: "desc" }],
+      },
+    },
+    orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+  });
+
+  const payments = new Map<string, RefundPaymentSnapshot>();
+  const credits: RefundSource[] = [];
+  const items: RefundSource[] = [];
+
+  for (const row of rows) {
+    const itemsTotalCents = row.itemLinks.reduce((sum, item) => sum + toCents(item.amount), 0);
+    const totalCents = toCents(row.totalAmount);
+    payments.set(row.id, { id: row.id, totalCents, note: row.note, itemsTotalCents });
+
+    const ownItems = row.itemLinks.filter((item) => item.charge.apartmentId === apartment.id);
+    for (const item of ownItems) {
+      items.push({
+        kind: "ITEM",
+        paymentId: row.id,
+        paymentItemId: item.id,
+        chargeId: item.chargeId,
+        availableCents: toCents(item.amount),
+      });
+    }
+
+    // Fazla tutar ancak bu daireye baglanabiliyorsa geri alinabilir: kalemleri
+    // baska dairelere de dagilmis odemede fazlanin sahibi belirsizdir.
+    const surplusCents = totalCents - itemsTotalCents;
+    if (surplusCents <= 0) {
+      continue;
+    }
+
+    const belongsToApartment =
+      row.itemLinks.length === 0
+        ? normalizeDoorNoForCompare(extractDoorNoTagFromPaymentNote(row.note)) ===
+          normalizeDoorNoForCompare(apartment.doorNo)
+        : ownItems.length === row.itemLinks.length;
+
+    if (belongsToApartment) {
+      credits.push({
+        kind: "CREDIT",
+        paymentId: row.id,
+        paymentItemId: null,
+        chargeId: null,
+        availableCents: surplusCents,
+      });
+    }
+  }
+
+  return { sources: [...credits, ...items], payments };
+}
+
+/**
+ * Planlanan dusumleri uygular.
+ *
+ * Odemenin `totalAmount` degeri kalemlerin toplamina esitlenmez, dusulen tutar
+ * kadar azaltilir: aksi halde bekleyen daire alacagi sessizce silinir ve iade
+ * tutarindan fazlasi geri alinmis gorunur.
+ */
+async function applyRefundReductions(
+  tx: Prisma.TransactionClient,
+  params: {
+    reductions: RefundReduction[];
+    payments: Map<string, RefundPaymentSnapshot>;
+    affectedChargeIds: Set<string>;
+    reducedItemIds: string[];
+    deletedPaymentIds: string[];
+  }
+): Promise<void> {
+  const { reductions, payments, affectedChargeIds, reducedItemIds, deletedPaymentIds } = params;
+
+  const totalDeltaByPaymentId = new Map<string, number>();
+  const itemDeltaByPaymentId = new Map<string, number>();
+
+  for (const reduction of reductions) {
+    totalDeltaByPaymentId.set(
+      reduction.paymentId,
+      (totalDeltaByPaymentId.get(reduction.paymentId) ?? 0) + reduction.reducedCents
+    );
+
+    if (reduction.kind !== "ITEM" || !reduction.paymentItemId) {
+      continue;
+    }
+
+    itemDeltaByPaymentId.set(
+      reduction.paymentId,
+      (itemDeltaByPaymentId.get(reduction.paymentId) ?? 0) + reduction.reducedCents
+    );
+
+    if (reduction.chargeId) {
+      affectedChargeIds.add(reduction.chargeId);
+    }
+    reducedItemIds.push(reduction.paymentItemId);
+
+    if (reduction.reducedCents >= reduction.availableCents) {
+      await tx.paymentItem.delete({ where: { id: reduction.paymentItemId } });
+      continue;
+    }
+
+    await tx.paymentItem.update({
+      where: { id: reduction.paymentItemId },
+      data: { amount: fromCents(reduction.availableCents - reduction.reducedCents) },
+    });
+  }
+
+  for (const [paymentId, deltaCents] of totalDeltaByPaymentId) {
+    const snapshot = payments.get(paymentId);
+    if (!snapshot) {
+      continue;
+    }
+
+    const nextTotalCents = Math.max(0, snapshot.totalCents - deltaCents);
+    const nextItemsTotalCents = snapshot.itemsTotalCents - (itemDeltaByPaymentId.get(paymentId) ?? 0);
+
+    if (nextTotalCents <= 0 && nextItemsTotalCents <= 0) {
+      await tx.payment.delete({ where: { id: paymentId } });
+      deletedPaymentIds.push(paymentId);
+      continue;
+    }
+
+    await tx.payment.update({
+      where: { id: paymentId },
+      data: {
+        totalAmount: fromCents(nextTotalCents),
+        // Notta yazan fazla tutar etiketi kalan alacagi yansitmali.
+        ...(snapshot.note?.includes(OVERPAYMENT_NOTE_PREFIX)
+          ? {
+              note: withOverpaymentNote(
+                snapshot.note,
+                extractDoorNoTagFromPaymentNote(snapshot.note) ?? "",
+                fromCents(Math.max(0, nextTotalCents - nextItemsTotalCents))
+              ),
+            }
+          : {}),
+      },
+    });
+  }
 }
 
 export function createAdminPaymentRefundRoutes(deps: {
@@ -213,6 +416,14 @@ export function createAdminPaymentRefundRoutes(deps: {
       .object({
         expenseId: z.string().min(1),
         doorNo: z.string().trim().min(1).max(120),
+        allocations: z
+          .array(
+            z.object({
+              doorNo: z.string().trim().min(1),
+              amount: z.number().positive(),
+            })
+          )
+          .optional(),
       })
       .safeParse(req.body);
 
@@ -258,42 +469,74 @@ export function createAdminPaymentRefundRoutes(deps: {
       });
     }
 
-    const refundAmount = Number(Number(expense.amount).toFixed(2));
-    if (!(refundAmount > 0)) {
+    const refundCents = toCents(expense.amount);
+    if (refundCents <= 0) {
       return res.status(400).json({ message: "Iade tutari sifirdan buyuk olmali" });
     }
+    const refundAmount = fromCents(refundCents);
 
-    const apartmentIds = apartments.map((apt) => apt.id);
-    const paymentItems = await prisma.paymentItem.findMany({
-      where: { charge: { apartmentId: { in: apartmentIds } } },
-      select: {
-        id: true,
-        amount: true,
-        chargeId: true,
-        paymentId: true,
-        charge: { select: { apartmentId: true } },
-        payment: { select: { id: true, paidAt: true, createdAt: true } },
-      },
-      orderBy: [{ payment: { paidAt: "desc" } }, { payment: { createdAt: "desc" } }, { id: "desc" }],
-    });
+    // Coklu dairede tutarin nasil bolunecegi tahmin edilemez; kullanici girer.
+    const allocationCentsByApartmentId = new Map<string, number>();
+    if (apartments.length === 1) {
+      allocationCentsByApartmentId.set(apartments[0].id, refundCents);
+    } else {
+      const rows = parsed.data.allocations ?? [];
+      if (rows.length === 0) {
+        return res.status(400).json({
+          message:
+            "Coklu daire iadesinde her daire icin tutar girilmeli. Toplam iade tutarina birebir esit olmali.",
+          refundAmount,
+          suggestedAllocations: buildEqualAllocations(apartments, refundCents),
+        });
+      }
 
-    const availableTotal = Number(
-      paymentItems.reduce((sum, item) => sum + Number(item.amount), 0).toFixed(2)
-    );
+      const apartmentIdByNormalizedDoorNo = new Map(
+        apartments.map((apt) => [normalizeDoorNoForCompare(apt.doorNo), apt.id])
+      );
 
-    if (availableTotal + 0.0001 < refundAmount) {
-      const doorLabel = apartments.map((apt) => apt.doorNo).join(", ");
-      return res.status(400).json({
-        message: `Secilen dairelerde (${doorLabel}) geri alinacak ${availableTotal.toFixed(2)} TL tahsilat var (iade: ${refundAmount.toFixed(2)} TL)`,
-        availableTotal,
-        refundAmount,
-      });
+      for (const row of rows) {
+        const apartmentId = apartmentIdByNormalizedDoorNo.get(normalizeDoorNoForCompare(row.doorNo));
+        if (!apartmentId) {
+          return res.status(400).json({
+            message: `${row.doorNo} bu iadenin daireleri arasinda degil (${apartments
+              .map((apt) => apt.doorNo)
+              .join(", ")})`,
+          });
+        }
+        if (allocationCentsByApartmentId.has(apartmentId)) {
+          return res.status(400).json({ message: `${row.doorNo} icin iki kez tutar girilmis` });
+        }
+        allocationCentsByApartmentId.set(apartmentId, toCents(row.amount));
+      }
+
+      const missingAllocation = apartments.filter(
+        (apt) => !allocationCentsByApartmentId.has(apt.id)
+      );
+      if (missingAllocation.length > 0) {
+        return res.status(400).json({
+          message: `Tutar girilmeyen daire: ${missingAllocation.map((apt) => apt.doorNo).join(", ")}`,
+        });
+      }
+
+      const allocationTotalCents = [...allocationCentsByApartmentId.values()].reduce(
+        (sum, cents) => sum + cents,
+        0
+      );
+      if (allocationTotalCents !== refundCents) {
+        return res.status(400).json({
+          message: `Girilen tutarlarin toplami iade tutarina birebir esit olmali (girilen: ${fromCents(
+            allocationTotalCents
+          ).toFixed(2)} TL, iade: ${refundAmount.toFixed(2)} TL)`,
+          allocationTotal: fromCents(allocationTotalCents),
+          refundAmount,
+        });
+      }
     }
 
     const refundExpenseItemId = await ensurePaymentRefundExpenseItemId();
     const affectedChargeIds = new Set<string>();
     const reducedByApartmentId = new Map<string, number>();
-    let remaining = refundAmount;
+    const creditReducedByApartmentId = new Map<string, number>();
     const reducedItemIds: string[] = [];
     const deletedPaymentIds: string[] = [];
 
@@ -302,9 +545,9 @@ export function createAdminPaymentRefundRoutes(deps: {
         async (tx) => {
           affectedChargeIds.clear();
           reducedByApartmentId.clear();
+          creditReducedByApartmentId.clear();
           reducedItemIds.length = 0;
           deletedPaymentIds.length = 0;
-          remaining = refundAmount;
 
           // Once gideri atomik olarak "iade" diye isaretle. Ayni anda gelen ikinci
           // istek (cift tiklama, retry) bu kosula takilir; tahsilat iki kez dusulmez.
@@ -329,104 +572,53 @@ export function createAdminPaymentRefundRoutes(deps: {
             );
           }
 
-          // Tahsilatlar transaction icinde yeniden okunur: on kontrol ile bu an
-          // arasinda baska bir islem tahsilatlari degistirmis olabilir.
-          const lockedItems = await tx.paymentItem.findMany({
-            where: { charge: { apartmentId: { in: apartmentIds } } },
-            select: {
-              id: true,
-              amount: true,
-              chargeId: true,
-              paymentId: true,
-              charge: { select: { apartmentId: true } },
-            },
-            orderBy: [
-              { payment: { paidAt: "desc" } },
-              { payment: { createdAt: "desc" } },
-              { id: "desc" },
-            ],
-          });
-
-          const lockedTotal = Number(
-            lockedItems.reduce((sum, item) => sum + Number(item.amount), 0).toFixed(2)
-          );
-          if (lockedTotal + 0.0001 < refundAmount) {
-            const doorLabel = apartments.map((apt) => apt.doorNo).join(", ");
-            throw new PaymentRefundConflictError(
-              `Secilen dairelerde (${doorLabel}) geri alinacak yeterli tahsilat kalmadi (mevcut: ${lockedTotal.toFixed(2)} TL, iade: ${refundAmount.toFixed(2)} TL)`
-            );
-          }
-
-          for (const item of lockedItems) {
-            if (remaining <= 0.0001) {
-              break;
-            }
-
-            const itemAmount = Number(item.amount);
-            affectedChargeIds.add(item.chargeId);
-            const apartmentId = item.charge.apartmentId;
-
-            if (itemAmount <= remaining + 0.0001) {
-              await tx.paymentItem.delete({ where: { id: item.id } });
-              remaining = Number((remaining - itemAmount).toFixed(2));
-              reducedItemIds.push(item.id);
-              reducedByApartmentId.set(
-                apartmentId,
-                Number(((reducedByApartmentId.get(apartmentId) ?? 0) + itemAmount).toFixed(2))
-              );
-
-              const remainingCount = await tx.paymentItem.count({
-                where: { paymentId: item.paymentId },
-              });
-              if (remainingCount === 0) {
-                await tx.payment.delete({ where: { id: item.paymentId } });
-                deletedPaymentIds.push(item.paymentId);
-              } else {
-                const sum = await tx.paymentItem.aggregate({
-                  where: { paymentId: item.paymentId },
-                  _sum: { amount: true },
-                });
-                await tx.payment.update({
-                  where: { id: item.paymentId },
-                  data: { totalAmount: Number(sum._sum.amount ?? 0) },
-                });
-              }
+          for (const apartment of apartments) {
+            const targetCents = allocationCentsByApartmentId.get(apartment.id) ?? 0;
+            if (targetCents <= 0) {
               continue;
             }
 
-            const nextAmount = Number((itemAmount - remaining).toFixed(2));
-            await tx.paymentItem.update({
-              where: { id: item.id },
-              data: { amount: nextAmount },
-            });
-            reducedItemIds.push(item.id);
-            reducedByApartmentId.set(
-              apartmentId,
-              Number(((reducedByApartmentId.get(apartmentId) ?? 0) + remaining).toFixed(2))
-            );
+            // Kaynaklar transaction icinde okunur: on kontrol ile bu an arasinda
+            // baska bir islem tahsilatlari degistirmis olabilir.
+            const { sources, payments } = await collectRefundSources(tx, apartment);
+            const availableCents = sources.reduce((sum, source) => sum + source.availableCents, 0);
+            if (availableCents < targetCents) {
+              throw new PaymentRefundConflictError(
+                `${apartment.blockName}/${apartment.doorNo} dairesinde geri alinacak yeterli tahsilat yok ` +
+                  `(mevcut: ${fromCents(availableCents).toFixed(2)} TL, istenen: ${fromCents(
+                    targetCents
+                  ).toFixed(2)} TL)`
+              );
+            }
 
-            const sum = await tx.paymentItem.aggregate({
-              where: { paymentId: item.paymentId },
-              _sum: { amount: true },
-            });
-            await tx.payment.update({
-              where: { id: item.paymentId },
-              data: { totalAmount: Number(sum._sum.amount ?? 0) },
-            });
-            remaining = 0;
-          }
+            const { reductions, shortfallCents } = planRefundReductions(targetCents, sources);
+            if (shortfallCents > 0) {
+              throw new PaymentRefundConflictError(
+                `${apartment.blockName}/${apartment.doorNo} dairesinde iade uygulanamadi: ` +
+                  `kalan tutar ${fromCents(shortfallCents).toFixed(2)} TL`
+              );
+            }
 
-          if (remaining > 0.0001) {
-            throw new PaymentRefundConflictError(
-              `Iade uygulanamadi: kalan tutar ${remaining.toFixed(2)} TL`
-            );
+            await applyRefundReductions(tx, {
+              reductions,
+              payments,
+              affectedChargeIds,
+              reducedItemIds,
+              deletedPaymentIds,
+            });
+
+            const creditCents = reductions
+              .filter((row) => row.kind === "CREDIT")
+              .reduce((sum, row) => sum + row.reducedCents, 0);
+            reducedByApartmentId.set(apartment.id, fromCents(targetCents));
+            creditReducedByApartmentId.set(apartment.id, fromCents(creditCents));
           }
 
           // Tahakkuk durumlari da ayni transaction icinde guncellenir; boylece
           // tahsilat dusuldugu halde durum eski kalan bir ara durum olusmaz.
           await refreshChargeStatusesForIds([...affectedChargeIds], tx);
         },
-        { timeout: 20000 }
+        { timeout: 30000 }
       );
     } catch (error) {
       if (error instanceof PaymentRefundConflictError) {
@@ -442,6 +634,7 @@ export function createAdminPaymentRefundRoutes(deps: {
         apt.ownerFullName ? ` - ${apt.ownerFullName}` : ""
       }`,
       reducedAmount: reducedByApartmentId.get(apt.id) ?? 0,
+      reducedFromPendingCredit: creditReducedByApartmentId.get(apt.id) ?? 0,
     }));
 
     // Iade geri alinabilir bir islem degil; en azindan kimin neyi dusurdugu

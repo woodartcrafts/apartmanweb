@@ -90,6 +90,7 @@ import {
   type ApartmentCreditsResponse,
   type ApplyPendingCreditsResult,
   type PaymentRefundAppliedRow,
+  type PaymentRefundApplyResult,
   type PaymentRefundCandidateRow,
   type SplitCandidateRow,
   type SplitCandidateSplitResult,
@@ -4360,24 +4361,45 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     }
   }
 
-  async function applyPaymentRefund(expenseId: string, doorNo: string): Promise<void> {
+  async function applyPaymentRefund(
+    expenseId: string,
+    doorNo: string,
+    allocations?: Array<{ doorNo: string; amount: number }>
+  ): Promise<void> {
     setLoading(true);
     try {
-      const result = await authorizedRequest<{
-        apartmentLabel: string;
-        refundAmount: number;
-      }>("/api/admin/payment-refunds", {
-        method: "POST",
-        payload: { expenseId, doorNo },
-      });
+      const result = await authorizedRequest<PaymentRefundApplyResult>(
+        "/api/admin/payment-refunds",
+        {
+          method: "POST",
+          payload: {
+            expenseId,
+            doorNo,
+            allocations: allocations && allocations.length > 1 ? allocations : undefined,
+          },
+        }
+      );
       await Promise.all([
         fetchPaymentRefunds({ silent: true }),
         loadUnclassifiedRows({ silent: true }),
         fetchExpenseReport(expenseReportFilter, { silent: true }),
         fetchReportsSummary({ silent: true }),
       ]);
+
+      const creditTotal = (result.apartmentBreakdown ?? []).reduce(
+        (sum, row) => sum + (row.reducedFromPendingCredit ?? 0),
+        0
+      );
+      const breakdownLabel =
+        (result.apartmentBreakdown ?? []).length > 1
+          ? ` (${result.apartmentBreakdown
+              .map((row) => `${row.doorNo}: ${formatTry(row.reducedAmount)}`)
+              .join(", ")})`
+          : "";
+
       setMessage(
-        `Iade uygulandi: ${result.apartmentLabel} / ${formatTry(result.refundAmount)}`
+        `Iade uygulandi: ${result.apartmentLabel} / ${formatTry(result.refundAmount)}${breakdownLabel}` +
+          (creditTotal > 0 ? ` - ${formatTry(creditTotal)} bekleyen daire alacagindan dusuldu` : "")
       );
     } catch (err) {
       console.error(err);

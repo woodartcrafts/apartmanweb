@@ -6,7 +6,9 @@ import {
   parseDoorNosInput,
   parsePaymentRefundDoorsFromText,
   paymentRefundDoorTag,
+  planRefundReductions,
   shouldExcludeExpenseFromReports,
+  type RefundSource,
 } from "./paymentRefund";
 
 describe("paymentRefund util", () => {
@@ -64,5 +66,90 @@ describe("paymentRefund util", () => {
         expenseItemCode: "ELEKTRIK",
       })
     ).toBe(false);
+  });
+});
+
+describe("planRefundReductions", () => {
+  const credit = (paymentId: string, availableCents: number): RefundSource => ({
+    kind: "CREDIT",
+    paymentId,
+    paymentItemId: null,
+    chargeId: null,
+    availableCents,
+  });
+
+  const item = (
+    paymentId: string,
+    paymentItemId: string,
+    availableCents: number
+  ): RefundSource => ({
+    kind: "ITEM",
+    paymentId,
+    paymentItemId,
+    chargeId: `charge-${paymentItemId}`,
+    availableCents,
+  });
+
+  it("once bekleyen alacaktan duser", () => {
+    const { reductions, shortfallCents } = planRefundReductions(10000, [
+      credit("p1", 15000),
+      item("p2", "i1", 50000),
+    ]);
+
+    expect(reductions).toEqual([{ ...credit("p1", 15000), reducedCents: 10000 }]);
+    expect(shortfallCents).toBe(0);
+  });
+
+  it("alacak yetmezse kalani tahakkuk kalemlerinden duser", () => {
+    const { reductions, shortfallCents } = planRefundReductions(30000, [
+      credit("p1", 10000),
+      item("p2", "i1", 12000),
+      item("p3", "i2", 25000),
+    ]);
+
+    expect(reductions).toEqual([
+      { ...credit("p1", 10000), reducedCents: 10000 },
+      { ...item("p2", "i1", 12000), reducedCents: 12000 },
+      { ...item("p3", "i2", 25000), reducedCents: 8000 },
+    ]);
+    expect(shortfallCents).toBe(0);
+  });
+
+  it("kaynaklar yetmezse eksigi bildirir", () => {
+    const { reductions, shortfallCents } = planRefundReductions(50000, [
+      credit("p1", 10000),
+      item("p2", "i1", 15000),
+    ]);
+
+    expect(reductions.map((x) => x.reducedCents)).toEqual([10000, 15000]);
+    expect(shortfallCents).toBe(25000);
+  });
+
+  it("hedef karsilandiginda kalan kaynaklara dokunmaz", () => {
+    const { reductions } = planRefundReductions(5000, [
+      item("p1", "i1", 5000),
+      item("p2", "i2", 90000),
+    ]);
+
+    expect(reductions).toHaveLength(1);
+    expect(reductions[0].paymentItemId).toBe("i1");
+  });
+
+  it("bos ve sifir tutarli kaynaklari atlar", () => {
+    const { reductions, shortfallCents } = planRefundReductions(1000, [
+      credit("p1", 0),
+      item("p2", "i1", 0),
+      item("p3", "i2", 1000),
+    ]);
+
+    expect(reductions).toEqual([{ ...item("p3", "i2", 1000), reducedCents: 1000 }]);
+    expect(shortfallCents).toBe(0);
+  });
+
+  it("hedef sifirsa hicbir kaynagi tuketmez", () => {
+    expect(planRefundReductions(0, [item("p1", "i1", 5000)])).toEqual({
+      reductions: [],
+      shortfallCents: 0,
+    });
   });
 });
