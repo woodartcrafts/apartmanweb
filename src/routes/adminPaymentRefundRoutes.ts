@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
@@ -5,6 +6,7 @@ import { normalizeDoorNoForCompare } from "./adminNoteUtils";
 import {
   PAYMENT_REFUND_EXPENSE_ITEM_CODE,
   PAYMENT_REFUND_EXPENSE_ITEM_NAME,
+  PAYMENT_REFUND_NOTE_PREFIX,
   UNCLASSIFIED_EXPENSE_ITEM_CODE,
   buildPaymentRefundExpenseDescription,
   isPaymentRefundExpenseDescription,
@@ -12,7 +14,25 @@ import {
   parsePaymentRefundDoorsFromText,
 } from "../utils/paymentRefund";
 
-type RefreshChargeStatuses = (chargeIds: string[]) => Promise<void>;
+type RefreshChargeStatuses = (
+  chargeIds: string[],
+  client?: Prisma.TransactionClient
+) => Promise<void>;
+
+type PushActionLog = (input: {
+  actionType: "EDIT";
+  entityType: "EXPENSE";
+  entityId: string;
+  actorUserId: string | null;
+  before: unknown;
+  after: unknown;
+  undoKind: null;
+  undoPayload: null;
+  undoable?: boolean;
+}) => Promise<unknown>;
+
+/** Transaction icinde 400 ile donmesi gereken is kurali hatalari. */
+class PaymentRefundConflictError extends Error {}
 
 type ApartmentMatch = {
   id: string;
@@ -82,9 +102,10 @@ async function findApartmentsByDoorNos(doorNoRaws: string[]): Promise<{
 
 export function createAdminPaymentRefundRoutes(deps: {
   refreshChargeStatusesForIds: RefreshChargeStatuses;
+  pushActionLog: PushActionLog;
 }): Router {
   const router = Router();
-  const { refreshChargeStatusesForIds } = deps;
+  const { refreshChargeStatusesForIds, pushActionLog } = deps;
 
   router.get("/payment-refunds/candidates", async (_req, res) => {
     const expenses = await prisma.expense.findMany({
@@ -276,30 +297,114 @@ export function createAdminPaymentRefundRoutes(deps: {
     const reducedItemIds: string[] = [];
     const deletedPaymentIds: string[] = [];
 
-    await prisma.$transaction(async (tx) => {
-      for (const item of paymentItems) {
-        if (remaining <= 0.0001) {
-          break;
-        }
+    try {
+      await prisma.$transaction(
+        async (tx) => {
+          affectedChargeIds.clear();
+          reducedByApartmentId.clear();
+          reducedItemIds.length = 0;
+          deletedPaymentIds.length = 0;
+          remaining = refundAmount;
 
-        const itemAmount = Number(item.amount);
-        affectedChargeIds.add(item.chargeId);
-        const apartmentId = item.charge.apartmentId;
+          // Once gideri atomik olarak "iade" diye isaretle. Ayni anda gelen ikinci
+          // istek (cift tiklama, retry) bu kosula takilir; tahsilat iki kez dusulmez.
+          const claimed = await tx.expense.updateMany({
+            where: {
+              id: expense.id,
+              expenseItemId: { not: refundExpenseItemId },
+              NOT: { description: { contains: PAYMENT_REFUND_NOTE_PREFIX } },
+            },
+            data: {
+              expenseItemId: refundExpenseItemId,
+              description: buildPaymentRefundExpenseDescription({
+                doorNos: apartments.map((apt) => apt.doorNo),
+                description: expense.description,
+              }),
+            },
+          });
 
-        if (itemAmount <= remaining + 0.0001) {
-          await tx.paymentItem.delete({ where: { id: item.id } });
-          remaining = Number((remaining - itemAmount).toFixed(2));
-          reducedItemIds.push(item.id);
-          reducedByApartmentId.set(
-            apartmentId,
-            Number(((reducedByApartmentId.get(apartmentId) ?? 0) + itemAmount).toFixed(2))
+          if (claimed.count === 0) {
+            throw new PaymentRefundConflictError(
+              "Bu kayit zaten aidat iadesi olarak isaretlenmis"
+            );
+          }
+
+          // Tahsilatlar transaction icinde yeniden okunur: on kontrol ile bu an
+          // arasinda baska bir islem tahsilatlari degistirmis olabilir.
+          const lockedItems = await tx.paymentItem.findMany({
+            where: { charge: { apartmentId: { in: apartmentIds } } },
+            select: {
+              id: true,
+              amount: true,
+              chargeId: true,
+              paymentId: true,
+              charge: { select: { apartmentId: true } },
+            },
+            orderBy: [
+              { payment: { paidAt: "desc" } },
+              { payment: { createdAt: "desc" } },
+              { id: "desc" },
+            ],
+          });
+
+          const lockedTotal = Number(
+            lockedItems.reduce((sum, item) => sum + Number(item.amount), 0).toFixed(2)
           );
+          if (lockedTotal + 0.0001 < refundAmount) {
+            const doorLabel = apartments.map((apt) => apt.doorNo).join(", ");
+            throw new PaymentRefundConflictError(
+              `Secilen dairelerde (${doorLabel}) geri alinacak yeterli tahsilat kalmadi (mevcut: ${lockedTotal.toFixed(2)} TL, iade: ${refundAmount.toFixed(2)} TL)`
+            );
+          }
 
-          const remainingCount = await tx.paymentItem.count({ where: { paymentId: item.paymentId } });
-          if (remainingCount === 0) {
-            await tx.payment.delete({ where: { id: item.paymentId } });
-            deletedPaymentIds.push(item.paymentId);
-          } else {
+          for (const item of lockedItems) {
+            if (remaining <= 0.0001) {
+              break;
+            }
+
+            const itemAmount = Number(item.amount);
+            affectedChargeIds.add(item.chargeId);
+            const apartmentId = item.charge.apartmentId;
+
+            if (itemAmount <= remaining + 0.0001) {
+              await tx.paymentItem.delete({ where: { id: item.id } });
+              remaining = Number((remaining - itemAmount).toFixed(2));
+              reducedItemIds.push(item.id);
+              reducedByApartmentId.set(
+                apartmentId,
+                Number(((reducedByApartmentId.get(apartmentId) ?? 0) + itemAmount).toFixed(2))
+              );
+
+              const remainingCount = await tx.paymentItem.count({
+                where: { paymentId: item.paymentId },
+              });
+              if (remainingCount === 0) {
+                await tx.payment.delete({ where: { id: item.paymentId } });
+                deletedPaymentIds.push(item.paymentId);
+              } else {
+                const sum = await tx.paymentItem.aggregate({
+                  where: { paymentId: item.paymentId },
+                  _sum: { amount: true },
+                });
+                await tx.payment.update({
+                  where: { id: item.paymentId },
+                  data: { totalAmount: Number(sum._sum.amount ?? 0) },
+                });
+              }
+              continue;
+            }
+
+            const nextAmount = Number((itemAmount - remaining).toFixed(2));
+            await tx.paymentItem.update({
+              where: { id: item.id },
+              data: { amount: nextAmount },
+            });
+            reducedItemIds.push(item.id);
+            reducedByApartmentId.set(
+              apartmentId,
+              Number(((reducedByApartmentId.get(apartmentId) ?? 0) + remaining).toFixed(2))
+            );
+
             const sum = await tx.paymentItem.aggregate({
               where: { paymentId: item.paymentId },
               _sum: { amount: true },
@@ -308,51 +413,27 @@ export function createAdminPaymentRefundRoutes(deps: {
               where: { id: item.paymentId },
               data: { totalAmount: Number(sum._sum.amount ?? 0) },
             });
+            remaining = 0;
           }
-          continue;
-        }
 
-        const nextAmount = Number((itemAmount - remaining).toFixed(2));
-        await tx.paymentItem.update({
-          where: { id: item.id },
-          data: { amount: nextAmount },
-        });
-        reducedItemIds.push(item.id);
-        reducedByApartmentId.set(
-          apartmentId,
-          Number(((reducedByApartmentId.get(apartmentId) ?? 0) + remaining).toFixed(2))
-        );
+          if (remaining > 0.0001) {
+            throw new PaymentRefundConflictError(
+              `Iade uygulanamadi: kalan tutar ${remaining.toFixed(2)} TL`
+            );
+          }
 
-        const sum = await tx.paymentItem.aggregate({
-          where: { paymentId: item.paymentId },
-          _sum: { amount: true },
-        });
-        await tx.payment.update({
-          where: { id: item.paymentId },
-          data: { totalAmount: Number(sum._sum.amount ?? 0) },
-        });
-        remaining = 0;
-      }
-
-      if (remaining > 0.0001) {
-        throw new Error(
-          `Iade uygulanamadi: kalan tutar ${remaining.toFixed(2)} TL (beklenmeyen durum)`
-        );
-      }
-
-      await tx.expense.update({
-        where: { id: expense.id },
-        data: {
-          expenseItemId: refundExpenseItemId,
-          description: buildPaymentRefundExpenseDescription({
-            doorNos: apartments.map((apt) => apt.doorNo),
-            description: expense.description,
-          }),
+          // Tahakkuk durumlari da ayni transaction icinde guncellenir; boylece
+          // tahsilat dusuldugu halde durum eski kalan bir ara durum olusmaz.
+          await refreshChargeStatusesForIds([...affectedChargeIds], tx);
         },
-      });
-    });
-
-    await refreshChargeStatusesForIds([...affectedChargeIds]);
+        { timeout: 20000 }
+      );
+    } catch (error) {
+      if (error instanceof PaymentRefundConflictError) {
+        return res.status(400).json({ message: error.message });
+      }
+      throw error;
+    }
 
     const apartmentBreakdown = apartments.map((apt) => ({
       apartmentId: apt.id,
@@ -362,6 +443,34 @@ export function createAdminPaymentRefundRoutes(deps: {
       }`,
       reducedAmount: reducedByApartmentId.get(apt.id) ?? 0,
     }));
+
+    // Iade geri alinabilir bir islem degil; en azindan kimin neyi dusurdugu
+    // izlenebilsin diye kayit birakiyoruz.
+    await pushActionLog({
+      actionType: "EDIT",
+      entityType: "EXPENSE",
+      entityId: expense.id,
+      actorUserId: req.user?.userId ?? null,
+      before: {
+        expenseItemCode: UNCLASSIFIED_EXPENSE_ITEM_CODE,
+        description: expense.description,
+        amount: refundAmount,
+      },
+      after: {
+        expenseItemCode: PAYMENT_REFUND_EXPENSE_ITEM_CODE,
+        doorNos: apartments.map((apt) => apt.doorNo),
+        apartmentBreakdown,
+        refundAmount,
+        reducedPaymentItemIds: reducedItemIds,
+        deletedPaymentIds,
+        affectedChargeIds: [...affectedChargeIds],
+      },
+      undoKind: null,
+      undoPayload: null,
+      undoable: false,
+    }).catch((error) => {
+      console.error("[payment-refund] audit log yazilamadi", error);
+    });
 
     return res.json({
       ok: true,

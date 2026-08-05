@@ -52,6 +52,7 @@ import {
   sumOperatingBankPaymentsIn,
   sumOperatingBankExpensesOut,
 } from "../utils/operatingBankBalance";
+import { buildDateRangeFilter } from "../utils/dateRange";
 import {
   mapRequestMethodToAdminAction,
   mapRequestPathToAdminPage,
@@ -622,13 +623,21 @@ async function ensurePaymentMethodDefinitions() {
   return prisma.paymentMethodDefinition.findMany();
 }
 
-async function refreshChargeStatusesForIds(chargeIds: string[]): Promise<void> {
+/**
+ * Tahakkuk durumlarini odenen tutara gore yeniden hesaplar.
+ * `client` verilirse islem cagiran transaction icinde yurur; boylece odeme
+ * degisikligi ile durum guncellemesi ayni atomik blokta kalir.
+ */
+async function refreshChargeStatusesForIds(
+  chargeIds: string[],
+  client: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<void> {
   if (chargeIds.length === 0) {
     return;
   }
 
   const uniqueIds = [...new Set(chargeIds)];
-  const grouped = await prisma.paymentItem.groupBy({
+  const grouped = await client.paymentItem.groupBy({
     by: ["chargeId"],
     where: { chargeId: { in: uniqueIds } },
     _sum: { amount: true },
@@ -639,7 +648,7 @@ async function refreshChargeStatusesForIds(chargeIds: string[]): Promise<void> {
 
   for (let i = 0; i < uniqueIds.length; i += CHUNK_SIZE) {
     const chunkIds = uniqueIds.slice(i, i + CHUNK_SIZE);
-    const charges = await prisma.charge.findMany({
+    const charges = await client.charge.findMany({
       where: { id: { in: chunkIds } },
       select: { id: true, amount: true },
     });
@@ -658,14 +667,14 @@ async function refreshChargeStatusesForIds(chargeIds: string[]): Promise<void> {
     }
 
     if (toOpen.length > 0) {
-      await prisma.charge.updateMany({
+      await client.charge.updateMany({
         where: { id: { in: toOpen } },
         data: { status: "OPEN", closedAt: null },
       });
     }
 
     if (toClose.length > 0) {
-      await prisma.charge.updateMany({
+      await client.charge.updateMany({
         where: { id: { in: toClose } },
         data: { status: "CLOSED", closedAt: new Date() },
       });
@@ -5119,13 +5128,7 @@ router.get("/payments/list", async (req, res) => {
 
   const payments = await prisma.payment.findMany({
     where: {
-      paidAt:
-        from || to
-          ? {
-              gte: from ? new Date(from) : undefined,
-              lte: to ? new Date(to) : undefined,
-            }
-          : undefined,
+      paidAt: buildDateRangeFilter(from, to),
       note: description
         ? {
             contains: description,
@@ -5293,13 +5296,7 @@ router.get("/reports/manual-review-matches", async (req, res) => {
       note: {
         contains: "UNAPPLIED:MANUAL_REVIEW",
       },
-      paidAt:
-        from || to
-          ? {
-              gte: from ? new Date(from) : undefined,
-              lte: to ? new Date(to) : undefined,
-            }
-          : undefined,
+      paidAt: buildDateRangeFilter(from, to),
     },
     include: {
       importBatch: {
@@ -6174,7 +6171,12 @@ router.post("/actions/undo/:actionId", async (req, res) => {
 
 
 router.use(createAdminAccountTransferRoutes());
-router.use(createAdminPaymentRefundRoutes({ refreshChargeStatusesForIds }));
+router.use(
+  createAdminPaymentRefundRoutes({
+    refreshChargeStatusesForIds,
+    pushActionLog: (input) => pushActionLog(input as any),
+  })
+);
 router.use(createAdminUploadBatchRoutes({ refreshChargeStatusesForIds }));
 
 router.post("/payments/upload", upload.single("file"), async (req, res) => {
@@ -6219,6 +6221,7 @@ router.post("/payments/upload", upload.single("file"), async (req, res) => {
   let createdCount = 0;
   let skippedCount = 0;
   const errors: string[] = [];
+  const affectedChargeIds = new Set<string>();
 
   for (let idx = 0; idx < rows.length; idx += 1) {
     const row = rows[idx];
@@ -6325,6 +6328,10 @@ router.post("/payments/upload", upload.single("file"), async (req, res) => {
         }
       });
 
+      for (const item of items) {
+        affectedChargeIds.add(item.chargeId);
+      }
+
       createdCount += 1;
     } catch (err) {
       skippedCount += 1;
@@ -6332,6 +6339,8 @@ router.post("/payments/upload", upload.single("file"), async (req, res) => {
       console.error(err);
     }
   }
+
+  await refreshChargeStatusesForIds([...affectedChargeIds]);
 
   await prisma.importBatch.update({
     where: { id: batch.id },
@@ -7248,13 +7257,17 @@ router.get("/reports/overdue-payments", async (req, res) => {
     return displayTitle;
   }
 
+  // Vade ust siniri: "bugunden once" ile kullanicinin sectigi bitis gununun sonu,
+  // hangisi daha erkense o. Tek bir `lt` olabilecegi icin ikisi burada birlestirilir.
+  const dueDateRange = buildDateRangeFilter(from, to);
+  const dueDateUpperBound = dueDateRange?.lt && dueDateRange.lt < now ? dueDateRange.lt : now;
+
   const charges = await prisma.charge.findMany({
     where: {
       status: "OPEN",
       dueDate: {
-        lt: now,
-        gte: from ? new Date(from) : undefined,
-        lte: to ? new Date(to) : undefined,
+        lt: dueDateUpperBound,
+        ...(dueDateRange?.gte ? { gte: dueDateRange.gte } : {}),
       },
       apartment: {
         blockId: blockId || undefined,
@@ -8395,6 +8408,10 @@ router.get("/reports/bank-reconciliation", async (req, res) => {
       to: parsed.data.to ?? null,
       limit,
     },
+    // Toplamlar tum hareketlerden hesaplanir; `rows` limite gore kesilmis olabilir.
+    // Kullaniciya eksik liste gosterdigimizi belirtmek icin bu iki alan doner.
+    truncated: rowsChronological.length > rowsLimited.length,
+    totalRowCount: rowsChronological.length,
     totals: {
       totalIn,
       totalOut,
@@ -9156,6 +9173,9 @@ router.get("/reports/charge-consistency", async (req, res) => {
       requireMonthEndDueDate: enforceMonthEnd,
       includeMissing: includeMissingRows,
     },
+    // `warningCount` tum uyarilari sayar; `rows` limite gore kesilmis olabilir.
+    truncated: warningRows.length > effectiveLimit,
+    totalRowCount: warningRows.length,
     totals: {
       totalApartmentCount: targetApartments.length,
       targetApartmentCount: eligibleApartments.length,

@@ -28,8 +28,10 @@ const adminUserCreateSchema = z.object({
     .trim()
     .regex(/^(\+90|0)?5\d{9}$/, "Telefon +90... veya 05... formatinda olmali")
     .optional(),
+  // Giris endpointi sifreyi trim ettigi icin belirlerken de trim edilmeli.
   password: z
     .string()
+    .trim()
     .min(8)
     .max(128)
     .regex(/[A-Za-z]/, "Password must include at least one letter")
@@ -40,6 +42,7 @@ const adminUserCreateSchema = z.object({
 const adminPasswordSchema = z.object({
   password: z
     .string()
+    .trim()
     .min(8)
     .max(128)
     .regex(/[A-Za-z]/, "Password must include at least one letter")

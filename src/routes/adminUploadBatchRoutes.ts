@@ -7,6 +7,7 @@ import {
   isAccountTransferPaymentNote,
   parseAccountTransferDirectionFromText,
 } from "../utils/accountTransfer";
+import { buildDateRangeFilter } from "../utils/dateRange";
 
 function extractBankRefKeyFromPaymentNote(note: string | null): string | null {
   if (!note) {
@@ -132,13 +133,7 @@ router.get("/upload-batches", async (req, res) => {
 
   const batches = await prisma.importBatch.findMany({
     where: {
-      uploadedAt:
-        from || to
-          ? {
-              gte: from ? new Date(from) : undefined,
-              lte: to ? new Date(to) : undefined,
-            }
-          : undefined,
+      uploadedAt: buildDateRangeFilter(from, to),
       uploadedById: uploadedByUserId || undefined,
       kind: normalizedKind || undefined,
       fileName: gmailOnly

@@ -3465,6 +3465,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       method?: "GET" | "POST" | "PUT" | "DELETE";
       payload?: unknown;
       suppressDataChangeToast?: boolean;
+      /** Basarili yanitin basliklarini okumak icin (orn. X-Result-Truncated). */
+      onResponse?: (response: Response) => void;
     }
   ): Promise<T> {
     const method = options?.method ?? "GET";
@@ -3556,6 +3558,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     if (method !== "GET") {
       crossTabSyncChannelRef.current?.postMessage({ type: "data-changed" });
     }
+
+    options?.onResponse?.(res);
 
     if (res.status === 204) {
       return undefined as T;
@@ -4502,7 +4506,18 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       params.set("includeDistributed", String(includeDistributed));
 
       const endpoint = `/api/admin/expenses/report${params.toString() ? `?${params.toString()}` : ""}`;
-      const data = await authorizedRequest<ExpenseReportRow[]>(endpoint);
+      let truncated = false;
+      const data = await authorizedRequest<ExpenseReportRow[]>(endpoint, {
+        onResponse: (response) => {
+          truncated = response.headers.get("X-Result-Truncated") === "true";
+        },
+      });
+
+      if (truncated) {
+        setExpenseReportError(
+          "Bu tarih araliginda kayit sayisi limite takildi; liste eksik olabilir. Tarih araligini daraltin."
+        );
+      }
 
       const sourceFiltered =
         filter.sources.length > 0 ? data.filter((row) => filter.sources.includes(row.source)) : data;
@@ -4974,7 +4989,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       setBankReconciliationRows(data.rows);
       setBankReconciliationTotals(data.totals);
       if (!silent) {
-        setMessage(`Banka hareket raporu hazir: ${data.totals.movementCount} hareket`);
+        setMessage(
+          data.truncated
+            ? `Banka hareket raporu hazir: ${data.totals.movementCount} hareket. DIKKAT: liste limite takildi, ${data.totalRowCount ?? data.totals.movementCount} hareketin son ${data.rows.length} tanesi gosteriliyor. Tarih araligini daraltin.`
+            : `Banka hareket raporu hazir: ${data.totals.movementCount} hareket`
+        );
       }
     } catch (err) {
       console.error(err);
@@ -5532,7 +5551,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         prev.filter((code) => Number(data.totals.byCode[code] ?? 0) > 0)
       );
       if (!silent) {
-        setMessage(`Tahakkuk kontrol raporu hazir: ${data.totals.warningCount} uyari`);
+        setMessage(
+          data.truncated
+            ? `Tahakkuk kontrol raporu hazir: ${data.totals.warningCount} uyari. DIKKAT: listede sadece ilk ${data.rows.length} satir gosteriliyor.`
+            : `Tahakkuk kontrol raporu hazir: ${data.totals.warningCount} uyari`
+        );
       }
     } catch (err) {
       console.error(err);

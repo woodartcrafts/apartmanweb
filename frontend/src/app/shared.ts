@@ -911,6 +911,9 @@ export type BankReconciliationReportResponse = {
     expenseCount: number;
     movementCount: number;
   };
+  /** `rows` limite takilip kesildiyse true; toplamlar yine tam veriden gelir. */
+  truncated?: boolean;
+  totalRowCount?: number;
   rows: BankReconciliationRow[];
   allTimeBalance: number | null;
 };
@@ -998,6 +1001,9 @@ export type ChargeConsistencyReportResponse = {
     requireMonthEndDueDate: boolean;
     includeMissing: boolean;
   };
+  /** `rows` limite takilip kesildiyse true; `warningCount` yine tam sayidir. */
+  truncated?: boolean;
+  totalRowCount?: number;
   totals: {
     totalApartmentCount: number;
     targetApartmentCount: number;

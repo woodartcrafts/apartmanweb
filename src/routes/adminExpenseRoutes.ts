@@ -2,6 +2,10 @@ import { ImportBatchType, PaymentMethod } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
+import { buildDateRangeFilter } from "../utils/dateRange";
+
+const EXPENSE_REPORT_EXPENSE_LIMIT = 2000;
+const EXPENSE_REPORT_CHARGE_LIMIT = 5000;
 
 type ExpenseRoutesDeps = {
   ensurePaymentMethodDefinitions: () => Promise<unknown>;
@@ -81,13 +85,7 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
 
     const expenses = await prisma.expense.findMany({
       where: {
-        spentAt:
-          from || to
-            ? {
-                gte: from ? new Date(from) : undefined,
-                lte: to ? new Date(to) : undefined,
-              }
-            : undefined,
+        spentAt: buildDateRangeFilter(from, to),
         expenseItemId: expenseItemId || undefined,
         paymentMethod: paymentMethod || undefined,
       },
@@ -132,13 +130,7 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
     const { from, to, source, expenseItemId } = parsed.data;
     const includeDistributed = parsed.data.includeDistributed ?? true;
 
-    const rangeFilter =
-      from || to
-        ? {
-            gte: from ? new Date(from) : undefined,
-            lte: to ? new Date(to) : undefined,
-          }
-        : undefined;
+    const rangeFilter = buildDateRangeFilter(from, to);
 
     const expenses = await prisma.expense.findMany({
       where: {
@@ -158,7 +150,7 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
         },
       },
       orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
-      take: 2000,
+      take: EXPENSE_REPORT_EXPENSE_LIMIT,
     });
 
     const needDistributedRows = includeDistributed && (!source || source === "CHARGE_DISTRIBUTION");
@@ -179,7 +171,7 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
             },
           },
           orderBy: [{ dueDate: "desc" }, { createdAt: "desc" }],
-          take: 5000,
+          take: EXPENSE_REPORT_CHARGE_LIMIT,
         })
       : [];
 
@@ -385,6 +377,18 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
       if (source === "CHARGE_DISTRIBUTION" && filteredRows.length === 0) {
         filteredRows = rowsBySource;
       }
+    }
+
+    // Sorgular tavana dayandiysa liste eksiktir. Yanit govdesi dizi oldugu ve
+    // sozlesmesi bozulmamasi gerektigi icin uyari basliklarla tasiniyor.
+    const hitExpenseCap = expenses.length >= EXPENSE_REPORT_EXPENSE_LIMIT;
+    const hitChargeCap = expenseCharges.length >= EXPENSE_REPORT_CHARGE_LIMIT;
+    if (hitExpenseCap || hitChargeCap) {
+      res.setHeader("X-Result-Truncated", "true");
+      res.setHeader(
+        "X-Result-Limit",
+        String(hitExpenseCap ? EXPENSE_REPORT_EXPENSE_LIMIT : EXPENSE_REPORT_CHARGE_LIMIT)
+      );
     }
 
     return res.json(filteredRows);

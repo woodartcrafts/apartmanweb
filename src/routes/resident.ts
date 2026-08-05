@@ -4,6 +4,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { buildDateRangeFilter } from "../utils/dateRange";
 import { getApartmentStatements } from "../utils/statement";
 
 const router = Router();
@@ -55,13 +56,7 @@ router.get("/me/expenses-report", requireRole([UserRole.ADMIN]), async (req, res
   const { from, to } = parsed.data;
   const limit = parsed.data.limit ?? 200;
 
-  const rangeFilter =
-    from || to
-      ? {
-          gte: from ? new Date(from) : undefined,
-          lte: to ? new Date(to) : undefined,
-        }
-      : undefined;
+  const rangeFilter = buildDateRangeFilter(from, to);
 
   const expenseReportWhere = {
     spentAt: rangeFilter,
@@ -322,14 +317,16 @@ router.post("/me/polls/:pollId/vote", async (req, res) => {
 router.post("/me/password", async (req, res) => {
   const schema = z
     .object({
-      currentPassword: z.string().min(8).max(128),
+      // Giris endpointi sifreyi trim ediyor; burada da ayni normalizasyon uygulanmali.
+      currentPassword: z.string().trim().min(8).max(128),
       newPassword: z
         .string()
+        .trim()
         .min(8)
         .max(128)
         .regex(/[A-Za-z]/, "Password must include at least one letter")
         .regex(/[0-9]/, "Password must include at least one digit"),
-      confirmPassword: z.string().min(8).max(128),
+      confirmPassword: z.string().trim().min(8).max(128),
     })
     .refine((data) => data.newPassword === data.confirmPassword, {
       message: "Yeni sifre ve tekrar sifresi ayni olmali",

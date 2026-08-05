@@ -45,6 +45,9 @@ app.use(
     },
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"],
+    // Rapor listeleri limite takildiginda frontend uyari gosterebilsin diye
+    // bu basliklarin cross-origin okunmasina izin veriliyor.
+    exposedHeaders: ["X-Result-Truncated", "X-Result-Limit"],
   })
 );
 app.use(cookieParser());

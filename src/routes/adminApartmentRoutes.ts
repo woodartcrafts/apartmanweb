@@ -345,8 +345,11 @@ const apartmentBulkClassUpdateSchema = z.object({
 
 const apartmentResidentPasswordSetSchema = z.object({
   userId: z.string().min(1).optional(),
+  // Giris endpointi sifreyi trim ettigi icin belirlerken de trim edilmeli;
+  // aksi halde bas/son bosluklu bir sifre kaydedilir ve o kullanici giris yapamaz.
   password: z
     .string()
+    .trim()
     .min(8)
     .max(128)
     .regex(/[A-Za-z]/, "Password must include at least one letter")
