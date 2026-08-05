@@ -51,6 +51,7 @@ export type AdminPageKey =
   | "REPORTS_FRACTIONAL"
   | "REPORTS_REFERENCE_SEARCH"
   | "REPORTS_BANK_MOVEMENTS"
+  | "REPORTS_CASH_CASHFLOW"
   | "BANKS"
   | "BANK_INITIAL_BALANCES"
   | "BANK_TERM_DEPOSITS_LIST"
@@ -140,6 +141,7 @@ export const ADMIN_PAGE_DEFINITIONS: Array<{ key: AdminPageKey; label: string }>
   { key: "REPORTS_FRACTIONAL", label: "Raporlar / Finans / Kesirli Kapatmalar" },
   { key: "REPORTS_REFERENCE_SEARCH", label: "Raporlar / Arama / Referans Arama" },
   { key: "REPORTS_BANK_MOVEMENTS", label: "Raporlar / Finans / Banka Hareketleri" },
+  { key: "REPORTS_CASH_CASHFLOW", label: "Raporlar / Finans / Nakit Tahsilat ve Odemeler" },
   { key: "BANKS", label: "Banka / Tanimlar / Banka Listesi" },
   { key: "BANK_INITIAL_BALANCES", label: "Banka / Tanimlar / Ilk Bakiye" },
   { key: "BANK_TERM_DEPOSITS_LIST", label: "Banka / Vadeli Mevduat / Liste" },
@@ -312,6 +314,7 @@ export function mapRequestPathToAdminPage(pathname: string, method?: string): Ad
   if (pathname.startsWith("/reports/bank-balance-audit")) return "REPORTS_SUMMARY";
   if (pathname.startsWith("/reports/bank-reconciliation")) return "REPORTS_BANK_MOVEMENTS";
   if (pathname.startsWith("/reports/bank-movements")) return "REPORTS_BANK_MOVEMENTS";
+  if (pathname.startsWith("/reports/cash-cashflow")) return "REPORTS_CASH_CASHFLOW";
   if (pathname.startsWith("/reports")) return "REPORTS_SUMMARY";
 
   if (pathname.startsWith("/banks/term-deposits")) {

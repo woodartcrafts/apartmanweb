@@ -89,6 +89,7 @@ import {
   type AccountTransferRow,
   type ApartmentCreditsResponse,
   type ApplyPendingCreditsResult,
+  type CashCashflowResponse,
   type PaymentRefundAppliedRow,
   type PaymentRefundApplyResult,
   type PaymentRefundCandidateRow,
@@ -286,6 +287,11 @@ const SplitCandidatesPage = lazy(() =>
 const ApartmentCreditsPage = lazy(() =>
   import("./admin/ApartmentCreditsPage").then((module) => ({
     default: module.ApartmentCreditsPage,
+  }))
+);
+const CashCashflowPage = lazy(() =>
+  import("./admin/CashCashflowPage").then((module) => ({
+    default: module.CashCashflowPage,
   }))
 );
 const MeetingGuidePage = lazy(() =>
@@ -667,6 +673,10 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [splitCandidatesPageLoading, setSplitCandidatesPageLoading] = useState(false);
   const [apartmentCreditsData, setApartmentCreditsData] = useState<ApartmentCreditsResponse | null>(null);
   const [apartmentCreditsPageLoading, setApartmentCreditsPageLoading] = useState(false);
+  const [cashCashflowData, setCashCashflowData] = useState<CashCashflowResponse | null>(null);
+  const [cashCashflowPageLoading, setCashCashflowPageLoading] = useState(false);
+  const [cashCashflowFrom, setCashCashflowFrom] = useState("");
+  const [cashCashflowTo, setCashCashflowTo] = useState("");
   const [accountTransferFilter, setAccountTransferFilter] = useState({ from: "", to: "" });
   const [paymentListFilter, setPaymentListFilter] = useState({
     from: "",
@@ -1098,6 +1108,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/reports/fractional-closures": "REPORTS_FRACTIONAL",
       "/admin/reports/reference-search": "REPORTS_REFERENCE_SEARCH",
       "/admin/reports/bank-movements": "REPORTS_BANK_MOVEMENTS",
+      "/admin/reports/cash-cashflow": "REPORTS_CASH_CASHFLOW",
       "/admin/reports/apartments/list": "APT_LIST",
       "/admin/banks": "BANKS",
       "/admin/initial-balances": "BANK_INITIAL_BALANCES",
@@ -1146,6 +1157,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       { path: "/admin/reports/fractional-closures", key: "REPORTS_FRACTIONAL" },
       { path: "/admin/reports/reference-search", key: "REPORTS_REFERENCE_SEARCH" },
       { path: "/admin/reports/bank-movements", key: "REPORTS_BANK_MOVEMENTS" },
+      { path: "/admin/reports/cash-cashflow", key: "REPORTS_CASH_CASHFLOW" },
       { path: "/admin/reports/apartments/list", key: "APT_LIST" },
       { path: "/admin/apartments/new", key: "APT_NEW" },
       { path: "/admin/apartments/list", key: "APT_LIST" },
@@ -4513,6 +4525,43 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       }
     } finally {
       setApartmentCreditsPageLoading(false);
+    }
+  }
+
+  async function fetchCashCashflow(options?: {
+    silent?: boolean;
+    from?: string;
+    to?: string;
+  }): Promise<void> {
+    const silent = options?.silent ?? false;
+    const fromValue = options?.from ?? cashCashflowFrom;
+    const toValue = options?.to ?? cashCashflowTo;
+    setCashCashflowPageLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (fromValue.trim()) {
+        params.set("from", dateInputToIso(fromValue.trim()));
+      }
+      if (toValue.trim()) {
+        params.set("to", dateInputToIso(toValue.trim()));
+      }
+      const query = params.toString();
+      const data = await authorizedRequest<CashCashflowResponse>(
+        `/api/admin/reports/cash-cashflow${query ? `?${query}` : ""}`
+      );
+      setCashCashflowData(data);
+      if (!silent) {
+        setMessage(
+          `Nakit tahsilat: ${formatTry(data.cash.inTotal)}, nakit odeme: ${formatTry(data.cash.outTotal)}, banka bakiyesi: ${formatTry(data.bankBalance.estimatedBalance)}`
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      if (!silent) {
+        setMessage(err instanceof Error ? err.message : "Nakit raporu yuklenemedi");
+      }
+    } finally {
+      setCashCashflowPageLoading(false);
     }
   }
 
@@ -8779,6 +8828,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       return;
     }
 
+    if (path === "/admin/reports/cash-cashflow") {
+      void fetchCashCashflow({ silent: true });
+      return;
+    }
+
     // Statement pages, apartment list, and bulk correction list are manual-run.
 
     if (path === "/admin/charges/bulk-correct/edit") {
@@ -9310,6 +9364,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/bank-movements">
               Banka Hareketleri
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/reports/cash-cashflow">
+              Nakit Tahsilat ve Odemeler
             </NavLink>
           </div>
         </details>
@@ -13208,6 +13265,23 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 data={apartmentCreditsData}
                 refresh={() => fetchApartmentCredits()}
                 applyPendingCredits={applyPendingApartmentCredits}
+              />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/reports/cash-cashflow"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <CashCashflowPage
+                loading={loading}
+                pageLoading={cashCashflowPageLoading}
+                data={cashCashflowData}
+                from={cashCashflowFrom}
+                to={cashCashflowTo}
+                setFrom={setCashCashflowFrom}
+                setTo={setCashCashflowTo}
+                refresh={fetchCashCashflow}
               />
             </Suspense>
           }

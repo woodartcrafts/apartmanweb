@@ -11,6 +11,7 @@ describe("admin permission path mapping", () => {
   it("maps report aliases to intended report keys", () => {
     expect(mapRequestPathToAdminPage("/reports/apartment-balance-matrix", "GET")).toBe("REPORTS_MONTHLY_BALANCE");
     expect(mapRequestPathToAdminPage("/reports/bank-reconciliation", "GET")).toBe("REPORTS_BANK_MOVEMENTS");
+    expect(mapRequestPathToAdminPage("/reports/cash-cashflow", "GET")).toBe("REPORTS_CASH_CASHFLOW");
   });
 
   it("maps payment-refunds path to PAYMENT_REFUNDS", () => {

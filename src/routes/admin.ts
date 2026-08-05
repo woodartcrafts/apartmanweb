@@ -33,6 +33,7 @@ import { createAdminAccountTransferRoutes } from "./adminAccountTransferRoutes";
 import { createAdminPaymentRefundRoutes } from "./adminPaymentRefundRoutes";
 import { createAdminSplitCandidateRoutes } from "./adminSplitCandidateRoutes";
 import { createAdminApartmentCreditRoutes } from "./adminApartmentCreditRoutes";
+import { createAdminCashCashflowRoutes } from "./adminCashCashflowRoutes";
 import {
   ACCOUNT_TRANSFER_NOTE_PREFIX,
   buildAccountTransferPaymentNote,
@@ -6373,6 +6374,7 @@ router.use(
   })
 );
 router.use(createAdminApartmentCreditRoutes({ refreshChargeStatusesForIds }));
+router.use(createAdminCashCashflowRoutes());
 router.use(createAdminUploadBatchRoutes({ refreshChargeStatusesForIds }));
 
 router.post("/payments/upload", upload.single("file"), async (req, res) => {

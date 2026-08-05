@@ -49,6 +49,7 @@ export type AdminPageKey =
   | "REPORTS_FRACTIONAL"
   | "REPORTS_REFERENCE_SEARCH"
   | "REPORTS_BANK_MOVEMENTS"
+  | "REPORTS_CASH_CASHFLOW"
   | "BANKS"
   | "BANK_INITIAL_BALANCES"
   | "BANK_TERM_DEPOSITS_LIST"
@@ -707,6 +708,59 @@ export type ApplyPendingCreditsResult = {
   appliedTotal: number;
   scannedPaymentCount: number;
   truncated: boolean;
+};
+
+export type CashCollectionRow = {
+  id: string;
+  paidAt: string;
+  amount: number;
+  allocatedAmount: number;
+  doorNo: string | null;
+  apartments: Array<{ apartmentId: string; doorNo: string; label: string }>;
+  description: string | null;
+  allocations: Array<{
+    chargeId: string;
+    amount: number;
+    periodYear: number;
+    periodMonth: number;
+    chargeTypeName: string;
+    apartmentLabel: string;
+  }>;
+  createdByName: string | null;
+};
+
+export type CashExpenseRow = {
+  id: string;
+  spentAt: string;
+  amount: number;
+  expenseItemId: string;
+  expenseItemName: string;
+  description: string | null;
+  reference: string | null;
+  createdByName: string | null;
+};
+
+export type CashCashflowResponse = {
+  snapshotAt: string;
+  from: string | null;
+  to: string | null;
+  truncated: boolean;
+  cash: {
+    inTotal: number;
+    outTotal: number;
+    net: number;
+    collectionCount: number;
+    expenseCount: number;
+    collections: CashCollectionRow[];
+    expenses: CashExpenseRow[];
+  };
+  bankBalance: {
+    openingBalance: number;
+    bankInTotal: number;
+    bankOutTotal: number;
+    estimatedBalance: number;
+    formula: string;
+  };
 };
 
 export type AdminActionLogRow = {
