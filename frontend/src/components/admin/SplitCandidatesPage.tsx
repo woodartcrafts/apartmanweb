@@ -16,6 +16,7 @@ type SplitCandidatesPageProps = {
   pageLoading: boolean;
   rows: SplitCandidateRow[];
   truncated: boolean;
+  alreadySplitCount: number;
   includeDismissed: boolean;
   apartmentOptions: ApartmentOption[];
   setIncludeDismissed: (value: boolean) => void;
@@ -64,6 +65,7 @@ export function SplitCandidatesPage({
   pageLoading,
   rows,
   truncated,
+  alreadySplitCount,
   includeDismissed,
   apartmentOptions,
   setIncludeDismissed,
@@ -252,6 +254,14 @@ export function SplitCandidatesPage({
           48/65, 35/45). Aciklamasi birden fazla daireye isaret eden diger tahsilatlar
           bolunmeden kaydedilir ve burada listelenir. Incelemek istemedigin kayitlar icin{" "}
           <b>Bolunmesin</b> diyerek listeyi temizleyebilirsin.
+        </p>
+
+        <p className="small">
+          Ayni banka hareketinden birden fazla tahsilat kaydi varsa o hareket zaten
+          bolunmus sayilir ve burada listelenmez.
+          {alreadySplitCount > 0
+            ? ` Bu nedenle ${alreadySplitCount} kayit listeden cikarildi.`
+            : ""}
         </p>
 
         {truncated ? (

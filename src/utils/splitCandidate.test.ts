@@ -1,9 +1,29 @@
 import { describe, expect, it } from "vitest";
 import {
   KNOWN_SPLIT_PAIRS,
+  collectAlreadySplitBankRefs,
   detectSplitCandidateDoorNos,
   resolveKnownPairDoorNos,
 } from "./splitCandidate";
+
+describe("collectAlreadySplitBankRefs", () => {
+  it("birden fazla kayitta gecen referansi bolunmus sayar", () => {
+    const result = collectAlreadySplitBankRefs(["REF-A", "REF-A", "REF-B"]);
+    expect([...result]).toEqual(["REF-A"]);
+  });
+
+  it("tek kayitta gecen referansi bolunmus saymaz", () => {
+    expect(collectAlreadySplitBankRefs(["REF-A", "REF-B"]).size).toBe(0);
+  });
+
+  it("bos ve tanimsiz referanslari yok sayar", () => {
+    expect(collectAlreadySplitBankRefs([null, undefined, "", "  ", null]).size).toBe(0);
+  });
+
+  it("bastaki/sondaki bosluklari ayni referans kabul eder", () => {
+    expect([...collectAlreadySplitBankRefs([" REF-A", "REF-A "])]).toEqual(["REF-A"]);
+  });
+});
 
 describe("resolveKnownPairDoorNos", () => {
   it("cift birlikte gectiginde ikisini birden dondurur", () => {

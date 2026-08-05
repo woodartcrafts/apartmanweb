@@ -641,6 +641,8 @@ export type SplitCandidatesResponse = {
   snapshotAt: string;
   truncated: boolean;
   scannedPaymentCount: number;
+  /** Ayni banka referansi birden fazla kayitta oldugu icin listelenmeyen tahsilat sayisi. */
+  alreadySplitCount: number;
   totalRowCount: number;
   rows: SplitCandidateRow[];
 };

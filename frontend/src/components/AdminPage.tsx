@@ -662,6 +662,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [paymentRefundsPageLoading, setPaymentRefundsPageLoading] = useState(false);
   const [splitCandidateRows, setSplitCandidateRows] = useState<SplitCandidateRow[]>([]);
   const [splitCandidatesTruncated, setSplitCandidatesTruncated] = useState(false);
+  const [splitCandidatesAlreadySplitCount, setSplitCandidatesAlreadySplitCount] = useState(0);
   const [splitCandidatesIncludeDismissed, setSplitCandidatesIncludeDismissed] = useState(false);
   const [splitCandidatesPageLoading, setSplitCandidatesPageLoading] = useState(false);
   const [apartmentCreditsData, setApartmentCreditsData] = useState<ApartmentCreditsResponse | null>(null);
@@ -4431,6 +4432,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       );
       setSplitCandidateRows(data.rows);
       setSplitCandidatesTruncated(data.truncated);
+      setSplitCandidatesAlreadySplitCount(data.alreadySplitCount ?? 0);
       if (!silent) {
         setMessage(`Bolunme ihtimali olan tahsilat: ${data.rows.length}`);
       }
@@ -13182,6 +13184,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 pageLoading={splitCandidatesPageLoading}
                 rows={splitCandidateRows}
                 truncated={splitCandidatesTruncated}
+                alreadySplitCount={splitCandidatesAlreadySplitCount}
                 includeDismissed={splitCandidatesIncludeDismissed}
                 apartmentOptions={apartmentOptions}
                 setIncludeDismissed={(value) => {

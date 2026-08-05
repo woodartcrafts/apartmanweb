@@ -101,6 +101,25 @@ export function detectSplitCandidateDoorNos(description: string | null | undefin
 }
 
 /**
+ * Ayni banka referansi birden fazla tahsilat kaydinda geciyorsa o banka hareketi
+ * daha once dairelere bolunmus demektir. Eski ice aktarimlar BANK_SPLIT: etiketi
+ * yazmadigi icin etiket yerine bu sayima bakilir.
+ */
+export function collectAlreadySplitBankRefs(bankRefs: Array<string | null | undefined>): Set<string> {
+  const counts = new Map<string, number>();
+
+  for (const ref of bankRefs) {
+    const trimmed = ref?.trim();
+    if (!trimmed) {
+      continue;
+    }
+    counts.set(trimmed, (counts.get(trimmed) ?? 0) + 1);
+  }
+
+  return new Set([...counts].filter(([, count]) => count > 1).map(([ref]) => ref));
+}
+
+/**
  * Aciklama, otomatik bolunmesine izin verilen bir daire ciftine isaret ediyor mu?
  * Bu ciftlerdeki daireler aidatlarini surekli tek islemde odedigi icin,
  * ciftin tek bir uyesinin gecmesi de bolme icin yeterli sayilir.

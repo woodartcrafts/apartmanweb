@@ -7,7 +7,10 @@ import {
   parsePaymentNoteParts,
   parseRefundedAmountFromNote,
 } from "./adminNoteUtils";
-import { detectSplitCandidateDoorNos } from "../utils/splitCandidate";
+import {
+  collectAlreadySplitBankRefs,
+  detectSplitCandidateDoorNos,
+} from "../utils/splitCandidate";
 
 /** Elle bolunmus tahsilatlar bu etiketi tasir; listede bir daha gorunmezler. */
 const MANUAL_SPLIT_NOTE_TAG = "BANK_SPLIT:MANUAL";
@@ -40,6 +43,32 @@ function readNoteTag(note: string | null, prefix: string): string | null {
     return null;
   }
   return part.slice(prefix.length).trim() || null;
+}
+
+/**
+ * Ayni banka hareketinden (BANK_REF) birden fazla tahsilat kaydi varsa o hareket
+ * daha once bolunmus demektir. Eski ice aktarimlar BANK_SPLIT: etiketi yazmadigi
+ * icin etikete guvenilemez; tekrar bolunmesin diye referans sayisina bakariz.
+ */
+async function loadAlreadySplitBankRefs(): Promise<Set<string>> {
+  const payments = await prisma.payment.findMany({
+    where: { note: { contains: "BANK_REF:" } },
+    select: { note: true },
+  });
+
+  return collectAlreadySplitBankRefs(
+    payments.map((payment) => readNoteTag(payment.note, "BANK_REF:"))
+  );
+}
+
+/** Verilen tahsilatla ayni banka referansini paylasan diger kayit sayisi. */
+async function countSiblingsWithSameBankRef(paymentId: string, bankRef: string): Promise<number> {
+  const candidates = await prisma.payment.findMany({
+    where: { id: { not: paymentId }, note: { contains: bankRef } },
+    select: { note: true },
+  });
+  return candidates.filter((candidate) => readNoteTag(candidate.note, "BANK_REF:") === bankRef)
+    .length;
 }
 
 /**
@@ -121,6 +150,8 @@ export function createAdminSplitCandidateRoutes(deps: {
       take: CANDIDATE_SCAN_LIMIT,
     });
 
+    const alreadySplitRefs = await loadAlreadySplitBankRefs();
+
     const apartments = await prisma.apartment.findMany({
       select: {
         id: true,
@@ -133,11 +164,21 @@ export function createAdminSplitCandidateRoutes(deps: {
       apartments.map((apt) => [normalizeDoorNoForCompare(apt.doorNo), apt])
     );
 
+    let alreadySplitCount = 0;
+
     const rows = payments
       .map((payment) => {
         const bankDescription = readNoteTag(payment.note, "BANK_DESC:");
         const detected = detectSplitCandidateDoorNos(bankDescription);
         if (detected.length < 2) {
+          return null;
+        }
+
+        // Ayni banka hareketi zaten birden fazla tahsilata bolunmus; tekrar bolmek
+        // tutarlari ikinci kez ikiye bolerdi.
+        const bankRef = readNoteTag(payment.note, "BANK_REF:");
+        if (bankRef && alreadySplitRefs.has(bankRef)) {
+          alreadySplitCount += 1;
           return null;
         }
 
@@ -193,6 +234,7 @@ export function createAdminSplitCandidateRoutes(deps: {
       snapshotAt: new Date(),
       truncated: payments.length >= CANDIDATE_SCAN_LIMIT,
       scannedPaymentCount: payments.length,
+      alreadySplitCount,
       totalRowCount: rows.length,
       rows,
     });
@@ -291,6 +333,20 @@ export function createAdminSplitCandidateRoutes(deps: {
         message: `Bu tahsilattan ${refundedAmount.toFixed(2)} TL daireye iade edilmis; iade edilmis tahsilat bolunemez.`,
         refundedAmount,
       });
+    }
+
+    // Ayni banka hareketinden birden fazla kayit varsa hareket zaten bolunmus.
+    // Eski ice aktarimlarda BANK_SPLIT: etiketi olmadigi icin etikete bakmiyoruz.
+    const bankRef = readNoteTag(payment.note, "BANK_REF:");
+    if (bankRef) {
+      const siblingCount = await countSiblingsWithSameBankRef(payment.id, bankRef);
+      if (siblingCount > 0) {
+        return res.status(400).json({
+          message: `Bu banka hareketi daha once ${siblingCount + 1} tahsilata bolunmus; tekrar bolunemez.`,
+          bankRef,
+          siblingCount,
+        });
+      }
     }
 
     const originalTotal = Number(Number(payment.totalAmount).toFixed(2));
