@@ -23,6 +23,7 @@ import {
   isSystemPreallocatedManualReview,
   normalizeDoorNoForCompare,
   parsePaymentNoteParts,
+  parseRefundedAmountFromNote,
   withOverpaymentNote,
 } from "../routes/adminNoteUtils";
 import { fromCents, toCents } from "./money";
@@ -270,8 +271,10 @@ export async function applyPendingApartmentCredits(params: {
       continue;
     }
 
+    // Iade edilmis tutar dagitima musait degil: para daireye geri gitti.
     const linkedCents = payment.itemLinks.reduce((sum, item) => sum + toCents(item.amount), 0);
-    const surplusCents = toCents(payment.totalAmount) - linkedCents;
+    const refundedCents = toCents(parseRefundedAmountFromNote(payment.note));
+    const surplusCents = toCents(payment.totalAmount) - linkedCents - refundedCents;
     if (surplusCents <= 0) {
       continue;
     }
@@ -365,7 +368,9 @@ export async function applyPendingApartmentCredits(params: {
     }
 
     const linkedCents = payment.itemLinks.reduce((sum, item) => sum + toCents(item.amount), 0);
-    const remainingSurplusCents = toCents(payment.totalAmount) - linkedCents - appliedCents;
+    const refundedCents = toCents(parseRefundedAmountFromNote(payment.note));
+    const remainingSurplusCents =
+      toCents(payment.totalAmount) - linkedCents - refundedCents - appliedCents;
     const nextNote = withOverpaymentNote(
       payment.note,
       extractDoorNoTagFromPaymentNote(payment.note) ?? "",

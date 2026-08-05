@@ -8,6 +8,7 @@ import {
   isSystemPreallocatedManualReview,
   normalizeDoorNoForCompare,
   parsePaymentNoteParts,
+  parseRefundedAmountFromNote,
 } from "./adminNoteUtils";
 import { applyPendingApartmentCredits } from "../utils/apartmentCredit";
 import { fromCents, toCents } from "../utils/money";
@@ -125,9 +126,11 @@ export function createAdminApartmentCreditRoutes(deps: {
 
     const pendingCredits = candidatePayments
       .map((payment) => {
+        // Iade edilmis tutar bekleyen alacak degil: para daireye geri gitti.
         const linkedCents = payment.itemLinks.reduce((sum, item) => sum + toCents(item.amount), 0);
         const totalCents = toCents(payment.totalAmount);
-        const pendingCents = totalCents - linkedCents;
+        const refundedCents = toCents(parseRefundedAmountFromNote(payment.note));
+        const pendingCents = totalCents - linkedCents - refundedCents;
         if (pendingCents <= 0) {
           return null;
         }

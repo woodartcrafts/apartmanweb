@@ -5,7 +5,11 @@ import {
   type OpenChargeSlot,
   type PendingCreditSource,
 } from "./apartmentCredit";
-import { withOverpaymentNote } from "../routes/adminNoteUtils";
+import {
+  parseRefundedAmountFromNote,
+  withOverpaymentNote,
+  withRefundedNote,
+} from "../routes/adminNoteUtils";
 
 function source(
   paymentId: string,
@@ -220,5 +224,34 @@ describe("withOverpaymentNote", () => {
   it("fazla tutar kalmadiysa etiketi temizler", () => {
     expect(withOverpaymentNote("DOOR:57 | UNAPPLIED:OVERPAYMENT:100.00", "57", 0)).toBe("DOOR:57");
     expect(withOverpaymentNote("UNAPPLIED:OVERPAYMENT:100.00", "57", 0)).toBeNull();
+  });
+});
+
+describe("iade edilmis tutar etiketi", () => {
+  it("etiket yoksa sifir doner", () => {
+    expect(parseRefundedAmountFromNote(null)).toBe(0);
+    expect(parseRefundedAmountFromNote("DOOR:57")).toBe(0);
+  });
+
+  it("etiketi yazar ve geri okur", () => {
+    const note = withRefundedNote("DOOR:57", 125.5);
+    expect(note).toBe("DOOR:57 | REFUNDED:125.50");
+    expect(parseRefundedAmountFromNote(note)).toBe(125.5);
+  });
+
+  it("ikinci iadede etiketi kumulatif tutarla degistirir, ikinci kez eklemez", () => {
+    const note = withRefundedNote("DOOR:57 | REFUNDED:100.00", 175);
+    expect(note).toBe("DOOR:57 | REFUNDED:175.00");
+    expect(parseRefundedAmountFromNote(note)).toBe(175);
+  });
+
+  it("tutar sifira dustugunde etiketi temizler", () => {
+    expect(withRefundedNote("DOOR:57 | REFUNDED:100.00", 0)).toBe("DOOR:57");
+    expect(withRefundedNote("REFUNDED:100.00", 0)).toBeNull();
+  });
+
+  it("bozuk etiketi sifir sayar", () => {
+    expect(parseRefundedAmountFromNote("DOOR:57 | REFUNDED:abc")).toBe(0);
+    expect(parseRefundedAmountFromNote("DOOR:57 | REFUNDED:")).toBe(0);
   });
 });

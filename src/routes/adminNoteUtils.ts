@@ -62,6 +62,41 @@ export function extractDoorNoTagFromPaymentNote(note: string | null): string | n
   return value || null;
 }
 
+export const REFUNDED_NOTE_PREFIX = "REFUNDED:";
+
+/**
+ * Bu tahsilattan daireye geri iade edilmis kumulatif tutar.
+ *
+ * Iade tahsilatin `totalAmount` degerini azaltmaz: para gercekten bankaya
+ * girdi, sonra geri cikti; ikisi de ayri banka hareketi. Bu yuzden bir
+ * tahsilatin dagitima musait tutari `totalAmount - dagitilan - iade edilen`.
+ * Bu etiket olmadan iade edilen para bekleyen daire alacagi gibi gorunur ve
+ * tahakkuklara yeniden yazilir.
+ */
+export function parseRefundedAmountFromNote(note: string | null | undefined): number {
+  const part = parsePaymentNoteParts(note ?? null).find((row) =>
+    row.trim().toUpperCase().startsWith(REFUNDED_NOTE_PREFIX)
+  );
+  if (!part) {
+    return 0;
+  }
+
+  const parsed = Number(part.trim().slice(REFUNDED_NOTE_PREFIX.length).trim());
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+export function withRefundedNote(note: string | null, refundedAmount: number): string | null {
+  const parts = parsePaymentNoteParts(note).filter(
+    (part) => !part.trim().toUpperCase().startsWith(REFUNDED_NOTE_PREFIX)
+  );
+
+  if (refundedAmount > 0) {
+    parts.push(`${REFUNDED_NOTE_PREFIX}${refundedAmount.toFixed(2)}`);
+  }
+
+  return parts.length > 0 ? parts.join(" | ") : null;
+}
+
 export const OVERPAYMENT_NOTE_PREFIX = "UNAPPLIED:OVERPAYMENT";
 
 /**

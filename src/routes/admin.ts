@@ -82,6 +82,7 @@ import {
   isSystemPreallocatedManualReview,
   normalizeDoorNoForCompare,
   parsePaymentNoteParts,
+  parseRefundedAmountFromNote,
   withOverpaymentNote,
 } from "./adminNoteUtils";
 
@@ -935,12 +936,17 @@ async function reconcileApartmentPaymentLinks(apartmentId: string): Promise<Reco
     const linkedAmount = payment.itemLinks.reduce((sum, item) => sum + Number(item.amount), 0);
     const paymentDoorNo = extractDoorNoTagFromPaymentNote(payment.note);
     const paymentDoorNoNormalized = normalizeDoorNoForCompare(paymentDoorNo);
+    // Iade edilmis tutar dagitilabilir para degil; tam tutari kullanirken dusulur,
+    // yoksa daireye geri odenen para tahakkuklara yeniden yazilir.
+    const distributableTotal = Number(
+      (Number(payment.totalAmount) - parseRefundedAmountFromNote(payment.note)).toFixed(2)
+    );
     const shouldUsePaymentTotal =
       paymentDoorNoNormalized.length > 0 &&
       paymentDoorNoNormalized === apartmentDoorNoNormalized &&
-      Number(payment.totalAmount) > linkedAmount + 0.0001;
+      distributableTotal > linkedAmount + 0.0001;
 
-    const amount = shouldUsePaymentTotal ? Number(payment.totalAmount) : linkedAmount;
+    const amount = shouldUsePaymentTotal ? distributableTotal : linkedAmount;
     if (amount <= 0.0001) {
       continue;
     }
@@ -965,9 +971,16 @@ async function reconcileApartmentPaymentLinks(apartmentId: string): Promise<Reco
       continue;
     }
 
+    const distributableTotal = Number(
+      (Number(payment.totalAmount) - parseRefundedAmountFromNote(payment.note)).toFixed(2)
+    );
+    if (distributableTotal <= 0.0001) {
+      continue;
+    }
+
     paymentSources.push({
       paymentId: payment.id,
-      amount: Number(payment.totalAmount),
+      amount: distributableTotal,
       paidAt: payment.paidAt,
       createdAt: payment.createdAt,
       sourceType: "UNAPPLIED_DOOR",

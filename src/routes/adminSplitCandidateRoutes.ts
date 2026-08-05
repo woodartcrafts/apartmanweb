@@ -2,7 +2,11 @@ import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
-import { normalizeDoorNoForCompare, parsePaymentNoteParts } from "./adminNoteUtils";
+import {
+  normalizeDoorNoForCompare,
+  parsePaymentNoteParts,
+  parseRefundedAmountFromNote,
+} from "./adminNoteUtils";
 import { detectSplitCandidateDoorNos } from "../utils/splitCandidate";
 
 /** Elle bolunmus tahsilatlar bu etiketi tasir; listede bir daha gorunmezler. */
@@ -276,6 +280,17 @@ export function createAdminSplitCandidateRoutes(deps: {
 
     if (!payment) {
       return res.status(404).json({ message: "Tahsilat bulunamadi" });
+    }
+
+    // Bolme tahsilati siler ve parcalarini bastan olusturur; "iade edilmis tutar"
+    // etiketi bu sirada tasinamaz ve hangi parcaya ait oldugu da belirsizdir.
+    // Tasinmazsa iade edilen para tekrar dagitilabilir hale gelir.
+    const refundedAmount = parseRefundedAmountFromNote(payment.note);
+    if (refundedAmount > 0) {
+      return res.status(400).json({
+        message: `Bu tahsilattan ${refundedAmount.toFixed(2)} TL daireye iade edilmis; iade edilmis tahsilat bolunemez.`,
+        refundedAmount,
+      });
     }
 
     const originalTotal = Number(Number(payment.totalAmount).toFixed(2));

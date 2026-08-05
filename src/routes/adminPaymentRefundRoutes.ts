@@ -6,7 +6,9 @@ import {
   OVERPAYMENT_NOTE_PREFIX,
   extractDoorNoTagFromPaymentNote,
   normalizeDoorNoForCompare,
+  parseRefundedAmountFromNote,
   withOverpaymentNote,
+  withRefundedNote,
 } from "./adminNoteUtils";
 import {
   PAYMENT_REFUND_EXPENSE_ITEM_CODE,
@@ -125,6 +127,7 @@ type RefundPaymentSnapshot = {
   totalCents: number;
   note: string | null;
   itemsTotalCents: number;
+  refundedCents: number;
 };
 
 /**
@@ -176,7 +179,8 @@ async function collectRefundSources(
   for (const row of rows) {
     const itemsTotalCents = row.itemLinks.reduce((sum, item) => sum + toCents(item.amount), 0);
     const totalCents = toCents(row.totalAmount);
-    payments.set(row.id, { id: row.id, totalCents, note: row.note, itemsTotalCents });
+    const refundedCents = toCents(parseRefundedAmountFromNote(row.note));
+    payments.set(row.id, { id: row.id, totalCents, note: row.note, itemsTotalCents, refundedCents });
 
     const ownItems = row.itemLinks.filter((item) => item.charge.apartmentId === apartment.id);
     for (const item of ownItems) {
@@ -190,8 +194,9 @@ async function collectRefundSources(
     }
 
     // Fazla tutar ancak bu daireye baglanabiliyorsa geri alinabilir: kalemleri
-    // baska dairelere de dagilmis odemede fazlanin sahibi belirsizdir.
-    const surplusCents = totalCents - itemsTotalCents;
+    // baska dairelere de dagilmis odemede fazlanin sahibi belirsizdir. Daha once
+    // iade edilmis kisim tekrar iade edilemez.
+    const surplusCents = totalCents - itemsTotalCents - refundedCents;
     if (surplusCents <= 0) {
       continue;
     }
@@ -219,9 +224,10 @@ async function collectRefundSources(
 /**
  * Planlanan dusumleri uygular.
  *
- * Odemenin `totalAmount` degeri kalemlerin toplamina esitlenmez, dusulen tutar
- * kadar azaltilir: aksi halde bekleyen daire alacagi sessizce silinir ve iade
- * tutarindan fazlasi geri alinmis gorunur.
+ * Tahsilatin `totalAmount` degeri DEGISMEZ: para gercekten bankaya girdi,
+ * sonra geri cikti ve iade zaten ayri bir banka cikisi olarak kayitli. Toplami
+ * azaltmak bu cikisi iki kez sayardi. Degisen sey tahakkuk dagitimi ve notta
+ * biriken "iade edilen tutar"; dagitima musait para bu tutar kadar azalir.
  */
 async function applyRefundReductions(
   tx: Prisma.TransactionClient,
@@ -230,18 +236,17 @@ async function applyRefundReductions(
     payments: Map<string, RefundPaymentSnapshot>;
     affectedChargeIds: Set<string>;
     reducedItemIds: string[];
-    deletedPaymentIds: string[];
   }
 ): Promise<void> {
-  const { reductions, payments, affectedChargeIds, reducedItemIds, deletedPaymentIds } = params;
+  const { reductions, payments, affectedChargeIds, reducedItemIds } = params;
 
-  const totalDeltaByPaymentId = new Map<string, number>();
+  const refundedDeltaByPaymentId = new Map<string, number>();
   const itemDeltaByPaymentId = new Map<string, number>();
 
   for (const reduction of reductions) {
-    totalDeltaByPaymentId.set(
+    refundedDeltaByPaymentId.set(
       reduction.paymentId,
-      (totalDeltaByPaymentId.get(reduction.paymentId) ?? 0) + reduction.reducedCents
+      (refundedDeltaByPaymentId.get(reduction.paymentId) ?? 0) + reduction.reducedCents
     );
 
     if (reduction.kind !== "ITEM" || !reduction.paymentItemId) {
@@ -269,36 +274,31 @@ async function applyRefundReductions(
     });
   }
 
-  for (const [paymentId, deltaCents] of totalDeltaByPaymentId) {
+  for (const [paymentId, refundedDeltaCents] of refundedDeltaByPaymentId) {
     const snapshot = payments.get(paymentId);
     if (!snapshot) {
       continue;
     }
 
-    const nextTotalCents = Math.max(0, snapshot.totalCents - deltaCents);
+    const nextRefundedCents = snapshot.refundedCents + refundedDeltaCents;
     const nextItemsTotalCents = snapshot.itemsTotalCents - (itemDeltaByPaymentId.get(paymentId) ?? 0);
+    const nextAvailableCents = Math.max(
+      0,
+      snapshot.totalCents - nextItemsTotalCents - nextRefundedCents
+    );
 
-    if (nextTotalCents <= 0 && nextItemsTotalCents <= 0) {
-      await tx.payment.delete({ where: { id: paymentId } });
-      deletedPaymentIds.push(paymentId);
-      continue;
+    let note = withRefundedNote(snapshot.note, fromCents(nextRefundedCents));
+    if (note?.includes(OVERPAYMENT_NOTE_PREFIX)) {
+      note = withOverpaymentNote(
+        note,
+        extractDoorNoTagFromPaymentNote(note) ?? "",
+        fromCents(nextAvailableCents)
+      );
     }
 
     await tx.payment.update({
       where: { id: paymentId },
-      data: {
-        totalAmount: fromCents(nextTotalCents),
-        // Notta yazan fazla tutar etiketi kalan alacagi yansitmali.
-        ...(snapshot.note?.includes(OVERPAYMENT_NOTE_PREFIX)
-          ? {
-              note: withOverpaymentNote(
-                snapshot.note,
-                extractDoorNoTagFromPaymentNote(snapshot.note) ?? "",
-                fromCents(Math.max(0, nextTotalCents - nextItemsTotalCents))
-              ),
-            }
-          : {}),
-      },
+      data: { note },
     });
   }
 }
@@ -538,7 +538,9 @@ export function createAdminPaymentRefundRoutes(deps: {
     const reducedByApartmentId = new Map<string, number>();
     const creditReducedByApartmentId = new Map<string, number>();
     const reducedItemIds: string[] = [];
-    const deletedPaymentIds: string[] = [];
+    // Iade tahsilat kaydini silmez; para bankaya girdigi icin kayit durur,
+    // sadece dagitimi ve "iade edilen tutar" etiketi degisir.
+    const refundedPaymentIds = new Set<string>();
 
     try {
       await prisma.$transaction(
@@ -547,7 +549,7 @@ export function createAdminPaymentRefundRoutes(deps: {
           reducedByApartmentId.clear();
           creditReducedByApartmentId.clear();
           reducedItemIds.length = 0;
-          deletedPaymentIds.length = 0;
+          refundedPaymentIds.clear();
 
           // Once gideri atomik olarak "iade" diye isaretle. Ayni anda gelen ikinci
           // istek (cift tiklama, retry) bu kosula takilir; tahsilat iki kez dusulmez.
@@ -604,8 +606,11 @@ export function createAdminPaymentRefundRoutes(deps: {
               payments,
               affectedChargeIds,
               reducedItemIds,
-              deletedPaymentIds,
             });
+
+            for (const reduction of reductions) {
+              refundedPaymentIds.add(reduction.paymentId);
+            }
 
             const creditCents = reductions
               .filter((row) => row.kind === "CREDIT")
@@ -655,7 +660,7 @@ export function createAdminPaymentRefundRoutes(deps: {
         apartmentBreakdown,
         refundAmount,
         reducedPaymentItemIds: reducedItemIds,
-        deletedPaymentIds,
+        refundedPaymentIds: [...refundedPaymentIds],
         affectedChargeIds: [...affectedChargeIds],
       },
       undoKind: null,
@@ -673,7 +678,7 @@ export function createAdminPaymentRefundRoutes(deps: {
       apartmentBreakdown,
       refundAmount,
       reducedPaymentItemCount: reducedItemIds.length,
-      deletedPaymentCount: deletedPaymentIds.length,
+      refundedPaymentCount: refundedPaymentIds.size,
       affectedChargeCount: affectedChargeIds.size,
     });
   });
