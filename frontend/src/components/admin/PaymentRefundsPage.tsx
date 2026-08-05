@@ -21,6 +21,17 @@ function normalizeDoorNo(value: string): string {
   return value.trim().replace(/\s+/g, "").toLocaleLowerCase("tr");
 }
 
+function parseDoorNosDraft(raw: string): string[] {
+  return [
+    ...new Set(
+      raw
+        .split(/[,;/]|\s+ve\s+|\s+veya\s+|\s+/i)
+        .map((part) => part.trim())
+        .filter(Boolean)
+    ),
+  ];
+}
+
 export function PaymentRefundsPage({
   loading,
   pageLoading,
@@ -46,9 +57,41 @@ export function PaymentRefundsPage({
     [appliedRows]
   );
 
+  function resolveDoorHint(draft: string): { ok: boolean; label: string } {
+    const doors = parseDoorNosDraft(draft);
+    if (doors.length === 0) {
+      return { ok: false, label: "Daire no girin (orn. 57 veya 57,93)" };
+    }
+
+    const labels: string[] = [];
+    const missing: string[] = [];
+    for (const door of doors) {
+      const matched = apartmentByDoorNo.get(normalizeDoorNo(door));
+      if (!matched) {
+        missing.push(door);
+        continue;
+      }
+      labels.push(
+        `${matched.blockName}/${matched.doorNo}${
+          matched.ownerFullName ? ` - ${matched.ownerFullName}` : ""
+        }`
+      );
+    }
+
+    if (missing.length > 0) {
+      return { ok: false, label: `Daire bulunamadi: ${missing.join(", ")}` };
+    }
+
+    return { ok: true, label: labels.join(" + ") };
+  }
+
   async function onApply(row: PaymentRefundCandidateRow): Promise<void> {
     const doorNo = (doorDrafts[row.id] ?? "").trim();
     if (!doorNo) {
+      return;
+    }
+    const hint = resolveDoorHint(doorNo);
+    if (!hint.ok) {
       return;
     }
     setApplyingId(row.id);
@@ -82,8 +125,10 @@ export function PaymentRefundsPage({
         </div>
 
         <p className="small">
-          Siniflandirilamayan banka cikislarindan iade secip daire no girin. Sistem ilgili dairenin tahsilatini
-          otomatik duser. Bu kayitlar gider raporunda gorunmez; banka bakiyesinden dusulur.
+          Siniflandirilamayan banka cikislarindan iade secip daire no girin. Tek daire:{" "}
+          <b>57</b>. Coklu daire (otomatik dagitilan tahsilat): <b>57,93</b> — sistem bu
+          dairelerdeki tahsilatlardan toplam iade tutarini dusurur. Kayit gider raporunda
+          gorunmez; banka bakiyesinden dusulur.
         </p>
 
         <h4 className="compact-row-top-gap">Iade Adaylari (Siniflandirilamayan Giderler)</h4>
@@ -110,12 +155,7 @@ export function PaymentRefundsPage({
               ) : (
                 candidates.map((row) => {
                   const draftDoor = doorDrafts[row.id] ?? "";
-                  const matchedApartment = apartmentByDoorNo.get(normalizeDoorNo(draftDoor));
-                  const apartmentHint = matchedApartment
-                    ? `${matchedApartment.blockName}/${matchedApartment.doorNo}${
-                        matchedApartment.ownerFullName ? ` - ${matchedApartment.ownerFullName}` : ""
-                      }`
-                    : "Daire bulunamadi";
+                  const hint = resolveDoorHint(draftDoor);
 
                   return (
                     <tr key={row.id}>
@@ -132,7 +172,7 @@ export function PaymentRefundsPage({
                         <div className="unclassified-inline-edit">
                           <input
                             type="text"
-                            placeholder="Daire no"
+                            placeholder="57 veya 57,93"
                             value={draftDoor}
                             onChange={(e) =>
                               setDoorDrafts((prev) => ({
@@ -141,14 +181,14 @@ export function PaymentRefundsPage({
                               }))
                             }
                           />
-                          <span className="small">{draftDoor ? apartmentHint : "Daire no girin"}</span>
+                          <span className="small">{draftDoor ? hint.label : "Daire no girin"}</span>
                         </div>
                       </td>
                       <td>
                         <button
                           className="btn btn-primary"
                           type="button"
-                          disabled={loading || applyingId === row.id || !draftDoor.trim() || !matchedApartment}
+                          disabled={loading || applyingId === row.id || !draftDoor.trim() || !hint.ok}
                           onClick={() => void onApply(row)}
                         >
                           {applyingId === row.id ? "Uygulaniyor..." : "Iade Uygula"}

@@ -596,6 +596,7 @@ export type PaymentRefundAppliedRow = {
   expenseItemId: string;
   expenseItemName: string;
   doorNo: string | null;
+  doorNos?: string[];
 };
 
 export type AdminActionLogRow = {

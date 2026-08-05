@@ -8,10 +8,18 @@ import {
   UNCLASSIFIED_EXPENSE_ITEM_CODE,
   buildPaymentRefundExpenseDescription,
   isPaymentRefundExpenseDescription,
-  parsePaymentRefundDoorFromText,
+  parseDoorNosInput,
+  parsePaymentRefundDoorsFromText,
 } from "../utils/paymentRefund";
 
 type RefreshChargeStatuses = (chargeIds: string[]) => Promise<void>;
+
+type ApartmentMatch = {
+  id: string;
+  doorNo: string;
+  blockName: string;
+  ownerFullName: string | null;
+};
 
 async function ensurePaymentRefundExpenseItemId(): Promise<string> {
   const item = await prisma.expenseItemDefinition.upsert({
@@ -26,10 +34,15 @@ async function ensurePaymentRefundExpenseItemId(): Promise<string> {
   return item.id;
 }
 
-async function findApartmentByDoorNo(doorNoRaw: string) {
-  const normalizedInput = normalizeDoorNoForCompare(doorNoRaw);
-  if (!normalizedInput) {
-    return null;
+async function findApartmentsByDoorNos(doorNoRaws: string[]): Promise<{
+  matched: ApartmentMatch[];
+  missing: string[];
+}> {
+  const normalizedInputs = [
+    ...new Set(doorNoRaws.map((door) => normalizeDoorNoForCompare(door)).filter(Boolean)),
+  ];
+  if (normalizedInputs.length === 0) {
+    return { matched: [], missing: doorNoRaws };
   }
 
   const apartments = await prisma.apartment.findMany({
@@ -41,17 +54,30 @@ async function findApartmentByDoorNo(doorNoRaw: string) {
     },
   });
 
-  const match = apartments.find((apt) => normalizeDoorNoForCompare(apt.doorNo) === normalizedInput);
-  if (!match) {
-    return null;
+  const byNormalized = new Map(
+    apartments.map((apt) => [
+      normalizeDoorNoForCompare(apt.doorNo),
+      {
+        id: apt.id,
+        doorNo: apt.doorNo,
+        blockName: apt.block.name,
+        ownerFullName: apt.ownerFullName,
+      } satisfies ApartmentMatch,
+    ])
+  );
+
+  const matched: ApartmentMatch[] = [];
+  const missing: string[] = [];
+  for (const input of normalizedInputs) {
+    const found = byNormalized.get(input);
+    if (found) {
+      matched.push(found);
+    } else {
+      missing.push(input);
+    }
   }
 
-  return {
-    id: match.id,
-    doorNo: match.doorNo,
-    blockName: match.block.name,
-    ownerFullName: match.ownerFullName,
-  };
+  return { matched, missing };
 }
 
 export function createAdminPaymentRefundRoutes(deps: {
@@ -143,17 +169,21 @@ export function createAdminPaymentRefundRoutes(deps: {
     });
 
     return res.json(
-      expenses.map((row) => ({
-        id: row.id,
-        spentAt: row.spentAt.toISOString(),
-        amount: Number(row.amount),
-        description: row.description,
-        reference: row.reference,
-        paymentMethod: row.paymentMethod,
-        expenseItemId: row.expenseItem.id,
-        expenseItemName: row.expenseItem.name,
-        doorNo: parsePaymentRefundDoorFromText(row.description),
-      }))
+      expenses.map((row) => {
+        const doorNos = parsePaymentRefundDoorsFromText(row.description);
+        return {
+          id: row.id,
+          spentAt: row.spentAt.toISOString(),
+          amount: Number(row.amount),
+          description: row.description,
+          reference: row.reference,
+          paymentMethod: row.paymentMethod,
+          expenseItemId: row.expenseItem.id,
+          expenseItemName: row.expenseItem.name,
+          doorNo: doorNos.join(", ") || null,
+          doorNos,
+        };
+      })
     );
   });
 
@@ -161,7 +191,7 @@ export function createAdminPaymentRefundRoutes(deps: {
     const parsed = z
       .object({
         expenseId: z.string().min(1),
-        doorNo: z.string().trim().min(1).max(32),
+        doorNo: z.string().trim().min(1).max(120),
       })
       .safeParse(req.body);
 
@@ -170,8 +200,16 @@ export function createAdminPaymentRefundRoutes(deps: {
     }
 
     const { expenseId, doorNo } = parsed.data;
-    const apartment = await findApartmentByDoorNo(doorNo);
-    if (!apartment) {
+    const doorInputs = parseDoorNosInput(doorNo);
+    if (doorInputs.length === 0) {
+      return res.status(400).json({ message: "En az bir daire no girin (orn. 57 veya 57,93)" });
+    }
+
+    const { matched: apartments, missing } = await findApartmentsByDoorNos(doorInputs);
+    if (missing.length > 0) {
+      return res.status(404).json({ message: `Daire bulunamadi: ${missing.join(", ")}` });
+    }
+    if (apartments.length === 0) {
       return res.status(404).json({ message: `Daire bulunamadi: ${doorNo}` });
     }
 
@@ -204,13 +242,15 @@ export function createAdminPaymentRefundRoutes(deps: {
       return res.status(400).json({ message: "Iade tutari sifirdan buyuk olmali" });
     }
 
+    const apartmentIds = apartments.map((apt) => apt.id);
     const paymentItems = await prisma.paymentItem.findMany({
-      where: { charge: { apartmentId: apartment.id } },
+      where: { charge: { apartmentId: { in: apartmentIds } } },
       select: {
         id: true,
         amount: true,
         chargeId: true,
         paymentId: true,
+        charge: { select: { apartmentId: true } },
         payment: { select: { id: true, paidAt: true, createdAt: true } },
       },
       orderBy: [{ payment: { paidAt: "desc" } }, { payment: { createdAt: "desc" } }, { id: "desc" }],
@@ -221,8 +261,9 @@ export function createAdminPaymentRefundRoutes(deps: {
     );
 
     if (availableTotal + 0.0001 < refundAmount) {
+      const doorLabel = apartments.map((apt) => apt.doorNo).join(", ");
       return res.status(400).json({
-        message: `Bu dairede geri alinacak ${availableTotal.toFixed(2)} TL tahsilat var (iade: ${refundAmount.toFixed(2)} TL)`,
+        message: `Secilen dairelerde (${doorLabel}) geri alinacak ${availableTotal.toFixed(2)} TL tahsilat var (iade: ${refundAmount.toFixed(2)} TL)`,
         availableTotal,
         refundAmount,
       });
@@ -230,6 +271,7 @@ export function createAdminPaymentRefundRoutes(deps: {
 
     const refundExpenseItemId = await ensurePaymentRefundExpenseItemId();
     const affectedChargeIds = new Set<string>();
+    const reducedByApartmentId = new Map<string, number>();
     let remaining = refundAmount;
     const reducedItemIds: string[] = [];
     const deletedPaymentIds: string[] = [];
@@ -242,11 +284,16 @@ export function createAdminPaymentRefundRoutes(deps: {
 
         const itemAmount = Number(item.amount);
         affectedChargeIds.add(item.chargeId);
+        const apartmentId = item.charge.apartmentId;
 
         if (itemAmount <= remaining + 0.0001) {
           await tx.paymentItem.delete({ where: { id: item.id } });
           remaining = Number((remaining - itemAmount).toFixed(2));
           reducedItemIds.push(item.id);
+          reducedByApartmentId.set(
+            apartmentId,
+            Number(((reducedByApartmentId.get(apartmentId) ?? 0) + itemAmount).toFixed(2))
+          );
 
           const remainingCount = await tx.paymentItem.count({ where: { paymentId: item.paymentId } });
           if (remainingCount === 0) {
@@ -271,6 +318,10 @@ export function createAdminPaymentRefundRoutes(deps: {
           data: { amount: nextAmount },
         });
         reducedItemIds.push(item.id);
+        reducedByApartmentId.set(
+          apartmentId,
+          Number(((reducedByApartmentId.get(apartmentId) ?? 0) + remaining).toFixed(2))
+        );
 
         const sum = await tx.paymentItem.aggregate({
           where: { paymentId: item.paymentId },
@@ -294,7 +345,7 @@ export function createAdminPaymentRefundRoutes(deps: {
         data: {
           expenseItemId: refundExpenseItemId,
           description: buildPaymentRefundExpenseDescription({
-            doorNo: apartment.doorNo,
+            doorNos: apartments.map((apt) => apt.doorNo),
             description: expense.description,
           }),
         },
@@ -303,14 +354,21 @@ export function createAdminPaymentRefundRoutes(deps: {
 
     await refreshChargeStatusesForIds([...affectedChargeIds]);
 
+    const apartmentBreakdown = apartments.map((apt) => ({
+      apartmentId: apt.id,
+      doorNo: apt.doorNo,
+      apartmentLabel: `${apt.blockName}/${apt.doorNo}${
+        apt.ownerFullName ? ` - ${apt.ownerFullName}` : ""
+      }`,
+      reducedAmount: reducedByApartmentId.get(apt.id) ?? 0,
+    }));
+
     return res.json({
       ok: true,
       expenseId: expense.id,
-      apartmentId: apartment.id,
-      doorNo: apartment.doorNo,
-      apartmentLabel: `${apartment.blockName}/${apartment.doorNo}${
-        apartment.ownerFullName ? ` - ${apartment.ownerFullName}` : ""
-      }`,
+      doorNos: apartments.map((apt) => apt.doorNo),
+      apartmentLabel: apartmentBreakdown.map((row) => row.apartmentLabel).join(" + "),
+      apartmentBreakdown,
       refundAmount,
       reducedPaymentItemCount: reducedItemIds.length,
       deletedPaymentCount: deletedPaymentIds.length,

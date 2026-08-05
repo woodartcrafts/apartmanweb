@@ -3,22 +3,47 @@ export const PAYMENT_REFUND_EXPENSE_ITEM_CODE = "AIDAT_IADESI";
 export const PAYMENT_REFUND_EXPENSE_ITEM_NAME = "Aidat Iadesi";
 export const UNCLASSIFIED_EXPENSE_ITEM_CODE = "SINIFLANDIRILAMAYAN_GIDERLER";
 
-export function paymentRefundDoorTag(doorNo: string): string {
-  return `${PAYMENT_REFUND_NOTE_PREFIX}DOOR:${doorNo.trim()}`;
+export function paymentRefundDoorTag(doorNos: string | string[]): string {
+  const doors = (Array.isArray(doorNos) ? doorNos : [doorNos])
+    .map((door) => door.trim())
+    .filter(Boolean);
+  return `${PAYMENT_REFUND_NOTE_PREFIX}DOOR:${doors.join(",")}`;
 }
 
-export function parsePaymentRefundDoorFromText(text: string | null | undefined): string | null {
+/** "57,93" | "57 93" | "57 ve 93" | tek daire */
+export function parseDoorNosInput(raw: string): string[] {
+  return [
+    ...new Set(
+      raw
+        .split(/[,;/]|\s+ve\s+|\s+veya\s+|\s+/i)
+        .map((part) => part.trim())
+        .filter(Boolean)
+    ),
+  ];
+}
+
+export function parsePaymentRefundDoorsFromText(text: string | null | undefined): string[] {
   if (!text) {
-    return null;
+    return [];
   }
 
   const match = text.match(/PAYMENT_REFUND:DOOR:([^\s|]+)/i);
-  const door = match?.[1]?.trim();
-  return door || null;
+  const raw = match?.[1]?.trim();
+  if (!raw) {
+    return [];
+  }
+
+  return parseDoorNosInput(raw.replace(/,/g, " "));
+}
+
+/** @deprecated tek daire icin; yeni kod parsePaymentRefundDoorsFromText kullanmali */
+export function parsePaymentRefundDoorFromText(text: string | null | undefined): string | null {
+  const doors = parsePaymentRefundDoorsFromText(text);
+  return doors[0] ?? null;
 }
 
 export function isPaymentRefundExpenseDescription(description: string | null | undefined): boolean {
-  return parsePaymentRefundDoorFromText(description) !== null;
+  return parsePaymentRefundDoorsFromText(description).length > 0;
 }
 
 export function isPaymentRefundExpenseItemCode(code: string | null | undefined): boolean {
@@ -37,10 +62,10 @@ export function shouldExcludeExpenseFromReports(params: {
 }
 
 export function buildPaymentRefundExpenseDescription(params: {
-  doorNo: string;
+  doorNos: string | string[];
   description?: string | null;
 }): string {
-  const tag = paymentRefundDoorTag(params.doorNo);
+  const tag = paymentRefundDoorTag(params.doorNos);
   const base = (params.description ?? "").trim();
   if (!base) {
     return tag;
