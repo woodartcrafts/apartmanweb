@@ -194,6 +194,16 @@ export function PaymentEntryPage({
 
   const selectedPaymentTotal = paymentForm.items.reduce((sum, item) => sum + Number(item.amount), 0);
 
+  // Kalan borcu asan tutarlar tahakkuga yazilmaz; artan kisim dairenin alacagi
+  // olarak bekler. Kullanici gondermeden once bunu gormeli.
+  const overpaymentTotal = paymentForm.items.reduce((sum, item) => {
+    const row = paymentChargeOptions.find((x) => x.chargeId === item.chargeId);
+    if (!row) {
+      return sum;
+    }
+    return sum + Math.max(0, Number(item.amount) - row.remaining);
+  }, 0);
+
   const isPaymentSubmitDisabled =
     loading ||
     !paymentApartmentId ||
@@ -261,6 +271,15 @@ export function PaymentEntryPage({
             </label>
             <p className="small payment-entry-inline-note">
               Secilen tahakkuk: {paymentForm.items.length} | Toplam tahsilat: <b>{formatTry(selectedPaymentTotal)}</b>
+              {overpaymentTotal > 0.0001 && (
+                <>
+                  <br />
+                  <span className="text-warning">
+                    {formatTry(overpaymentTotal)} kalan borcu asiyor. Bu kisim tahakkuga yazilmaz; dairenin
+                    diger acik borclarina, yoksa sonraki tahakkuga sayilmak uzere alacak olarak bekler.
+                  </span>
+                </>
+              )}
             </p>
           </div>
         </section>

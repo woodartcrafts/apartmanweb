@@ -6327,6 +6327,10 @@ td {
   color: #b3261e;
 }
 
+.text-warning {
+  color: #8a5300;
+}
+
 .bank-statement-table th:nth-child(3),
 .bank-statement-table td:nth-child(3),
 .bank-statement-table th:nth-child(4),

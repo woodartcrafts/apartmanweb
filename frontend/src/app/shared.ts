@@ -1428,6 +1428,34 @@ export function dateInputToIso(value: string): string {
   return new Date(`${value}T00:00:00.000Z`).toISOString();
 }
 
+export type PaymentAllocationResult = {
+  allocatedAmount?: number;
+  pendingCreditAmount?: number;
+  creditAppliedToOtherCharges?: number;
+};
+
+/**
+ * Tahsilat kaydinin sonucunu anlatir: tahakkuk tutarindan fazlasi yazilmaz,
+ * artan kisim once dairenin diger acik borclarina gider, kalani alacak bekler.
+ */
+export function buildPaymentAllocationMessage(
+  base: string,
+  result: PaymentAllocationResult
+): string {
+  const appliedElsewhere = result.creditAppliedToOtherCharges ?? 0;
+  const pending = result.pendingCreditAmount ?? 0;
+
+  const extras: string[] = [];
+  if (appliedElsewhere > 0) {
+    extras.push(`fazla ${formatTry(appliedElsewhere)} dairenin diger acik borclarina yazildi`);
+  }
+  if (pending > 0) {
+    extras.push(`${formatTry(pending)} daire alacagi olarak bekliyor (sonraki tahakkuktan dusulecek)`);
+  }
+
+  return extras.length > 0 ? `${base} - ${extras.join(", ")}` : base;
+}
+
 export function isoToDateInput(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {

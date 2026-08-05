@@ -58,8 +58,10 @@ import { buildDateRangeFilter } from "../utils/dateRange";
 import { KNOWN_SPLIT_PAIRS, detectSplitCandidateDoorNos } from "../utils/splitCandidate";
 import {
   applyPendingApartmentCredits,
+  capAllocationsToRemainingDebt,
   type ApplyPendingCreditsResult,
 } from "../utils/apartmentCredit";
+import { fromCents, toCents } from "../utils/money";
 import {
   mapRequestMethodToAdminAction,
   mapRequestPathToAdminPage,
@@ -73,6 +75,7 @@ import {
   isSystemPreallocatedManualReview,
   normalizeDoorNoForCompare,
   parsePaymentNoteParts,
+  withOverpaymentNote,
 } from "./adminNoteUtils";
 
 const router = Router();
@@ -3963,11 +3966,11 @@ router.post("/initial-balances/apply", async (req, res) => {
 });
 
 /**
- * Yeni tahakkuk olustuktan sonra dairenin bekleyen fazla odemesini bu
- * tahakkuklara yazar. Tahakkuklar zaten olusturuldugu icin hata durumunda
+ * Verilen dairelerin bekleyen fazla odemesini acik tahakkuklarina yazar.
+ * Ana kayit (tahakkuk/tahsilat) zaten olusturuldugu icin hata durumunda
  * istegi dusurmuyoruz; loglayip devam ediyoruz.
  */
-async function applyPendingCreditsAfterChargeCreation(
+async function applyPendingCreditsForApartments(
   apartmentIds: string[]
 ): Promise<ApplyPendingCreditsResult | null> {
   if (apartmentIds.length === 0) {
@@ -4082,7 +4085,7 @@ router.post("/charges", async (req, res) => {
       )
     );
 
-    const creditResult = await applyPendingCreditsAfterChargeCreation([parsed.data.apartmentId]);
+    const creditResult = await applyPendingCreditsForApartments([parsed.data.apartmentId]);
 
     return res.status(201).json({
       createdCount: created.length,
@@ -4115,7 +4118,7 @@ router.post("/charges", async (req, res) => {
     },
   });
 
-  const creditResult = await applyPendingCreditsAfterChargeCreation([parsed.data.apartmentId]);
+  const creditResult = await applyPendingCreditsForApartments([parsed.data.apartmentId]);
 
   return res.status(201).json({ ...charge, ...summarizeAppliedCredits(creditResult) });
 });
@@ -4288,7 +4291,7 @@ router.post("/charges/bulk", async (req, res) => {
   });
 
   const totalTargetCount = apartments.length * months.length;
-  const creditResult = await applyPendingCreditsAfterChargeCreation(
+  const creditResult = await applyPendingCreditsForApartments(
     records.map((record) => record.apartmentId)
   );
 
@@ -4471,7 +4474,7 @@ router.post("/charges/distributed", async (req, res) => {
     data: createRows,
   });
 
-  const creditResult = await applyPendingCreditsAfterChargeCreation(
+  const creditResult = await applyPendingCreditsForApartments(
     createRows.map((row) => row.apartmentId)
   );
 
@@ -4942,14 +4945,19 @@ router.post("/payments", async (req, res) => {
     return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
   }
 
-  const totalAmount = parsed.data.items.reduce((sum, item) => sum + item.amount, 0);
+  const totalAmount = fromCents(parsed.data.items.reduce((sum, item) => sum + toCents(item.amount), 0));
   const method = parsed.data.method ?? PaymentMethod.BANK_TRANSFER;
   const normalizedNote = buildPaymentNote(null, parsed.data.note, parsed.data.reference);
   const chargeIds = [...new Set(parsed.data.items.map((item) => item.chargeId))];
 
   const existingCharges = await prisma.charge.findMany({
     where: { id: { in: chargeIds } },
-    select: { id: true },
+    select: {
+      id: true,
+      amount: true,
+      apartment: { select: { id: true, doorNo: true } },
+      paymentItems: { select: { amount: true } },
+    },
   });
   const existingChargeIdSet = new Set(existingCharges.map((row) => row.id));
   const missingChargeIds = chargeIds.filter((id) => !existingChargeIdSet.has(id));
@@ -4965,24 +4973,66 @@ router.post("/payments", async (req, res) => {
     return res.status(400).json({ message: "Selected payment method is not active" });
   }
 
+  // Hicbir tahakkuga kalan borcundan fazlasi yazilmaz; sigmayan tutar daire
+  // alacagi olarak bekler (banka ice aktariminin davranisiyla ayni).
+  const remainingCentsByChargeId = new Map(
+    existingCharges.map((charge) => {
+      const paidCents = charge.paymentItems.reduce((sum, item) => sum + toCents(item.amount), 0);
+      return [charge.id, toCents(charge.amount) - paidCents];
+    })
+  );
+
+  const { capped, excessCents } = capAllocationsToRemainingDebt(
+    parsed.data.items.map((item) => ({
+      chargeId: item.chargeId,
+      requestedCents: toCents(item.amount),
+    })),
+    remainingCentsByChargeId
+  );
+
+  const apartmentsOfCharges = [
+    ...new Map(existingCharges.map((charge) => [charge.apartment.id, charge.apartment])).values(),
+  ];
+
+  // Fazla tutar bir daireye baglanmadan bekletilemez.
+  if (excessCents > 0 && apartmentsOfCharges.length !== 1) {
+    return res.status(400).json({
+      message:
+        `Girilen tutar acik borcu ${fromCents(excessCents).toFixed(2)} TL asiyor. ` +
+        "Odeme birden fazla daireye ait tahakkuk icerdigi icin fazla tutar bir daireye alacak olarak yazilamaz. " +
+        "Tutarlari acik borca gore duzeltin.",
+      excessAmount: fromCents(excessCents),
+    });
+  }
+
+  const surplusApartment = apartmentsOfCharges[0];
+  const noteWithSurplus =
+    excessCents > 0 && surplusApartment
+      ? withOverpaymentNote(normalizedNote, surplusApartment.doorNo, fromCents(excessCents))
+      : normalizedNote;
+
   try {
     const payment = await prisma.$transaction(async (tx) => {
       const createdPayment = await tx.payment.create({
         data: {
           paidAt: new Date(parsed.data.paidAt),
           method,
-          note: normalizedNote,
+          note: noteWithSurplus,
+          // Tahsil edilen para tam tutar; dagitilamayan kismi alacak olarak durur.
           totalAmount,
           createdById: req.user?.userId,
         },
       });
 
-      for (const item of parsed.data.items) {
+      for (const item of capped) {
+        if (item.amountCents <= 0) {
+          continue;
+        }
         await tx.paymentItem.create({
           data: {
             paymentId: createdPayment.id,
             chargeId: item.chargeId,
-            amount: item.amount,
+            amount: fromCents(item.amountCents),
           },
         });
       }
@@ -4992,7 +5042,21 @@ router.post("/payments", async (req, res) => {
 
     await refreshChargeStatusesForIds(chargeIds);
 
-    return res.status(201).json(payment);
+    // Fazla tutar varsa dairenin diger acik borclarina hemen yazilmayi dene;
+    // kalan kisim yeni tahakkuk olustugunda uygulanmak uzere bekler.
+    const creditResult =
+      excessCents > 0 && surplusApartment
+        ? await applyPendingCreditsForApartments([surplusApartment.id])
+        : null;
+
+    return res.status(201).json({
+      ...payment,
+      allocatedAmount: fromCents(capped.reduce((sum, item) => sum + item.amountCents, 0)),
+      pendingCreditAmount: Number(
+        (fromCents(excessCents) - (creditResult?.appliedTotal ?? 0)).toFixed(2)
+      ),
+      creditAppliedToOtherCharges: creditResult?.appliedTotal ?? 0,
+    });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
       return res.status(400).json({ message: "Gecersiz Charge ID veya bagli tahakkuk iliskisi" });
@@ -5735,6 +5799,16 @@ router.put("/payments/:paymentId", async (req, res) => {
     !!requestedApartmentId &&
     (currentApartmentIdSet.size !== 1 || !currentApartmentIdSet.has(requestedApartmentId));
 
+  // Tutar dagitima sigmazsa fazla kismi bu dairenin alacagi olarak bekletecegiz.
+  const singleCurrentApartmentId = currentApartmentIdSet.size === 1 ? [...currentApartmentIdSet][0] : null;
+  const surplusApartmentForEdit = singleCurrentApartmentId
+    ? await prisma.apartment.findUnique({
+        where: { id: singleCurrentApartmentId },
+        select: { id: true, doorNo: true },
+      })
+    : null;
+  let surplusAmountForNote = 0;
+
   const targetApartment = requestedApartmentId
     ? await prisma.apartment.findUnique({
         where: { id: requestedApartmentId },
@@ -5834,29 +5908,77 @@ router.put("/payments/:paymentId", async (req, res) => {
         return;
       }
 
-      if (requestedAmount < existing.itemLinks.length * 0.01) {
-        throw new Error("Tutar, dagitim satir sayisina gore cok kucuk. Daha buyuk bir tutar girin.");
+      // Yeni tutar mevcut kalemlere paylari oraninda dagitilir, ama hicbir
+      // tahakkuga kalan borcundan fazlasi yazilmaz. Sigmayan kisim daire
+      // alacagi olarak bekler.
+      const linkedChargeIds = [...new Set(existing.itemLinks.map((item) => item.chargeId))];
+      const linkedCharges = await tx.charge.findMany({
+        where: { id: { in: linkedChargeIds } },
+        select: { id: true, amount: true },
+      });
+      const otherPaidSums = await tx.paymentItem.groupBy({
+        by: ["chargeId"],
+        where: { chargeId: { in: linkedChargeIds }, paymentId: { not: paymentId } },
+        _sum: { amount: true },
+      });
+      const otherPaidCentsByChargeId = new Map(
+        otherPaidSums.map((row) => [row.chargeId, toCents(row._sum.amount ?? 0)])
+      );
+      const remainingCentsByChargeId = new Map(
+        linkedCharges.map((charge) => [
+          charge.id,
+          toCents(charge.amount) - (otherPaidCentsByChargeId.get(charge.id) ?? 0),
+        ])
+      );
+
+      const requestedCents = toCents(requestedAmount);
+      if (requestedCents < 1) {
+        throw new Error("Tutar en az 0,01 TL olmali.");
+      }
+      const currentTotalCents = existing.itemLinks.reduce((sum, item) => sum + toCents(item.amount), 0);
+
+      let plannedCents = 0;
+      const requestedPerItem = existing.itemLinks.map((item, index) => {
+        const isLast = index === existing.itemLinks.length - 1;
+        const share = isLast
+          ? requestedCents - plannedCents
+          : Math.round((toCents(item.amount) / currentTotalCents) * requestedCents);
+        plannedCents += share;
+        return { chargeId: item.chargeId, requestedCents: Math.max(0, share) };
+      });
+
+      const { capped } = capAllocationsToRemainingDebt(requestedPerItem, remainingCentsByChargeId);
+
+      // Fazla tutari dagitimin farkindan hesapliyoruz: oransal dagitimda olusan
+      // kurus sapmasi da bekleyen alacaga yazilsin, kayitta kaybolmasin.
+      const allocatedCents = capped.reduce((sum, item) => sum + item.amountCents, 0);
+      const excessCents = requestedCents - allocatedCents;
+
+      if (excessCents > 0) {
+        if (currentApartmentIdSet.size !== 1) {
+          throw new Error(
+            `Girilen tutar acik borcu ${fromCents(excessCents).toFixed(2)} TL asiyor. ` +
+              "Odeme birden fazla daireye ait tahakkuk icerdigi icin fazla tutar alacak olarak yazilamaz."
+          );
+        }
+
+        const surplusDoorNo = surplusApartmentForEdit?.doorNo?.trim();
+        if (!surplusDoorNo) {
+          throw new Error("Fazla tutar bekletilemedi: dairenin kapi numarasi bulunamadi.");
+        }
+        surplusAmountForNote = fromCents(excessCents);
       }
 
-      if (existing.itemLinks.length === 1) {
-        await tx.paymentItem.update({
-          where: { id: existing.itemLinks[0].id },
-          data: { amount: Number(requestedAmount.toFixed(2)) },
-        });
-      } else {
-        let allocated = 0;
-        for (let i = 0; i < existing.itemLinks.length; i += 1) {
-          const item = existing.itemLinks[i];
-          const isLast = i === existing.itemLinks.length - 1;
-          const nextAmount = isLast
-            ? Number((requestedAmount - allocated).toFixed(2))
-            : Number(((Number(item.amount) / currentItemTotal) * requestedAmount).toFixed(2));
-          allocated += nextAmount;
-
+      for (let i = 0; i < existing.itemLinks.length; i += 1) {
+        const item = existing.itemLinks[i];
+        const nextCents = capped[i].amountCents;
+        if (nextCents > 0) {
           await tx.paymentItem.update({
             where: { id: item.id },
-            data: { amount: Math.max(0.01, nextAmount) },
+            data: { amount: fromCents(nextCents) },
           });
+        } else {
+          await tx.paymentItem.delete({ where: { id: item.id } });
         }
       }
     }
@@ -5866,13 +5988,25 @@ router.put("/payments/:paymentId", async (req, res) => {
       _sum: { amount: true },
     });
 
+    // Tutar girildiyse tahsil edilen para odur; dagitilamayan kismi kalemlere
+    // yazilmaz, notta alacak olarak isaretlenip bekler.
+    const nextTotalAmount =
+      typeof requestedAmount === "number"
+        ? Number(requestedAmount.toFixed(2))
+        : Number(total._sum.amount ?? 0);
+
+    const nextNote =
+      typeof requestedAmount === "number"
+        ? withOverpaymentNote(note, surplusApartmentForEdit?.doorNo ?? "", surplusAmountForNote)
+        : note;
+
     await tx.payment.update({
       where: { id: paymentId },
       data: {
         paidAt: new Date(parsed.data.paidAt),
-        totalAmount: Number(total._sum.amount ?? 0),
+        totalAmount: nextTotalAmount,
         method: parsed.data.method,
-        note,
+        note: nextNote,
       },
     });
   });
@@ -5888,6 +6022,12 @@ router.put("/payments/:paymentId", async (req, res) => {
   }
 
   await refreshChargeStatusesForIds([...affectedChargeIdSet]);
+
+  // Fazla tutar olustuysa dairenin diger acik borclarina hemen yazilmayi dene.
+  const editCreditResult =
+    surplusAmountForNote > 0 && surplusApartmentForEdit
+      ? await applyPendingCreditsForApartments([surplusApartmentForEdit.id])
+      : null;
 
   const updated = await prisma.payment.findUnique({
     where: { id: paymentId },
@@ -5924,6 +6064,13 @@ router.put("/payments/:paymentId", async (req, res) => {
     amount: Number(updated.totalAmount),
     method: updated.method,
     note: updated.note,
+    allocatedAmount: Number(
+      updated.itemLinks.reduce((sum, item) => sum + Number(item.amount), 0).toFixed(2)
+    ),
+    pendingCreditAmount: Number(
+      (surplusAmountForNote - (editCreditResult?.appliedTotal ?? 0)).toFixed(2)
+    ),
+    creditAppliedToOtherCharges: editCreditResult?.appliedTotal ?? 0,
     actionLogId: actionLog.id,
     undoUntil: actionLog.undoUntil,
   });
@@ -9791,7 +9938,12 @@ router.post("/payment-items/:paymentItemId/split", async (req, res) => {
 
   const targetCharge = await prisma.charge.findUnique({
     where: { id: parsed.data.targetChargeId },
-    select: { id: true, apartmentId: true },
+    select: {
+      id: true,
+      apartmentId: true,
+      amount: true,
+      paymentItems: { select: { id: true, amount: true, paymentId: true } },
+    },
   });
   if (!targetCharge) {
     return res.status(404).json({ message: "Target charge not found" });
@@ -9799,6 +9951,10 @@ router.post("/payment-items/:paymentItemId/split", async (req, res) => {
 
   if (targetCharge.apartmentId !== existing.charge.apartmentId) {
     return res.status(400).json({ message: "Target charge must belong to same apartment" });
+  }
+
+  if (targetCharge.id === existing.chargeId) {
+    return res.status(400).json({ message: "Hedef tahakkuk, kalemin mevcut tahakkugu ile ayni olamaz" });
   }
 
   const splitAmount = Number(parsed.data.amount.toFixed(2));
@@ -9810,16 +9966,44 @@ router.post("/payment-items/:paymentItemId/split", async (req, res) => {
     });
   }
 
+  // Hedef tahakkuga kalan borcundan fazlasi tasinmaz. Burada amac dairenin
+  // dagitimini duzeltmek oldugu icin fazlayi alacaga cevirmiyoruz, reddediyoruz.
+  const targetPaidCents = targetCharge.paymentItems.reduce((sum, item) => sum + toCents(item.amount), 0);
+  const targetRemainingCents = toCents(targetCharge.amount) - targetPaidCents;
+  if (toCents(splitAmount) > targetRemainingCents) {
+    return res.status(400).json({
+      message:
+        targetRemainingCents <= 0
+          ? "Hedef tahakkugun acik borcu kalmamis, bu tahakkuga tutar tasinamaz"
+          : `Hedef tahakkugun kalan borcu ${fromCents(targetRemainingCents).toFixed(2)} TL. Daha buyuk tutar tasinamaz.`,
+      targetRemainingAmount: fromCents(Math.max(0, targetRemainingCents)),
+    });
+  }
+
   const updatedOriginalAmount = Number((existingAmount - splitAmount).toFixed(2));
   if (updatedOriginalAmount <= 0) {
     return res.status(400).json({ message: "Invalid split amount" });
   }
 
-  const created = await prisma.$transaction(async (tx) => {
+  // Ayni odemenin ayni tahakkukta iki kalemi olmamali; varsa mevcut kalem buyur.
+  const existingTargetItem = targetCharge.paymentItems.find(
+    (item) => item.paymentId === existing.paymentId
+  );
+
+  const result = await prisma.$transaction(async (tx) => {
     await tx.paymentItem.update({
       where: { id: existing.id },
       data: { amount: updatedOriginalAmount },
     });
+
+    if (existingTargetItem) {
+      const merged = await tx.paymentItem.update({
+        where: { id: existingTargetItem.id },
+        data: { amount: fromCents(toCents(existingTargetItem.amount) + toCents(splitAmount)) },
+        select: { id: true },
+      });
+      return { itemId: merged.id, merged: true };
+    }
 
     const createdItem = await tx.paymentItem.create({
       data: {
@@ -9830,19 +10014,10 @@ router.post("/payment-items/:paymentItemId/split", async (req, res) => {
       select: { id: true },
     });
 
-    const sum = await tx.paymentItem.aggregate({
-      where: { paymentId: existing.paymentId },
-      _sum: { amount: true },
-    });
-
-    await tx.payment.update({
-      where: { id: existing.paymentId },
-      data: {
-        totalAmount: Number(sum._sum.amount ?? 0),
-      },
-    });
-
-    return createdItem;
+    // Odemenin toplam tutari degismedi: tutar kalemler arasinda tasindi.
+    // Bu yuzden `totalAmount` guncellenmiyor; guncellenirse bekleyen daire
+    // alacagi (toplam - dagitim) silinir.
+    return { itemId: createdItem.id, merged: false };
   });
 
   await refreshChargeStatusesForIds([existing.chargeId, targetCharge.id]);
@@ -9850,7 +10025,8 @@ router.post("/payment-items/:paymentItemId/split", async (req, res) => {
   return res.status(201).json({
     originalPaymentItemId: existing.id,
     originalAmount: updatedOriginalAmount,
-    splitPaymentItemId: created.id,
+    splitPaymentItemId: result.itemId,
+    mergedIntoExistingItem: result.merged,
     splitAmount,
     targetChargeId: targetCharge.id,
   });

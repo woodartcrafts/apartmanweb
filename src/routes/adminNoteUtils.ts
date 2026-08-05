@@ -62,6 +62,39 @@ export function extractDoorNoTagFromPaymentNote(note: string | null): string | n
   return value || null;
 }
 
+export const OVERPAYMENT_NOTE_PREFIX = "UNAPPLIED:OVERPAYMENT";
+
+/**
+ * Odeme notunu dagitilamayan (daire alacagi olarak bekleyen) tutari
+ * gosterecek sekilde gunceller.
+ *
+ * `DOOR:` etiketi sart: daire alacaklarini uygulayan mekanizma odemeyi bu
+ * etiketle bir daireye baglar, etiket olmadan tutar sahipsiz kalir.
+ * Fazla tutar kalmadiysa etiket temizlenir.
+ */
+export function withOverpaymentNote(
+  note: string | null,
+  doorNo: string,
+  surplusAmount: number
+): string | null {
+  const parts = parsePaymentNoteParts(note).filter(
+    (part) => !part.trim().toUpperCase().startsWith(OVERPAYMENT_NOTE_PREFIX)
+  );
+
+  const normalizedDoorNo = doorNo.trim();
+  if (surplusAmount <= 0) {
+    return parts.length > 0 ? parts.join(" | ") : null;
+  }
+
+  if (normalizedDoorNo && !parts.some((part) => part.startsWith("DOOR:"))) {
+    parts.push(`DOOR:${normalizedDoorNo}`);
+  }
+
+  parts.push(`${OVERPAYMENT_NOTE_PREFIX}:${surplusAmount.toFixed(2)}`);
+
+  return parts.join(" | ");
+}
+
 export function buildPaymentNote(
   existingNote: string | null,
   description: string | undefined,

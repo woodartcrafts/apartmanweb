@@ -6,6 +6,7 @@ import {
   apiBase,
   apiFetch,
   withAuthRequestInit,
+  buildPaymentAllocationMessage,
   dateInputToIso,
   dateTimeInputToIso,
   formatDateTimeTr,
@@ -4587,7 +4588,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         }
       }
 
-      await authorizedRequest(`/api/admin/payments/${editingPaymentListId}`, {
+      const result = await authorizedRequest<{
+        allocatedAmount?: number;
+        pendingCreditAmount?: number;
+        creditAppliedToOtherCharges?: number;
+      }>(`/api/admin/payments/${editingPaymentListId}`, {
         method: "PUT",
         payload: {
           paidAt: dateTimeInputToIso(paymentListEditForm.paidAt),
@@ -4602,7 +4607,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
       await Promise.all([fetchPaymentList(paymentListFilter), fetchActionLogs()]);
       cancelEditPaymentListRow();
-      setMessage("Odeme satiri guncellendi");
+      setMessage(buildPaymentAllocationMessage("Odeme satiri guncellendi", result ?? {}));
     } catch (err) {
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Odeme satiri guncellenemedi");
@@ -7214,7 +7219,12 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       }
 
       const isoPaidAt = dateInputToIso(payload.paidAt);
-      await authorizedRequest<{ id: string }>("/api/admin/payments", {
+      const result = await authorizedRequest<{
+        id: string;
+        allocatedAmount?: number;
+        pendingCreditAmount?: number;
+        creditAppliedToOtherCharges?: number;
+      }>("/api/admin/payments", {
         method: "POST",
         payload: {
           paidAt: isoPaidAt,
@@ -7225,7 +7235,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         },
       });
 
-      setMessage("Odeme girildi");
+      setMessage(buildPaymentAllocationMessage("Odeme girildi", result));
       await fetchPaymentList();
       if (activeApartmentId) {
         await fetchStatement(activeApartmentId);

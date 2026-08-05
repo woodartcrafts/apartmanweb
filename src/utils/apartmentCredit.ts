@@ -17,11 +17,13 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import {
+  OVERPAYMENT_NOTE_PREFIX,
   extractDoorNoTagFromPaymentNote,
   hasManualReconcileLock,
   isSystemPreallocatedManualReview,
   normalizeDoorNoForCompare,
   parsePaymentNoteParts,
+  withOverpaymentNote,
 } from "../routes/adminNoteUtils";
 import { fromCents, toCents } from "./money";
 
@@ -105,6 +107,46 @@ export function planPendingCreditAllocations(
   }
 
   return { allocations, leftoverCentsByPayment };
+}
+
+export type RequestedAllocation = {
+  chargeId: string;
+  requestedCents: number;
+};
+
+export type CappedAllocation = {
+  chargeId: string;
+  amountCents: number;
+};
+
+/**
+ * Istenen dagitimi tahakkuklarin kalan borcuyla sinirlar.
+ *
+ * Bir tahakkuga kalan borcundan fazlasi yazilmaz; sigmayan kisim `excessCents`
+ * olarak doner ve cagiran tarafta daire alacagi olarak bekletilir. Ayni
+ * tahakkuk birden fazla kez istenirse kalan borc paylasilir.
+ *
+ * `capped` girisle birebir hizalidir (sifir kalan bir tahakkuk icin 0 doner),
+ * boylece cagiran taraf mevcut kalemleri sirasiyla eslestirebilir.
+ */
+export function capAllocationsToRemainingDebt(
+  requested: RequestedAllocation[],
+  remainingCentsByChargeId: Map<string, number>
+): { capped: CappedAllocation[]; excessCents: number } {
+  const budget = new Map(remainingCentsByChargeId);
+  const capped: CappedAllocation[] = [];
+  let excessCents = 0;
+
+  for (const item of requested) {
+    const available = Math.max(0, budget.get(item.chargeId) ?? 0);
+    const applied = Math.max(0, Math.min(item.requestedCents, available));
+
+    capped.push({ chargeId: item.chargeId, amountCents: applied });
+    budget.set(item.chargeId, available - applied);
+    excessCents += item.requestedCents - applied;
+  }
+
+  return { capped, excessCents };
 }
 
 /**
@@ -305,6 +347,35 @@ export async function applyPendingApartmentCredits(params: {
 
   const affectedChargeIds = [...new Set(allAllocations.map((x) => x.chargeId))];
 
+  // Notta yazan fazla tutar etiketi dagitimdan sonra eskimemeli; kalan alacaga
+  // gore yeniden yaziyoruz (kalmadiysa etiket silinir).
+  const appliedCentsByPaymentId = new Map<string, number>();
+  for (const allocation of allAllocations) {
+    appliedCentsByPaymentId.set(
+      allocation.paymentId,
+      (appliedCentsByPaymentId.get(allocation.paymentId) ?? 0) + allocation.amountCents
+    );
+  }
+
+  const noteUpdates: Array<{ paymentId: string; note: string | null }> = [];
+  for (const payment of candidatePayments) {
+    const appliedCents = appliedCentsByPaymentId.get(payment.id);
+    if (appliedCents === undefined || !payment.note?.includes(OVERPAYMENT_NOTE_PREFIX)) {
+      continue;
+    }
+
+    const linkedCents = payment.itemLinks.reduce((sum, item) => sum + toCents(item.amount), 0);
+    const remainingSurplusCents = toCents(payment.totalAmount) - linkedCents - appliedCents;
+    const nextNote = withOverpaymentNote(
+      payment.note,
+      extractDoorNoTagFromPaymentNote(payment.note) ?? "",
+      fromCents(Math.max(0, remainingSurplusCents))
+    );
+    if (nextNote !== payment.note) {
+      noteUpdates.push({ paymentId: payment.id, note: nextNote });
+    }
+  }
+
   const itemsToCreate: PlannedCreditAllocation[] = [];
   const itemsToGrow: Array<{ id: string; amountCents: number }> = [];
 
@@ -336,6 +407,13 @@ export async function applyPendingApartmentCredits(params: {
         await tx.paymentItem.update({
           where: { id: item.id },
           data: { amount: fromCents(item.amountCents) },
+        });
+      }
+
+      for (const update of noteUpdates) {
+        await tx.payment.update({
+          where: { id: update.paymentId },
+          data: { note: update.note },
         });
       }
 
