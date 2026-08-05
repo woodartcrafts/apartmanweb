@@ -4,6 +4,7 @@ import {
   buildPaymentRefundExpenseDescription,
   isPaymentRefundExpenseDescription,
   parseDoorNosInput,
+  buildPaymentRefundLedgerDescription,
   parsePaymentRefundDoorsFromText,
   paymentRefundDoorTag,
   planRefundReductions,
@@ -66,6 +67,27 @@ describe("paymentRefund util", () => {
         expenseItemCode: "ELEKTRIK",
       })
     ).toBe(false);
+  });
+});
+
+describe("buildPaymentRefundLedgerDescription", () => {
+  it("teknik etiket yerine daire numarasini gosterir", () => {
+    expect(buildPaymentRefundLedgerDescription("PAYMENT_REFUND:DOOR:57")).toBe(
+      "Aidat Iadesi (Daire 57)"
+    );
+    expect(buildPaymentRefundLedgerDescription("PAYMENT_REFUND:DOOR:57,93")).toBe(
+      "Aidat Iadesi (Daire 57, 93)"
+    );
+  });
+
+  it("aciklamanin geri kalanini korur", () => {
+    expect(
+      buildPaymentRefundLedgerDescription("Umit Basar fazla odeme | PAYMENT_REFUND:DOOR:8")
+    ).toBe("Aidat Iadesi (Daire 8) - Umit Basar fazla odeme");
+  });
+
+  it("etiket yoksa sade baslik doner", () => {
+    expect(buildPaymentRefundLedgerDescription(null)).toBe("Aidat Iadesi");
   });
 });
 

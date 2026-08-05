@@ -57,6 +57,13 @@ import {
 import { buildDateRangeFilter } from "../utils/dateRange";
 import { KNOWN_SPLIT_PAIRS, detectSplitCandidateDoorNos } from "../utils/splitCandidate";
 import {
+  PAYMENT_REFUND_EXPENSE_ITEM_CODE,
+  PAYMENT_REFUND_NOTE_PREFIX,
+  buildPaymentRefundLedgerDescription,
+  isPaymentRefundExpenseDescription,
+  prismaExcludePaymentRefundExpenses,
+} from "../utils/paymentRefund";
+import {
   applyPendingApartmentCredits,
   capAllocationsToRemainingDebt,
   type ApplyPendingCreditsResult,
@@ -7892,7 +7899,12 @@ router.get("/reports/summary", async (_req, res) => {
       },
       _sum: { totalAmount: true },
     }),
-    prisma.expense.aggregate({ _sum: { amount: true } }),
+    // Aidat iadeleri gider toplamina girmez; "ne harcadik" sorusunun cevabi
+    // Gider Raporu ile ayni olmali.
+    prisma.expense.aggregate({
+      where: prismaExcludePaymentRefundExpenses,
+      _sum: { amount: true },
+    }),
     prisma.payment.findFirst({
       where: { method: PaymentMethod.BANK_TRANSFER },
       orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
@@ -7907,6 +7919,7 @@ router.get("/reports/summary", async (_req, res) => {
     fetchStatementBatchForBalanceMatch(),
     prisma.expense.groupBy({
       by: ["expenseItemId"],
+      where: prismaExcludePaymentRefundExpenses,
       _sum: { amount: true },
       _count: { _all: true },
       _max: { spentAt: true },
@@ -8686,8 +8699,14 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
     };
   }
 
-  const [openingBeforeYearAgg, openingInYearAgg, paymentsInYearRaw, expensesInYearRaw, previousExpenseTotalRaw] =
-    await Promise.all([
+  const [
+    openingBeforeYearAgg,
+    openingInYearAgg,
+    paymentsInYearRaw,
+    expensesInYearRaw,
+    previousExpenseTotalRaw,
+    previousRefundTotalAgg,
+  ] = await Promise.all([
     prisma.payment.aggregate({
       where: {
         method: PaymentMethod.BANK_TRANSFER,
@@ -8731,23 +8750,53 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
         expenseItem: {
           select: {
             name: true,
+            code: true,
           },
         },
       },
       orderBy: [{ spentAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     }),
     sumOperatingBankExpensesOut({ spentAt: { lt: yearStart } }),
+    // Aidat iadeleri gider degil, tahsilatin geri donmesi: defterde o ayin
+    // gelirinden dusuluyor. Onceki yil toplamlari da ayni cizgide olmali,
+    // yoksa devir sutunlari ile aylar farkli mantik gosterir.
+    prisma.expense.aggregate({
+      where: {
+        paymentMethod: PaymentMethod.BANK_TRANSFER,
+        spentAt: { lt: yearStart },
+        OR: [
+          { description: { contains: PAYMENT_REFUND_NOTE_PREFIX } },
+          { expenseItem: { code: PAYMENT_REFUND_EXPENSE_ITEM_CODE } },
+        ],
+      },
+      _sum: { amount: true },
+    }),
   ]);
 
   const openingBeforeYear = Number(openingBeforeYearAgg._sum.totalAmount ?? 0);
   const openingInYear = Number(openingInYearAgg._sum.totalAmount ?? 0);
   const openingBalanceForYear = Number((openingBeforeYear + openingInYear).toFixed(2));
 
-  const previousIncomeTotal = await sumOperatingBankPaymentsIn({
-    paidAt: { lt: yearStart },
-    NOT: { note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX } },
-  });
-  const previousExpenseTotal = previousExpenseTotalRaw;
+  // Iade hem gelirden hem giderden ayni tutarda dusuldugu icin banka bakiyesi
+  // degismez; degisen sadece gelir ve giderin brut yerine net gosterilmesi.
+  const previousRefundTotal = Number(Number(previousRefundTotalAgg._sum.amount ?? 0).toFixed(2));
+  const previousIncomeTotal = Number(
+    (
+      (await sumOperatingBankPaymentsIn({
+        paidAt: { lt: yearStart },
+        NOT: { note: { startsWith: OPENING_BALANCE_PAYMENT_NOTE_PREFIX } },
+      })) - previousRefundTotal
+    ).toFixed(2)
+  );
+  const previousExpenseTotal = Number((previousExpenseTotalRaw - previousRefundTotal).toFixed(2));
+
+  const bankExpenseRowsInYear = expensesInYearRaw.filter(
+    (row) => !isExcludedFromBankCashOutDescription(row.description, row.reference)
+  );
+
+  const isPaymentRefundRow = (row: (typeof bankExpenseRowsInYear)[number]): boolean =>
+    isPaymentRefundExpenseDescription(row.description) ||
+    row.expenseItem.code === PAYMENT_REFUND_EXPENSE_ITEM_CODE;
 
   const paymentsInYear = paymentsInYearRaw
     .filter((row) => !row.note?.startsWith(OPENING_BALANCE_PAYMENT_NOTE_PREFIX))
@@ -8762,8 +8811,22 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
       };
     });
 
-  const expensesInYear = expensesInYearRaw
-    .filter((row) => !isExcludedFromBankCashOutDescription(row.description, row.reference))
+  // Iadeler gelir tarafinda eksi satir olarak yer alir: o ayin tahsilati net gorunur.
+  const refundIncomeRowsInYear = bankExpenseRowsInYear.filter(isPaymentRefundRow).map((row) => ({
+    id: row.id,
+    date: row.spentAt,
+    amount: -Number(row.amount),
+    description: buildPaymentRefundLedgerDescription(row.description),
+    reference: row.reference,
+  }));
+
+  const incomeRowsInYear = [...paymentsInYear, ...refundIncomeRowsInYear].sort((a, b) => {
+    const byDate = a.date.getTime() - b.date.getTime();
+    return byDate !== 0 ? byDate : a.id.localeCompare(b.id);
+  });
+
+  const expensesInYear = bankExpenseRowsInYear
+    .filter((row) => !isPaymentRefundRow(row))
     .map((row) => ({
       id: row.id,
       date: row.spentAt,
@@ -8777,7 +8840,7 @@ router.get("/reports/monthly-ledger-print", async (req, res) => {
   const monthNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
   const months = monthNumbers.map((month) => {
-    const monthIncomeRows = paymentsInYear
+    const monthIncomeRows = incomeRowsInYear
       .filter((row) => row.date.getUTCMonth() + 1 === month)
       .map((row, idx) => ({
         seqNo: idx + 1,

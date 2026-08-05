@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { buildDateRangeFilter } from "../utils/dateRange";
+import { prismaExcludePaymentRefundExpenses } from "../utils/paymentRefund";
 import { getApartmentStatements } from "../utils/statement";
 
 const router = Router();
@@ -60,12 +61,7 @@ router.get("/me/expenses-report", requireRole([UserRole.ADMIN]), async (req, res
 
   const expenseReportWhere = {
     spentAt: rangeFilter,
-    NOT: {
-      OR: [
-        { description: { contains: "PAYMENT_REFUND:" } },
-        { expenseItem: { code: "AIDAT_IADESI" } },
-      ],
-    },
+    ...prismaExcludePaymentRefundExpenses,
   };
 
   const [totals, groupedByItem, expenses] = await Promise.all([

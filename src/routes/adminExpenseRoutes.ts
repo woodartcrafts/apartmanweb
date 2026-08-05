@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 import { buildDateRangeFilter } from "../utils/dateRange";
+import { prismaExcludePaymentRefundExpenses } from "../utils/paymentRefund";
 
 const EXPENSE_REPORT_EXPENSE_LIMIT = 2000;
 const EXPENSE_REPORT_CHARGE_LIMIT = 5000;
@@ -136,12 +137,7 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
       where: {
         spentAt: rangeFilter,
         expenseItemId: expenseItemId || undefined,
-        NOT: {
-          OR: [
-            { description: { contains: "PAYMENT_REFUND:" } },
-            { expenseItem: { code: "AIDAT_IADESI" } },
-          ],
-        },
+        ...prismaExcludePaymentRefundExpenses,
       },
       include: {
         expenseItem: true,

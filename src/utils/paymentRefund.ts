@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+
 export const PAYMENT_REFUND_NOTE_PREFIX = "PAYMENT_REFUND:";
 export const PAYMENT_REFUND_EXPENSE_ITEM_CODE = "AIDAT_IADESI";
 export const PAYMENT_REFUND_EXPENSE_ITEM_NAME = "Aidat Iadesi";
@@ -60,6 +62,41 @@ export function shouldExcludeExpenseFromReports(params: {
     isPaymentRefundExpenseItemCode(params.expenseItemCode)
   );
 }
+
+/**
+ * Iade kaydini defterde okunabilir bir satir basligina cevirir; teknik etiket
+ * ("PAYMENT_REFUND:DOOR:57") kullaniciya gosterilmez.
+ */
+export function buildPaymentRefundLedgerDescription(description: string | null | undefined): string {
+  const doors = parsePaymentRefundDoorsFromText(description);
+  const base = (description ?? "")
+    .split(" | ")
+    .map((part) => part.trim())
+    .filter((part) => part && !part.toUpperCase().startsWith(PAYMENT_REFUND_NOTE_PREFIX))
+    .join(" | ");
+
+  const label = doors.length > 0
+    ? `${PAYMENT_REFUND_EXPENSE_ITEM_NAME} (Daire ${doors.join(", ")})`
+    : PAYMENT_REFUND_EXPENSE_ITEM_NAME;
+
+  return base ? `${label} - ${base}` : label;
+}
+
+/**
+ * Gider raporlarindan aidat iadelerini ayiklayan Prisma filtresi.
+ *
+ * Iade bir gider degil, tahsilatin geri donmesi; "ne harcadik" sorusunun
+ * cevabina karismamali. Banka bakiyesi ve kasa hareketi raporlari ise bu
+ * filtreyi kullanmaz: para gercekten bankadan cikiyor.
+ */
+export const prismaExcludePaymentRefundExpenses = {
+  NOT: {
+    OR: [
+      { description: { contains: PAYMENT_REFUND_NOTE_PREFIX } },
+      { expenseItem: { code: PAYMENT_REFUND_EXPENSE_ITEM_CODE } },
+    ],
+  },
+} satisfies Prisma.ExpenseWhereInput;
 
 /**
  * Iadenin dusulebilecegi bir kaynak: ya odemenin tahakkuga yazilmamis fazlasi

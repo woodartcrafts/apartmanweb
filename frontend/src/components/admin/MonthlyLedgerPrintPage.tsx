@@ -251,6 +251,10 @@ export function MonthlyLedgerPrintPage() {
         </div>
 
         <p className="small">{message}</p>
+        <p className="small">
+          Aidat iadeleri gider olarak degil, iade edildikleri ayin gelir tarafinda eksi satir olarak
+          yer alir; gelir toplami net gorunur, banka bakiyesi degismez.
+        </p>
       </div>
 
       {data && (
