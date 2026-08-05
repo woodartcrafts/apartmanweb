@@ -13,6 +13,11 @@ describe("admin permission path mapping", () => {
     expect(mapRequestPathToAdminPage("/reports/bank-reconciliation", "GET")).toBe("REPORTS_BANK_MOVEMENTS");
   });
 
+  it("maps payment-refunds path to PAYMENT_REFUNDS", () => {
+    expect(mapRequestPathToAdminPage("/payment-refunds", "GET")).toBe("PAYMENT_REFUNDS");
+    expect(mapRequestPathToAdminPage("/payment-refunds/candidates", "GET")).toBe("PAYMENT_REFUNDS");
+  });
+
   it("maps charge-types endpoints by method", () => {
     expect(mapRequestPathToAdminPage("/charge-types", "GET")).toBe("CHARGE_TYPES_LIST");
     expect(mapRequestPathToAdminPage("/charge-types", "POST")).toBe("CHARGE_TYPES_CREATE");

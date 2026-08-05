@@ -67,6 +67,7 @@ export type AdminPageKey =
   | "RESIDENT_CONTENT"
   | "CORRECTIONS"
   | "UNCLASSIFIED"
+  | "PAYMENT_REFUNDS"
   | "ACCOUNT_TRANSFERS"
   | "MANUAL_CLOSURES"
   | "AUDIT_LOGS"
@@ -571,6 +572,30 @@ export type AccountTransferRow = {
   reference: string | null;
   description: string;
   importBatchId: string | null;
+};
+
+export type PaymentRefundCandidateRow = {
+  id: string;
+  spentAt: string;
+  amount: number;
+  description: string | null;
+  reference: string | null;
+  paymentMethod: PaymentMethod;
+  expenseItemId: string;
+  expenseItemName: string;
+  sourceLabel: string;
+};
+
+export type PaymentRefundAppliedRow = {
+  id: string;
+  spentAt: string;
+  amount: number;
+  description: string | null;
+  reference: string | null;
+  paymentMethod: PaymentMethod;
+  expenseItemId: string;
+  expenseItemName: string;
+  doorNo: string | null;
 };
 
 export type AdminActionLogRow = {

@@ -63,19 +63,25 @@ router.get("/me/expenses-report", requireRole([UserRole.ADMIN]), async (req, res
         }
       : undefined;
 
+  const expenseReportWhere = {
+    spentAt: rangeFilter,
+    NOT: {
+      OR: [
+        { description: { contains: "PAYMENT_REFUND:" } },
+        { expenseItem: { code: "AIDAT_IADESI" } },
+      ],
+    },
+  };
+
   const [totals, groupedByItem, expenses] = await Promise.all([
     prisma.expense.aggregate({
-      where: {
-        spentAt: rangeFilter,
-      },
+      where: expenseReportWhere,
       _sum: { amount: true },
       _count: { _all: true },
     }),
     prisma.expense.groupBy({
       by: ["expenseItemId"],
-      where: {
-        spentAt: rangeFilter,
-      },
+      where: expenseReportWhere,
       _sum: { amount: true },
       _count: { _all: true },
       orderBy: {
@@ -86,9 +92,7 @@ router.get("/me/expenses-report", requireRole([UserRole.ADMIN]), async (req, res
       take: 10,
     }),
     prisma.expense.findMany({
-      where: {
-        spentAt: rangeFilter,
-      },
+      where: expenseReportWhere,
       include: {
         expenseItem: {
           select: {

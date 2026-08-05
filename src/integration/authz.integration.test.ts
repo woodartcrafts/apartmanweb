@@ -12,6 +12,13 @@ describe("API integration - authz boundaries", () => {
     expect(res.body).toEqual({ message: "Unauthorized" });
   });
 
+  it("rejects anonymous payment-refunds access", async () => {
+    const res = await request(app).get("/api/admin/payment-refunds/candidates");
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ message: "Unauthorized" });
+  });
+
   it("rejects malformed bearer token", async () => {
     const res = await request(app)
       .get("/api/admin/reports/summary")

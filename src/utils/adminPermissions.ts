@@ -69,6 +69,7 @@ export type AdminPageKey =
   | "RESIDENT_CONTENT"
   | "CORRECTIONS"
   | "UNCLASSIFIED"
+  | "PAYMENT_REFUNDS"
   | "ACCOUNT_TRANSFERS"
   | "MANUAL_CLOSURES"
   | "AUDIT_LOGS"
@@ -156,6 +157,7 @@ export const ADMIN_PAGE_DEFINITIONS: Array<{ key: AdminPageKey; label: string }>
   { key: "RESIDENT_CONTENT", label: "Sistem ve Duzeltme / Iletisim / Duyurular ve Anketler" },
   { key: "CORRECTIONS", label: "Sistem ve Duzeltme / Islemler / Duzeltmeler" },
   { key: "UNCLASSIFIED", label: "Kontrol / Finans Kontrolleri / Siniflandirilamayanlar" },
+  { key: "PAYMENT_REFUNDS", label: "Kontrol / Finans Kontrolleri / Aidat Iadesi" },
   { key: "MANUAL_CLOSURES", label: "Sistem ve Duzeltme / Islemler / Manuel Kapama Yonetimi" },
   { key: "AUDIT_LOGS", label: "Sistem ve Duzeltme / Izleme / Islem Gecmisi" },
   { key: "MEETING", label: "Toplanti / Islemler / Toplanti" },
@@ -332,6 +334,7 @@ export function mapRequestPathToAdminPage(pathname: string, method?: string): Ad
   if (pathname.startsWith("/resident-content")) return "RESIDENT_CONTENT";
   if (pathname.startsWith("/corrections")) return "CORRECTIONS";
   if (pathname.startsWith("/unclassified")) return "UNCLASSIFIED";
+  if (pathname.startsWith("/payment-refunds")) return "PAYMENT_REFUNDS";
   if (pathname.startsWith("/manual-closures")) return "MANUAL_CLOSURES";
   if (pathname.startsWith("/audit-logs")) return "AUDIT_LOGS";
   if (pathname.startsWith("/login-logs")) return "LOGIN_LOGS";

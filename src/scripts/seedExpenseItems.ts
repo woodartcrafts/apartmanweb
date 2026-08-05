@@ -8,6 +8,7 @@ const defaults = [
   { code: "SU", name: "Su" },
   { code: "SINIFLANDIRILAMAYAN_GIDERLER", name: "Siniflandirilamayan Giderler" },
   { code: "HESAPLAR_ARASI_VIRMAN", name: "Hesaplar Arasi Virman" },
+  { code: "AIDAT_IADESI", name: "Aidat Iadesi" },
 ];
 
 async function main() {

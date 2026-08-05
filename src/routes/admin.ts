@@ -30,6 +30,7 @@ import { createAdminResidentContentRoutes } from "./adminResidentContentRoutes";
 import { createAdminBankRoutes } from "./adminBankRoutes";
 import { createAdminUploadBatchRoutes } from "./adminUploadBatchRoutes";
 import { createAdminAccountTransferRoutes } from "./adminAccountTransferRoutes";
+import { createAdminPaymentRefundRoutes } from "./adminPaymentRefundRoutes";
 import {
   ACCOUNT_TRANSFER_NOTE_PREFIX,
   buildAccountTransferPaymentNote,
@@ -6173,6 +6174,7 @@ router.post("/actions/undo/:actionId", async (req, res) => {
 
 
 router.use(createAdminAccountTransferRoutes());
+router.use(createAdminPaymentRefundRoutes({ refreshChargeStatusesForIds }));
 router.use(createAdminUploadBatchRoutes({ refreshChargeStatusesForIds }));
 
 router.post("/payments/upload", upload.single("file"), async (req, res) => {

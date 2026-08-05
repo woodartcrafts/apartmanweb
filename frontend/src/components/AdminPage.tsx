@@ -86,6 +86,8 @@ import {
   type UploadBatchUploader,
   type AccountTransferDirection,
   type AccountTransferRow,
+  type PaymentRefundAppliedRow,
+  type PaymentRefundCandidateRow,
   type UnclassifiedExpenseRow,
   type UnclassifiedPaymentRow,
 } from "../app/shared";
@@ -262,6 +264,11 @@ const UnclassifiedItemsPage = lazy(() =>
 const AccountTransfersPage = lazy(() =>
   import("./admin/AccountTransfersPage").then((module) => ({
     default: module.AccountTransfersPage,
+  }))
+);
+const PaymentRefundsPage = lazy(() =>
+  import("./admin/PaymentRefundsPage").then((module) => ({
+    default: module.PaymentRefundsPage,
   }))
 );
 const MeetingGuidePage = lazy(() =>
@@ -633,6 +640,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [unclassifiedExpenseRows, setUnclassifiedExpenseRows] = useState<UnclassifiedExpenseRow[]>([]);
   const [unclassifiedPageLoading, setUnclassifiedPageLoading] = useState<boolean>(false);
   const [accountTransferRows, setAccountTransferRows] = useState<AccountTransferRow[]>([]);
+  const [paymentRefundCandidates, setPaymentRefundCandidates] = useState<PaymentRefundCandidateRow[]>([]);
+  const [paymentRefundAppliedRows, setPaymentRefundAppliedRows] = useState<PaymentRefundAppliedRow[]>([]);
+  const [paymentRefundsPageLoading, setPaymentRefundsPageLoading] = useState(false);
   const [accountTransferFilter, setAccountTransferFilter] = useState({ from: "", to: "" });
   const [paymentListFilter, setPaymentListFilter] = useState({
     from: "",
@@ -1081,6 +1091,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/resident-content": "RESIDENT_CONTENT",
       "/admin/corrections": "CORRECTIONS",
       "/admin/unclassified": "UNCLASSIFIED",
+      "/admin/payment-refunds": "PAYMENT_REFUNDS",
       "/admin/manual-closures": "MANUAL_CLOSURES",
       "/admin/audit-logs": "AUDIT_LOGS",
       "/admin/login-logs": "LOGIN_LOGS",
@@ -1151,6 +1162,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       { path: "/admin/resident-content", key: "RESIDENT_CONTENT" },
       { path: "/admin/corrections", key: "CORRECTIONS" },
       { path: "/admin/unclassified", key: "UNCLASSIFIED" },
+      { path: "/admin/payment-refunds", key: "PAYMENT_REFUNDS" },
       { path: "/admin/manual-closures", key: "MANUAL_CLOSURES" },
       { path: "/admin/audit-logs", key: "AUDIT_LOGS" },
       { path: "/admin/login-logs", key: "LOGIN_LOGS" },
@@ -4286,6 +4298,60 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     } catch (err) {
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Virman isaretlenemedi");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchPaymentRefunds(options?: { silent?: boolean }): Promise<void> {
+    const silent = options?.silent ?? false;
+    setPaymentRefundsPageLoading(true);
+    try {
+      if (apartmentOptions.length === 0) {
+        await fetchApartmentOptions();
+      }
+      const [candidates, applied] = await Promise.all([
+        authorizedRequest<PaymentRefundCandidateRow[]>("/api/admin/payment-refunds/candidates"),
+        authorizedRequest<PaymentRefundAppliedRow[]>("/api/admin/payment-refunds"),
+      ]);
+      setPaymentRefundCandidates(candidates);
+      setPaymentRefundAppliedRows(applied);
+      if (!silent) {
+        setMessage(`Aidat iadeleri yuklendi. Aday: ${candidates.length}, Tamamlanan: ${applied.length}`);
+      }
+    } catch (err) {
+      console.error(err);
+      if (!silent) {
+        setMessage(err instanceof Error ? err.message : "Aidat iadeleri yuklenemedi");
+      }
+    } finally {
+      setPaymentRefundsPageLoading(false);
+    }
+  }
+
+  async function applyPaymentRefund(expenseId: string, doorNo: string): Promise<void> {
+    setLoading(true);
+    try {
+      const result = await authorizedRequest<{
+        apartmentLabel: string;
+        refundAmount: number;
+      }>("/api/admin/payment-refunds", {
+        method: "POST",
+        payload: { expenseId, doorNo },
+      });
+      await Promise.all([
+        fetchPaymentRefunds({ silent: true }),
+        loadUnclassifiedRows({ silent: true }),
+        fetchExpenseReport(expenseReportFilter, { silent: true }),
+        fetchReportsSummary({ silent: true }),
+      ]);
+      setMessage(
+        `Iade uygulandi: ${result.apartmentLabel} / ${formatTry(result.refundAmount)}`
+      );
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Iade uygulanamadi");
       throw err;
     } finally {
       setLoading(false);
@@ -8526,6 +8592,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       return;
     }
 
+    if (path === "/admin/payment-refunds") {
+      void fetchPaymentRefunds({ silent: true });
+      return;
+    }
+
     // Statement pages, apartment list, and bulk correction list are manual-run.
 
     if (path === "/admin/charges/bulk-correct/edit") {
@@ -9108,6 +9179,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/unclassified">
               Siniflandirilamayanlar
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/payment-refunds">
+              Aidat Iadesi
             </NavLink>
           </div>
         </details>
@@ -12893,6 +12967,22 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 filter={accountTransferFilter}
                 setFilter={setAccountTransferFilter}
                 refresh={() => fetchAccountTransfers()}
+              />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/payment-refunds"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <PaymentRefundsPage
+                loading={loading}
+                pageLoading={paymentRefundsPageLoading}
+                candidates={paymentRefundCandidates}
+                appliedRows={paymentRefundAppliedRows}
+                apartmentOptions={apartmentOptions}
+                refresh={() => fetchPaymentRefunds()}
+                applyRefund={applyPaymentRefund}
               />
             </Suspense>
           }

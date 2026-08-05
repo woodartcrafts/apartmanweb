@@ -144,6 +144,12 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
       where: {
         spentAt: rangeFilter,
         expenseItemId: expenseItemId || undefined,
+        NOT: {
+          OR: [
+            { description: { contains: "PAYMENT_REFUND:" } },
+            { expenseItem: { code: "AIDAT_IADESI" } },
+          ],
+        },
       },
       include: {
         expenseItem: true,
