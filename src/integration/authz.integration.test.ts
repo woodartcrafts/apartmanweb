@@ -19,6 +19,18 @@ describe("API integration - authz boundaries", () => {
     expect(res.body).toEqual({ message: "Unauthorized" });
   });
 
+  it("rejects anonymous split-candidates access", async () => {
+    const listRes = await request(app).get("/api/admin/split-candidates");
+    expect(listRes.status).toBe(401);
+    expect(listRes.body).toEqual({ message: "Unauthorized" });
+
+    const splitRes = await request(app)
+      .post("/api/admin/split-candidates/some-payment-id/split")
+      .send({ parts: [{ doorNo: "6", amount: 10 }, { doorNo: "7", amount: 10 }] });
+    expect(splitRes.status).toBe(401);
+    expect(splitRes.body).toEqual({ message: "Unauthorized" });
+  });
+
   it("rejects malformed bearer token", async () => {
     const res = await request(app)
       .get("/api/admin/reports/summary")

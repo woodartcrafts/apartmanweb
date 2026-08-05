@@ -68,6 +68,7 @@ export type AdminPageKey =
   | "CORRECTIONS"
   | "UNCLASSIFIED"
   | "PAYMENT_REFUNDS"
+  | "SPLIT_CANDIDATES"
   | "ACCOUNT_TRANSFERS"
   | "MANUAL_CLOSURES"
   | "AUDIT_LOGS"
@@ -597,6 +598,51 @@ export type PaymentRefundAppliedRow = {
   expenseItemName: string;
   doorNo: string | null;
   doorNos?: string[];
+};
+
+export type SplitCandidateApartmentRef = {
+  apartmentId: string;
+  doorNo: string;
+  label: string;
+};
+
+export type SplitCandidateRow = {
+  paymentId: string;
+  paidAt: string;
+  amount: number;
+  /** Tahakkuklara dagitilmis kisim; tutardan kucukse fark dagitimsiz demektir. */
+  allocatedAmount: number;
+  method: PaymentMethod;
+  dismissed: boolean;
+  bankDescription: string | null;
+  bankReference: string | null;
+  currentDoorNo: string | null;
+  currentApartments: SplitCandidateApartmentRef[];
+  detectedDoorNos: string[];
+  suggestedApartments: SplitCandidateApartmentRef[];
+};
+
+export type SplitCandidatesResponse = {
+  snapshotAt: string;
+  truncated: boolean;
+  scannedPaymentCount: number;
+  totalRowCount: number;
+  rows: SplitCandidateRow[];
+};
+
+export type SplitCandidateSplitResult = {
+  ok: boolean;
+  originalPaymentId: string;
+  originalAmount: number;
+  createdPayments: Array<{
+    paymentId: string;
+    doorNo: string;
+    apartmentLabel: string;
+    amount: number;
+    allocatedAmount: number;
+    unappliedAmount: number;
+  }>;
+  affectedChargeCount: number;
 };
 
 export type AdminActionLogRow = {

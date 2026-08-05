@@ -18,6 +18,12 @@ describe("admin permission path mapping", () => {
     expect(mapRequestPathToAdminPage("/payment-refunds/candidates", "GET")).toBe("PAYMENT_REFUNDS");
   });
 
+  it("maps split-candidates path to SPLIT_CANDIDATES", () => {
+    expect(mapRequestPathToAdminPage("/split-candidates", "GET")).toBe("SPLIT_CANDIDATES");
+    expect(mapRequestPathToAdminPage("/split-candidates/p1/split", "POST")).toBe("SPLIT_CANDIDATES");
+    expect(mapRequestPathToAdminPage("/split-candidates/p1/dismiss", "POST")).toBe("SPLIT_CANDIDATES");
+  });
+
   it("maps charge-types endpoints by method", () => {
     expect(mapRequestPathToAdminPage("/charge-types", "GET")).toBe("CHARGE_TYPES_LIST");
     expect(mapRequestPathToAdminPage("/charge-types", "POST")).toBe("CHARGE_TYPES_CREATE");

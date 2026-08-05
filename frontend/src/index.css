@@ -6294,6 +6294,39 @@ td {
   color: #516d86;
 }
 
+/* Bolunme Ihtimali Olan Tahsilatlar: satir ici bolme editoru */
+.split-candidates-page .row-muted td {
+  opacity: 0.55;
+}
+
+.split-editor-row > td {
+  background: #f4f8fb;
+}
+
+.split-editor {
+  padding: 10px 4px;
+}
+
+.split-editor .split-editor-line {
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.split-editor .split-editor-line input {
+  min-width: 120px;
+}
+
+.split-editor .split-editor-line .small {
+  margin: 0;
+  min-width: 220px;
+  color: #516d86;
+}
+
+.split-editor .text-danger {
+  color: #b3261e;
+}
+
 .bank-statement-table th:nth-child(3),
 .bank-statement-table td:nth-child(3),
 .bank-statement-table th:nth-child(4),

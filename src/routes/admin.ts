@@ -31,6 +31,7 @@ import { createAdminBankRoutes } from "./adminBankRoutes";
 import { createAdminUploadBatchRoutes } from "./adminUploadBatchRoutes";
 import { createAdminAccountTransferRoutes } from "./adminAccountTransferRoutes";
 import { createAdminPaymentRefundRoutes } from "./adminPaymentRefundRoutes";
+import { createAdminSplitCandidateRoutes } from "./adminSplitCandidateRoutes";
 import {
   ACCOUNT_TRANSFER_NOTE_PREFIX,
   buildAccountTransferPaymentNote,
@@ -53,6 +54,7 @@ import {
   sumOperatingBankExpensesOut,
 } from "../utils/operatingBankBalance";
 import { buildDateRangeFilter } from "../utils/dateRange";
+import { KNOWN_SPLIT_PAIRS, detectSplitCandidateDoorNos } from "../utils/splitCandidate";
 import {
   mapRequestMethodToAdminAction,
   mapRequestPathToAdminPage,
@@ -2534,43 +2536,19 @@ function extractSingleExplicitPrefixedDoorNoFromDescription(description: string,
   return unique.length === 1 ? unique[0] : null;
 }
 
-function extractDoorNosFromDescriptionForSplit(description: string): string[] {
-  const text = normalizeDoorPatternText(description.trim());
-  if (!text.trim()) {
-    return [];
-  }
-
-  const explicitPrefixedDoorNos = collectExplicitPrefixedDoorCapturesFromNormalizedText(text);
-
-  const groupedByKeyword = [
-    ...text.matchAll(/\b(?:d|daire|daireler)\b[^\d]{0,6}((?:\d{1,4}\s*(?:,|ve|veya|&|\/|-)\s*)+\d{1,4})/g),
-  ].flatMap((match) => parseDoorNosFromFreeText(match[1] ?? ""));
-
-  const compactPairs = [
-    ...text.matchAll(/\bd\s*0*(\d{1,4})ve(?:d)?\s*0*(\d{1,4})\b/g),
-    ...text.matchAll(/\bd\s*0*(\d{1,4})\s*(?:ve|veya|\/|&|-)\s*0*(\d{1,4})\b/g),
-    // "-" burada yok: "06-07", "Haziran 06-07" gibi tarih/range ifadeleri yanlış bölünür.
-    ...text.matchAll(/\b0*(\d{1,4})\s*(?:ve|veya|&)\s*0*(\d{1,4})\b/g),
-  ].flatMap((match) => [match[1], match[2]]);
-
-  const merged = [...new Set([...explicitPrefixedDoorNos, ...groupedByKeyword, ...compactPairs])];
-  if (merged.length >= 2) {
-    return merged;
-  }
-
-  return [];
-}
-
+/**
+ * Otomatik bolme SADECE `KNOWN_SPLIT_PAIRS` icin yapilir.
+ *
+ * Eskiden bu fonksiyon bilinen cift bulamazsa genel sezgisel kaliplara
+ * dusuyordu; "daire 06-07" gibi tarih araliklarini daire sanip odemeleri
+ * yanlis dairelere dagitiyordu. Artik genel kaliplar yalnizca
+ * "Bolunme Ihtimali Olan Tahsilatlar" sayfasinda aday gostermek icin
+ * kullaniliyor, bolme karari kullaniciya ait.
+ */
 function resolveSplitDoorNosFromDescription(description: string, validDoorNos: Set<string>): string[] {
-  const knownPairs = [
-    ["57", "93"],
-    ["48", "65"],
-    ["35", "45"],
-  ] as const;
-
   const normalizedDescription = normalizeDoorPatternText(description);
 
-  for (const [left, right] of knownPairs) {
+  for (const [left, right] of KNOWN_SPLIT_PAIRS) {
     const leftEscaped = left.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const rightEscaped = right.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -2597,8 +2575,7 @@ function resolveSplitDoorNosFromDescription(description: string, validDoorNos: S
     }
   }
 
-  const fromDescription = extractDoorNosFromDescriptionForSplit(description);
-  return [...new Set(fromDescription.map((x) => normalizeDoorNoForCompare(x)))].filter((doorNo) => validDoorNos.has(doorNo));
+  return [];
 }
 
 function autoSplitMultiDoorPaymentRows(rows: BankStatementCommitRow[], validDoorNos: Set<string>): BankStatementCommitRow[] {
@@ -6173,6 +6150,12 @@ router.post("/actions/undo/:actionId", async (req, res) => {
 router.use(createAdminAccountTransferRoutes());
 router.use(
   createAdminPaymentRefundRoutes({
+    refreshChargeStatusesForIds,
+    pushActionLog: (input) => pushActionLog(input as any),
+  })
+);
+router.use(
+  createAdminSplitCandidateRoutes({
     refreshChargeStatusesForIds,
     pushActionLog: (input) => pushActionLog(input as any),
   })

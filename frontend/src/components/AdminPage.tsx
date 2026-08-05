@@ -88,6 +88,9 @@ import {
   type AccountTransferRow,
   type PaymentRefundAppliedRow,
   type PaymentRefundCandidateRow,
+  type SplitCandidateRow,
+  type SplitCandidateSplitResult,
+  type SplitCandidatesResponse,
   type UnclassifiedExpenseRow,
   type UnclassifiedPaymentRow,
 } from "../app/shared";
@@ -269,6 +272,11 @@ const AccountTransfersPage = lazy(() =>
 const PaymentRefundsPage = lazy(() =>
   import("./admin/PaymentRefundsPage").then((module) => ({
     default: module.PaymentRefundsPage,
+  }))
+);
+const SplitCandidatesPage = lazy(() =>
+  import("./admin/SplitCandidatesPage").then((module) => ({
+    default: module.SplitCandidatesPage,
   }))
 );
 const MeetingGuidePage = lazy(() =>
@@ -643,6 +651,10 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [paymentRefundCandidates, setPaymentRefundCandidates] = useState<PaymentRefundCandidateRow[]>([]);
   const [paymentRefundAppliedRows, setPaymentRefundAppliedRows] = useState<PaymentRefundAppliedRow[]>([]);
   const [paymentRefundsPageLoading, setPaymentRefundsPageLoading] = useState(false);
+  const [splitCandidateRows, setSplitCandidateRows] = useState<SplitCandidateRow[]>([]);
+  const [splitCandidatesTruncated, setSplitCandidatesTruncated] = useState(false);
+  const [splitCandidatesIncludeDismissed, setSplitCandidatesIncludeDismissed] = useState(false);
+  const [splitCandidatesPageLoading, setSplitCandidatesPageLoading] = useState(false);
   const [accountTransferFilter, setAccountTransferFilter] = useState({ from: "", to: "" });
   const [paymentListFilter, setPaymentListFilter] = useState({
     from: "",
@@ -1092,6 +1104,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/corrections": "CORRECTIONS",
       "/admin/unclassified": "UNCLASSIFIED",
       "/admin/payment-refunds": "PAYMENT_REFUNDS",
+      "/admin/split-candidates": "SPLIT_CANDIDATES",
       "/admin/manual-closures": "MANUAL_CLOSURES",
       "/admin/audit-logs": "AUDIT_LOGS",
       "/admin/login-logs": "LOGIN_LOGS",
@@ -1163,6 +1176,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       { path: "/admin/corrections", key: "CORRECTIONS" },
       { path: "/admin/unclassified", key: "UNCLASSIFIED" },
       { path: "/admin/payment-refunds", key: "PAYMENT_REFUNDS" },
+      { path: "/admin/split-candidates", key: "SPLIT_CANDIDATES" },
       { path: "/admin/manual-closures", key: "MANUAL_CLOSURES" },
       { path: "/admin/audit-logs", key: "AUDIT_LOGS" },
       { path: "/admin/login-logs", key: "LOGIN_LOGS" },
@@ -4362,6 +4376,89 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     }
   }
 
+  async function fetchSplitCandidates(options?: {
+    silent?: boolean;
+    includeDismissed?: boolean;
+  }): Promise<void> {
+    const silent = options?.silent ?? false;
+    const includeDismissed = options?.includeDismissed ?? splitCandidatesIncludeDismissed;
+    setSplitCandidatesPageLoading(true);
+    try {
+      if (apartmentOptions.length === 0) {
+        await fetchApartmentOptions();
+      }
+      const params = new URLSearchParams();
+      if (includeDismissed) {
+        params.set("includeDismissed", "true");
+      }
+      const query = params.toString();
+      const data = await authorizedRequest<SplitCandidatesResponse>(
+        `/api/admin/split-candidates${query ? `?${query}` : ""}`
+      );
+      setSplitCandidateRows(data.rows);
+      setSplitCandidatesTruncated(data.truncated);
+      if (!silent) {
+        setMessage(`Bolunme ihtimali olan tahsilat: ${data.rows.length}`);
+      }
+    } catch (err) {
+      console.error(err);
+      if (!silent) {
+        setMessage(err instanceof Error ? err.message : "Bolunme adaylari yuklenemedi");
+      }
+    } finally {
+      setSplitCandidatesPageLoading(false);
+    }
+  }
+
+  async function splitCandidatePayment(
+    paymentId: string,
+    parts: Array<{ doorNo: string; amount: number }>
+  ): Promise<void> {
+    setLoading(true);
+    try {
+      const result = await authorizedRequest<SplitCandidateSplitResult>(
+        `/api/admin/split-candidates/${paymentId}/split`,
+        { method: "POST", payload: { parts } }
+      );
+      await fetchSplitCandidates({ silent: true });
+      const unapplied = result.createdPayments.filter((row) => row.unappliedAmount > 0.0001);
+      const summary = result.createdPayments
+        .map((row) => `${row.apartmentLabel}: ${formatTry(row.amount)}`)
+        .join(", ");
+      setMessage(
+        unapplied.length > 0
+          ? `Tahsilat bolundu (${summary}). DIKKAT: ${unapplied
+              .map((row) => `${row.apartmentLabel} icin ${formatTry(row.unappliedAmount)} acik borca dagitilamadi`)
+              .join(", ")}.`
+          : `Tahsilat bolundu: ${summary}`
+      );
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Tahsilat bolunemedi");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function setSplitCandidateDismissed(paymentId: string, dismissed: boolean): Promise<void> {
+    setLoading(true);
+    try {
+      await authorizedRequest(`/api/admin/split-candidates/${paymentId}/dismiss`, {
+        method: "POST",
+        payload: { dismissed },
+      });
+      await fetchSplitCandidates({ silent: true });
+      setMessage(dismissed ? "Kayit listeden cikarildi" : "Kayit listeye geri alindi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Islem yapilamadi");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function fetchActionLogs(): Promise<void> {
     try {
       const rows = await authorizedRequest<AdminActionLogRow[]>("/api/admin/actions/logs?limit=50");
@@ -7406,19 +7503,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     setBankPreviewRows((prev) => prev.map((row, i) => (i === index ? updater(row) : row)));
   }
 
-  function parseDoorNosFromFreeText(value: string): string[] {
-    if (!value.trim()) {
-      return [];
-    }
-
-    return value
-      .replace(/\bve\b/gi, ",")
-      .replace(/\bveya\b/gi, ",")
-      .split(/[,;|/&\-\s]+/)
-      .map((x) => x.trim())
-      .filter(Boolean);
-  }
-
   function normalizeDoorPatternText(value: string): string {
     return value
       .toLocaleLowerCase("tr")
@@ -7436,38 +7520,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       .replace(/Ã§/g, "c");
   }
 
-  function extractDoorNosFromDescriptionForSplit(description: string): string[] {
-    const text = normalizeDoorPatternText(description.trim());
-    if (!text.trim()) {
-      return [];
-    }
-
-    const explicitPrefixedDoorNos = [
-      ...text.matchAll(/\b(?:d|daire)\s*[:#\-\/.]?\s*0*(\d{1,4})\b/g),
-    ].map((match) => match[1]);
-
-    const groupedByKeyword = [
-      ...text.matchAll(
-        /\b(?:d|daire|daireler)\b[^\d]{0,6}((?:\d{1,4}\s*(?:,|ve|veya|&|\/|-)\s*)+\d{1,4})/g
-      ),
-    ].flatMap((match) => parseDoorNosFromFreeText(match[1] ?? ""));
-
-    // D57VED93, D57VE93, D57/93 — sadece "d" önekli ifadelerde "-" ile ayraç tanı.
-    // Genel sayı-TIRE-sayı yok: "06-07", "Haziran 06-07" gibi tarih/aralık ifadeleri yanlış eşleşir.
-    const compactPairs = [
-      ...text.matchAll(/\bd\s*0*(\d{1,4})ve(?:d)?\s*0*(\d{1,4})\b/g),
-      ...text.matchAll(/\bd\s*0*(\d{1,4})\s*(?:ve|veya|\/|&|-)\s*0*(\d{1,4})\b/g),
-      ...text.matchAll(/\b0*(\d{1,4})\s*(?:ve|veya|&)\s*0*(\d{1,4})\b/g),
-    ].flatMap((match) => [match[1], match[2]]);
-
-    const merged = [...new Set([...explicitPrefixedDoorNos, ...groupedByKeyword, ...compactPairs])];
-    if (merged.length >= 2) {
-      return merged;
-    }
-
-    return [];
-  }
-
+  // Otomatik bolme SADECE bu ciftler icin yapilir. Genel sezgisel kaliplar
+  // kaldirildi: "daire 06-07" gibi tarih araliklarini daire sanip odemeleri
+  // yanlis dairelere dagitiyordu. Diger coklu daire supheleri artik
+  // "Bolunme Ihtimali Olan Tahsilatlar" sayfasinda listelenip elle bolunuyor.
+  // Backend karsiligi: src/utils/splitCandidate.ts -> KNOWN_SPLIT_PAIRS
   function resolveSplitDoorNosFromDescription(description: string, validDoorNos: Set<string>): string[] {
     const knownPairs = [
       ["57", "93"],
@@ -7505,9 +7562,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       }
     }
 
-    return extractDoorNosFromDescriptionForSplit(description)
-      .map((doorNo) => normalizeDoorNoForMatch(doorNo))
-      .filter((doorNo) => validDoorNos.has(doorNo));
+    return [];
   }
 
   function normalizeDoorNoForMatch(value: string): string {
@@ -7529,16 +7584,15 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     return trimmed;
   }
 
+  // Sadece aciklamaya bakilir. Onizlemedeki daire kolonu bilerek okunmuyor:
+  // backend yalnizca aciklamaya baktigi icin, kolonu da okumak onizleme ile
+  // Gmail sync arasinda farkli sonuc uretiyordu.
   function resolveSplitDoorNos(row: BankStatementPreviewRow, validDoorNos: Set<string>): string[] {
     if (row.entryType !== "PAYMENT") {
       return [];
     }
 
-    const fromDoorField = parseDoorNosFromFreeText(row.doorNo ?? "")
-      .map((doorNo) => normalizeDoorNoForMatch(doorNo))
-      .filter((doorNo) => validDoorNos.has(doorNo));
-    const fromDescription = resolveSplitDoorNosFromDescription(row.description, validDoorNos);
-    return [...new Set([...fromDoorField, ...fromDescription])];
+    return resolveSplitDoorNosFromDescription(row.description, validDoorNos);
   }
 
   function autoSplitBankPreviewRows(
@@ -8620,6 +8674,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       return;
     }
 
+    if (path === "/admin/split-candidates") {
+      void fetchSplitCandidates({ silent: true });
+      return;
+    }
+
     // Statement pages, apartment list, and bulk correction list are manual-run.
 
     if (path === "/admin/charges/bulk-correct/edit") {
@@ -9205,6 +9264,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/payment-refunds">
               Aidat Iadesi
+            </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/split-candidates">
+              Bolunme Ihtimali Olan Tahsilatlar
             </NavLink>
           </div>
         </details>
@@ -13006,6 +13068,28 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 apartmentOptions={apartmentOptions}
                 refresh={() => fetchPaymentRefunds()}
                 applyRefund={applyPaymentRefund}
+              />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/split-candidates"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <SplitCandidatesPage
+                loading={loading}
+                pageLoading={splitCandidatesPageLoading}
+                rows={splitCandidateRows}
+                truncated={splitCandidatesTruncated}
+                includeDismissed={splitCandidatesIncludeDismissed}
+                apartmentOptions={apartmentOptions}
+                setIncludeDismissed={(value) => {
+                  setSplitCandidatesIncludeDismissed(value);
+                  void fetchSplitCandidates({ silent: true, includeDismissed: value });
+                }}
+                refresh={() => fetchSplitCandidates()}
+                splitPayment={splitCandidatePayment}
+                setDismissed={setSplitCandidateDismissed}
               />
             </Suspense>
           }
