@@ -30,6 +30,8 @@ type UploadBatchesPageProps = {
   deletingUploadBatchId: string | null;
   fetchUploadBatchDetails: (batchId: string) => Promise<UploadBatchDetailsResponse>;
   runUploadBatchQuery: () => Promise<void>;
+  gmailSyncRunning: boolean;
+  runGmailSyncNow: () => Promise<void>;
   goUploadBatchPage: (direction: "prev" | "next") => Promise<void>;
   clearUploadBatchFilters: () => Promise<void>;
   deleteUploadBatch: (row: UploadBatchRow) => Promise<void>;
@@ -59,6 +61,8 @@ export function UploadBatchesPage({
   deletingUploadBatchId,
   fetchUploadBatchDetails,
   runUploadBatchQuery,
+  gmailSyncRunning,
+  runGmailSyncNow,
   goUploadBatchPage,
   clearUploadBatchFilters,
   deleteUploadBatch,
@@ -191,6 +195,15 @@ export function UploadBatchesPage({
           <div className="admin-row">
             <button className="btn btn-primary btn-run" type="button" onClick={() => void runUploadBatchQuery()}>
               Calistir
+            </button>
+            <button
+              className="btn btn-ghost"
+              type="button"
+              disabled={gmailSyncRunning}
+              title="Gunluk otomatik senkronizasyonu beklemeden Gmail'i simdi kontrol et"
+              onClick={() => void runGmailSyncNow()}
+            >
+              {gmailSyncRunning ? "Gmail kontrol ediliyor..." : "Gmail'den Simdi Kontrol Et"}
             </button>
             <button className="btn btn-ghost" type="button" onClick={() => void goUploadBatchPage("prev")}>
               Onceki Sayfa

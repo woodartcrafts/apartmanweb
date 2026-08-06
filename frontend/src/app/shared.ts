@@ -804,6 +804,20 @@ export type UploadBatchUploader = {
   email: string;
 };
 
+export type GmailBankSyncResult = {
+  message: string;
+  query: string;
+  scannedMessageCount: number;
+  importedBatchCount: number;
+  skippedDuplicateAttachmentCount: number;
+  skippedNoParsedRowsCount: number;
+  importedPaymentCount: number;
+  importedExpenseCount: number;
+  skippedRowCount: number;
+  batchIds: string[];
+  errors: string[];
+};
+
 export type ApartmentChangeLogRow = {
   id: string;
   apartmentId: string;

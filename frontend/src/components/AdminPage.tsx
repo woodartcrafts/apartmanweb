@@ -85,6 +85,7 @@ import {
   type UploadBatchDetailsResponse,
   type UploadBatchRow,
   type UploadBatchUploader,
+  type GmailBankSyncResult,
   type AccountTransferDirection,
   type AccountTransferRow,
   type ApartmentCreditsResponse,
@@ -727,6 +728,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [bankStatementViewOpeningBalance, setBankStatementViewOpeningBalance] = useState(0);
   const [bankStatementViewFilter, setBankStatementViewFilter] = useState(() => getCurrentMonthDateRange());
   const [uploadBatchUploaders, setUploadBatchUploaders] = useState<UploadBatchUploader[]>([]);
+  const [gmailSyncRunning, setGmailSyncRunning] = useState(false);
   const [reportsSummary, setReportsSummary] = useState<ReportsSummaryResponse | null>(null);
   const [reportsSummaryLoading, setReportsSummaryLoading] = useState(false);
   const [bankReconciliationFilter, setBankReconciliationFilter] = useState({ from: "", to: "" });
@@ -5138,6 +5140,35 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       if (!silent) {
         setMessage("Yukleme kayitlari alinamadi");
       }
+    }
+  }
+
+  async function runGmailSyncNow(): Promise<void> {
+    setGmailSyncRunning(true);
+    try {
+      const result = await authorizedRequest<GmailBankSyncResult>("/api/admin/bank-statement/gmail-sync", {
+        method: "POST",
+      });
+      const parts = [
+        `Taranan e-posta: ${result.scannedMessageCount}`,
+        `Yeni yukleme: ${result.importedBatchCount}`,
+        `Tahsilat: ${result.importedPaymentCount}`,
+        `Gider: ${result.importedExpenseCount}`,
+      ];
+      if (result.skippedDuplicateAttachmentCount > 0) {
+        parts.push(`Zaten islenmis: ${result.skippedDuplicateAttachmentCount}`);
+      }
+      if (result.errors.length > 0) {
+        parts.push(`Hata: ${result.errors.join("; ")}`);
+      }
+      setMessage(`Gmail senkronizasyonu tamamlandi. ${parts.join(" | ")}`);
+      await fetchUploadBatches(uploadBatchFilter, { silent: true });
+    } catch (err) {
+      if (err instanceof Silent403Error) return;
+      const text = err instanceof Error ? err.message : "Gmail senkronizasyonu basarisiz";
+      setMessage(text);
+    } finally {
+      setGmailSyncRunning(false);
     }
   }
 
@@ -13192,6 +13223,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 deletingUploadBatchId={deletingUploadBatchId}
                 fetchUploadBatchDetails={fetchUploadBatchDetails}
                 runUploadBatchQuery={runUploadBatchQuery}
+                gmailSyncRunning={gmailSyncRunning}
+                runGmailSyncNow={runGmailSyncNow}
                 goUploadBatchPage={goUploadBatchPage}
                 clearUploadBatchFilters={clearUploadBatchFilters}
                 deleteUploadBatch={deleteUploadBatch}
