@@ -69,8 +69,14 @@ export const config = {
     subjectContains: process.env.GMAIL_BANK_SUBJECT_CONTAINS,
     query: process.env.GMAIL_BANK_QUERY,
     importOnlyIncoming: toBoolean(process.env.GMAIL_BANK_IMPORT_ONLY_INCOMING, true),
-    lookbackDays: toPositiveInt(process.env.GMAIL_BANK_LOOKBACK_DAYS, 2),
-    maxMessages: toPositiveInt(process.env.GMAIL_BANK_MAX_MESSAGES, 10),
+    // 2 gun + 10 mesaj limiti, sunucu birden fazla gun ayakta olmadiginda (redeploy,
+    // haftasonu, hata) eski e-postalarin bir daha hic yakalanamamasina yol acmisti:
+    // uids.slice(-maxMessages) pencere icindeki en eski mesajlari (kacirilan gunlerin
+    // ekstrelerini) atiyordu. Gmail senkronu mesaj/dosya bazinda idempotent oldugu
+    // icin daha genis bir pencere taramak zararsizdir, sadece IMAP taramasini biraz
+    // uzatir.
+    lookbackDays: toPositiveInt(process.env.GMAIL_BANK_LOOKBACK_DAYS, 14),
+    maxMessages: toPositiveInt(process.env.GMAIL_BANK_MAX_MESSAGES, 60),
     scheduleHour: toPositiveInt(process.env.GMAIL_BANK_SYNC_SCHEDULE_HOUR, 12),
     scheduleMinute: toPositiveInt(process.env.GMAIL_BANK_SYNC_SCHEDULE_MINUTE, 0),
     scheduleTimeZone: process.env.GMAIL_BANK_SYNC_TIMEZONE ?? "Europe/Istanbul",
