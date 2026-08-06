@@ -1396,6 +1396,33 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     [bankPreviewRowsWithFlags]
   );
 
+  // Ekstre Karsilastirma sayfasi (/admin/reports/bank-statement) icin: kullanicinin
+  // sectigi Baslangic/Bitis tarih araligi disinda kalan yuklenen ekstre satirlari
+  // karsilastirmaya dahil edilmez. Ekstre dosyasi hangi tarih araligini kapsarsa
+  // kapsasin, sadece kullanicinin belirledigi aralik dikkate alinir.
+  const bankPreviewRowsInReportRange = useMemo(() => {
+    const from = bankReconciliationFilter.from;
+    const to = bankReconciliationFilter.to;
+    if (!from && !to) {
+      return bankPreviewRows;
+    }
+
+    return bankPreviewRows.filter((row) => {
+      const occurredAt = new Date(row.occurredAt);
+      if (Number.isNaN(occurredAt.getTime())) {
+        return true;
+      }
+      const dateKey = occurredAt.toISOString().slice(0, 10);
+      if (from && dateKey < from) {
+        return false;
+      }
+      if (to && dateKey > to) {
+        return false;
+      }
+      return true;
+    });
+  }, [bankPreviewRows, bankReconciliationFilter.from, bankReconciliationFilter.to]);
+
   const bankComparisonDifferenceRows = useMemo(() => {
     type DiffEntryType = "GIRIS" | "CIKIS";
     type DiffBaseRow = {
@@ -1454,7 +1481,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       const passthroughRows: BankStatementPreviewRow[] = [];
       const splitGroups = new Map<number, BankStatementPreviewRow[]>();
 
-      for (const row of bankPreviewRows) {
+      for (const row of bankPreviewRowsInReportRange) {
         if (row.isAutoSplit === true && row.splitSourceRowNo != null) {
           const group = splitGroups.get(row.splitSourceRowNo);
           if (group) {
@@ -1801,7 +1828,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
         return b.amount - a.amount;
       });
-  }, [bankReconciliationRows, bankPreviewRows]);
+  }, [bankReconciliationRows, bankPreviewRowsInReportRange]);
 
   const bankSystemVisibleColumnCount = useMemo(
     () => Object.values(bankSystemColumnVisibility).filter(Boolean).length,
@@ -7677,15 +7704,11 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       setBankPreviewFileName(result.fileName || bankStatementFile.name);
       setBankPreviewStatementClosingBalance(result.statementClosingBalance ?? null);
 
-      const occurredAtTimes = autoSplit.rows
-        .map((row) => new Date(row.occurredAt).getTime())
-        .filter((value) => Number.isFinite(value));
-      if (occurredAtTimes.length > 0) {
-        const minDate = new Date(Math.min(...occurredAtTimes)).toISOString().slice(0, 10);
-        const maxDate = new Date(Math.max(...occurredAtTimes)).toISOString().slice(0, 10);
-        setBankReconciliationFilter({ from: minDate, to: maxDate });
-        void fetchBankReconciliationReport({ from: minDate, to: maxDate, silent: true });
-      }
+      // Ekstre dosyasinin kendi tarih araligina gore Baslangic/Bitis filtresini
+      // otomatik degistirmiyoruz: karsilastirma her zaman kullanicinin sectigi
+      // tarih araligina gore yapilmali, ekstre hangi tarih araligini kapsarsa
+      // kapsasin. Sistem tarafini sadece mevcut filtreyle (varsa) tazeliyoruz.
+      void fetchBankReconciliationReport({ silent: true });
 
       setMessage(
         autoSplit.splitSourceCount > 0
@@ -10097,7 +10120,33 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                       onChange={(e) => setBankReconciliationFilter((prev) => ({ ...prev, to: e.target.value }))}
                     />
                   </label>
+                  <div className="admin-row">
+                    <button
+                      className="btn btn-ghost"
+                      type="button"
+                      disabled={bankReconciliationLoading}
+                      onClick={() => void fetchBankReconciliationReport()}
+                    >
+                      Filtrele
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      type="button"
+                      disabled={bankReconciliationLoading}
+                      onClick={() => {
+                        setBankReconciliationFilter({ from: "", to: "" });
+                        void fetchBankReconciliationReport({ from: "", to: "" });
+                      }}
+                    >
+                      Tum Zamanlar
+                    </button>
+                  </div>
                 </div>
+                <p className="small">
+                  Karsilastirma, ekstre dosyasinin kapsadigi tarihlerden bagimsiz olarak yukaridaki Baslangic/Bitis
+                  araligina gore yapilir. Ekstre dosyasi bu araligin disinda satirlar iceriyorsa bu satirlar
+                  karsilastirmaya dahil edilmez.
+                </p>
 
                 <form className="admin-form compact-row-top-gap" onSubmit={onImportBankStatement}>
                   <label>
@@ -10120,9 +10169,19 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 <div className="stats-grid compact-row-top-gap bank-compare-stats-grid">
                   <article className="card stat stat-tone-info">
                     <h4>Sistem Banka Acilis</h4>
-                    <p>{formatTry(bankReconciliationTotals?.openingBalance ?? 0)}</p>
+                    <p>
+                      {formatTry(
+                        bankReconciliationFilter.from
+                          ? bankReconciliationTotals?.startingBalance ?? 0
+                          : bankReconciliationTotals?.openingBalance ?? 0
+                      )}
+                    </p>
                     <span className="small">
-                      Tarih: {bankReconciliationTotals?.openingDate ? formatDateTr(bankReconciliationTotals.openingDate) : "-"}
+                      {bankReconciliationFilter.from
+                        ? `Secili aralik basi (${formatDateTr(bankReconciliationFilter.from)})`
+                        : bankReconciliationTotals?.openingDate
+                          ? `Tarih: ${formatDateTr(bankReconciliationTotals.openingDate)}`
+                          : "-"}
                     </span>
                   </article>
                   <article className="card stat stat-tone-info">
@@ -10144,31 +10203,35 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                     <h4>Ekstre Giris</h4>
                     <p>
                       {formatTry(
-                        bankPreviewRows
+                        bankPreviewRowsInReportRange
                           .filter((row) => row.entryType === "PAYMENT")
                           .reduce((sum, row) => sum + Number(row.amount), 0)
                       )}
                     </p>
-                    <span className="small">Ekstre satiri: {bankPreviewRows.filter((row) => row.entryType === "PAYMENT").length}</span>
+                    <span className="small">
+                      Ekstre satiri: {bankPreviewRowsInReportRange.filter((row) => row.entryType === "PAYMENT").length}
+                    </span>
                   </article>
                   <article className="card stat stat-tone-warn">
                     <h4>Ekstre Cikis</h4>
                     <p>
                       {formatTry(
-                        bankPreviewRows
+                        bankPreviewRowsInReportRange
                           .filter((row) => row.entryType === "EXPENSE")
                           .reduce((sum, row) => sum + Number(row.amount), 0)
                       )}
                     </p>
-                    <span className="small">Ekstre satiri: {bankPreviewRows.filter((row) => row.entryType === "EXPENSE").length}</span>
+                    <span className="small">
+                      Ekstre satiri: {bankPreviewRowsInReportRange.filter((row) => row.entryType === "EXPENSE").length}
+                    </span>
                   </article>
                   <article
                     className={`card stat ${
                       Math.abs(
-                        (bankPreviewRows
+                        (bankPreviewRowsInReportRange
                           .filter((row) => row.entryType === "PAYMENT")
                           .reduce((sum, row) => sum + Number(row.amount), 0) -
-                          bankPreviewRows
+                          bankPreviewRowsInReportRange
                             .filter((row) => row.entryType === "EXPENSE")
                             .reduce((sum, row) => sum + Number(row.amount), 0)) -
                           (bankReconciliationTotals?.net ?? 0)
@@ -10180,10 +10243,10 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                     <h4>Net Fark (Ekstre - Sistem)</h4>
                     <p>
                       {formatTry(
-                        (bankPreviewRows
+                        (bankPreviewRowsInReportRange
                           .filter((row) => row.entryType === "PAYMENT")
                           .reduce((sum, row) => sum + Number(row.amount), 0) -
-                          bankPreviewRows
+                          bankPreviewRowsInReportRange
                             .filter((row) => row.entryType === "EXPENSE")
                             .reduce((sum, row) => sum + Number(row.amount), 0)) -
                           (bankReconciliationTotals?.net ?? 0)
@@ -10356,14 +10419,16 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                           </tr>
                         </thead>
                         <tbody>
-                          {bankPreviewRows.length === 0 ? (
+                          {bankPreviewRowsInReportRange.length === 0 ? (
                             <tr>
                               <td colSpan={bankStatementVisibleColumnCount} className="empty">
-                                Henuz karsilastirma icin ekstre yuklenmedi
+                                {bankPreviewRows.length === 0
+                                  ? "Henuz karsilastirma icin ekstre yuklenmedi"
+                                  : "Yuklenen ekstrede secili tarih araliginda satir yok"}
                               </td>
                             </tr>
                           ) : (
-                            bankPreviewRows.map((row, idx) => (
+                            bankPreviewRowsInReportRange.map((row, idx) => (
                               <tr key={`ext-${row.rowNo}-${idx}`}>
                                 {bankStatementColumnVisibility.date && <td>{formatDateTr(row.occurredAt)}</td>}
                                 {bankStatementColumnVisibility.type && <td>{row.entryType === "PAYMENT" ? "Giris" : "Cikis"}</td>}
