@@ -9602,13 +9602,29 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                         <h4>Banka Bakiyesi</h4>
                         <p className="reports-home-balance-value">
                           <span>{formatTry(reportsSummary.bankBalance.estimatedBalance)}</span>
-                          <span
-                            className="reports-home-balance-match-icon reports-home-balance-match-icon-ok"
-                            title="Banka bakiyesi"
-                            aria-label="Banka bakiyesi"
-                          >
-                            ✔
-                          </span>
+                          {reportsSummary.bankBalance.isEstimatedBalanceMatchingLatestStatement === null ? null : (
+                            <span
+                              className={`reports-home-balance-match-icon ${
+                                reportsSummary.bankBalance.isEstimatedBalanceMatchingLatestStatement
+                                  ? "reports-home-balance-match-icon-ok"
+                                  : "reports-home-balance-match-icon-bad"
+                              }`}
+                              title={
+                                reportsSummary.bankBalance.isEstimatedBalanceMatchingLatestStatement
+                                  ? "Son banka ekstresiyle uyuşuyor"
+                                  : `Son banka ekstresiyle uyuşmuyor (fark: ${formatTry(
+                                      reportsSummary.bankBalance.statementBalanceDelta ?? 0
+                                    )})`
+                              }
+                              aria-label={
+                                reportsSummary.bankBalance.isEstimatedBalanceMatchingLatestStatement
+                                  ? "Son banka ekstresiyle uyuşuyor"
+                                  : "Son banka ekstresiyle uyuşmuyor"
+                              }
+                            >
+                              {reportsSummary.bankBalance.isEstimatedBalanceMatchingLatestStatement ? "✔" : "!"}
+                            </span>
+                          )}
                         </p>
                         <span className="small">
                           Son hareket: {reportsSummary.bankBalance.latestMovementAt ? formatDateTr(reportsSummary.bankBalance.latestMovementAt) : "-"}
