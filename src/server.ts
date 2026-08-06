@@ -24,14 +24,21 @@ if (config.gmailBankSync.enabled) {
 
   let lastRunDateKey: string | null = null;
 
+  // Tam dakika esleyerek calisan zamanlayici, o dakikada sunucu ayakta degilse
+  // (redeploy/restart) o gunu tamamen atliyordu. Bunun yerine hedef saate
+  // ulasildiktan sonra o gun icin henuz calismadiysa hemen tetikleniyor; boylece
+  // sunucu tam o dakikada kapali olsa bile ayaga kalkinca gunu yakaliyor.
+  // Gmail senkronizasyonu mesaj ID'sine gore idempotent oldugu icin (ayni ekstre
+  // birden fazla kez taranirsa da tekrar islenmiyor) fazladan tetiklenmesi zararsizdir.
   const tick = (): void => {
     const parts = formatter.formatToParts(new Date());
     const map = new Map(parts.map((part) => [part.type, part.value]));
     const dateKey = `${map.get("year")}-${map.get("month")}-${map.get("day")}`;
     const hour = Number(map.get("hour") ?? "-1");
     const minute = Number(map.get("minute") ?? "-1");
+    const isAtOrAfterTarget = hour > targetHour || (hour === targetHour && minute >= targetMinute);
 
-    if (hour === targetHour && minute === targetMinute && lastRunDateKey !== dateKey) {
+    if (isAtOrAfterTarget && lastRunDateKey !== dateKey) {
       lastRunDateKey = dateKey;
       void runScheduledGmailBankSync();
     }
