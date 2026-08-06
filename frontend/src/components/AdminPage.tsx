@@ -86,6 +86,8 @@ import {
   type UploadBatchRow,
   type UploadBatchUploader,
   type GmailBankSyncResult,
+  type GmailClosingAuditResponse,
+  type GmailClosingAuditRow,
   type AccountTransferDirection,
   type AccountTransferRow,
   type ApartmentCreditsResponse,
@@ -729,6 +731,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [bankStatementViewFilter, setBankStatementViewFilter] = useState(() => getCurrentMonthDateRange());
   const [uploadBatchUploaders, setUploadBatchUploaders] = useState<UploadBatchUploader[]>([]);
   const [gmailSyncRunning, setGmailSyncRunning] = useState(false);
+  const [gmailClosingAuditRunning, setGmailClosingAuditRunning] = useState(false);
+  const [gmailClosingAuditRows, setGmailClosingAuditRows] = useState<GmailClosingAuditRow[] | null>(null);
   const [reportsSummary, setReportsSummary] = useState<ReportsSummaryResponse | null>(null);
   const [reportsSummaryLoading, setReportsSummaryLoading] = useState(false);
   const [bankReconciliationFilter, setBankReconciliationFilter] = useState({ from: "", to: "" });
@@ -5169,6 +5173,29 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       setMessage(text);
     } finally {
       setGmailSyncRunning(false);
+    }
+  }
+
+  async function runGmailClosingAudit(): Promise<void> {
+    setGmailClosingAuditRunning(true);
+    setGmailClosingAuditRows(null);
+    try {
+      const result = await authorizedRequest<GmailClosingAuditResponse>(
+        "/api/admin/bank-statement/gmail-closing-audit?days=60"
+      );
+      setGmailClosingAuditRows(result.rows);
+      const mismatchCount = result.rows.filter((r) => r.diff !== null && Math.abs(r.diff) > 1).length;
+      setMessage(
+        `Denetim tamamlandi. ${result.rows.length} ekstre kontrol edildi, ${mismatchCount} gunde fark bulundu.${
+          result.errors.length > 0 ? ` Hata: ${result.errors.join("; ")}` : ""
+        }`
+      );
+    } catch (err) {
+      if (err instanceof Silent403Error) return;
+      const text = err instanceof Error ? err.message : "Denetim basarisiz";
+      setMessage(text);
+    } finally {
+      setGmailClosingAuditRunning(false);
     }
   }
 
@@ -13225,6 +13252,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 runUploadBatchQuery={runUploadBatchQuery}
                 gmailSyncRunning={gmailSyncRunning}
                 runGmailSyncNow={runGmailSyncNow}
+                gmailClosingAuditRunning={gmailClosingAuditRunning}
+                gmailClosingAuditRows={gmailClosingAuditRows}
+                runGmailClosingAudit={runGmailClosingAudit}
                 goUploadBatchPage={goUploadBatchPage}
                 clearUploadBatchFilters={clearUploadBatchFilters}
                 deleteUploadBatch={deleteUploadBatch}

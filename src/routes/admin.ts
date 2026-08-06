@@ -1994,7 +1994,17 @@ async function parseBankStatementRows(file: Express.Multer.File): Promise<BankSt
   return parsedRows;
 }
 
-function extractStatementClosingBalance(rows: Array<{ occurredAt: Date; runningBalance?: number }>): number | null {
+/**
+ * Ayni gun icinde birden fazla islem oldugunda (occurredAt sadece tarih tasidigi icin
+ * saat bilgisi yok), hangi satirin gercekten "gunun son bakiyesi" oldugunu index sirasina
+ * bakarak belirliyoruz. ISBANK'in e-posta/PDF ekstresi satirlari EN YENIDEN EN ESKIYE dogru
+ * siralar (ilk satir = son islem); XLSX/tablo tabanli ekstrelerde ise satirlar genelde
+ * kronolojik (eskiden yeniye) sirali gelir. `sourceOrder` bu farki belirtmek icin var.
+ */
+function extractStatementClosingBalance(
+  rows: Array<{ occurredAt: Date; runningBalance?: number }>,
+  sourceOrder: "chronological" | "newestFirst" = "chronological"
+): number | null {
   let latestTime = -1;
   let latestIndex = -1;
   let latestBalance: number | null = null;
@@ -2006,7 +2016,9 @@ function extractStatementClosingBalance(rows: Array<{ occurredAt: Date; runningB
     }
 
     const rowTime = row.occurredAt.getTime();
-    if (rowTime > latestTime || (rowTime === latestTime && idx > latestIndex)) {
+    const isTieWinner =
+      sourceOrder === "newestFirst" ? idx < latestIndex || latestIndex < 0 : idx > latestIndex;
+    if (rowTime > latestTime || (rowTime === latestTime && isTieWinner)) {
       latestTime = rowTime;
       latestIndex = idx;
       latestBalance = Number(Number(row.runningBalance).toFixed(2));
@@ -2757,7 +2769,10 @@ async function fetchGmailPdfAttachments(messageId: string, accessToken: string):
   return attachments;
 }
 
-async function fetchImapPdfAttachments(): Promise<{
+async function fetchImapPdfAttachments(
+  lookbackDaysOverride?: number,
+  maxMessagesOverride?: number
+): Promise<{
   scannedMessageCount: number;
   attachments: Array<{ messageKey: string; fileName: string; data: Buffer }>;
 }> {
@@ -2769,7 +2784,7 @@ async function fetchImapPdfAttachments(): Promise<{
 
   const senderFilter = config.gmailBankSync.senderFilter?.trim().toLowerCase() ?? "";
   const subjectContains = config.gmailBankSync.subjectContains?.trim().toLocaleLowerCase("tr") ?? "";
-  const lookbackDays = Math.max(1, config.gmailBankSync.lookbackDays);
+  const lookbackDays = Math.max(1, lookbackDaysOverride ?? config.gmailBankSync.lookbackDays);
   const since = new Date();
   since.setDate(since.getDate() - lookbackDays);
   since.setHours(0, 0, 0, 0);
@@ -2790,7 +2805,7 @@ async function fetchImapPdfAttachments(): Promise<{
   try {
     const uidsRaw = await client.search({ since });
     const uids = Array.isArray(uidsRaw) ? uidsRaw : [];
-    const maxMessages = Math.max(1, Math.min(config.gmailBankSync.maxMessages, 50));
+    const maxMessages = Math.max(1, Math.min(maxMessagesOverride ?? config.gmailBankSync.maxMessages, 300));
     const selectedUids = uids.slice(-maxMessages).reverse();
 
     const attachments: Array<{ messageKey: string; fileName: string; data: Buffer }> = [];
@@ -2932,7 +2947,8 @@ export async function runGmailBankSync(uploadedById?: string): Promise<{
       }
 
       const parsedRows = await parseBankStatementRowsFromPdfBuffer(attachment.data);
-      const statementClosingBalance = extractStatementClosingBalance(parsedRows);
+      // ISBANK PDF/e-posta ekstresi satirlari en yeniden en eskiye dogru siralanir.
+      const statementClosingBalance = extractStatementClosingBalance(parsedRows, "newestFirst");
       const filteredRows = config.gmailBankSync.importOnlyIncoming
         ? parsedRows.filter((row) => row.amount > 0)
         : parsedRows;
@@ -6789,6 +6805,97 @@ router.post("/bank-statement/gmail-sync", async (req, res) => {
     console.error("[bank-statement-gmail-sync-failed]", err);
     const detail = err instanceof Error ? err.message : "Beklenmeyen hata";
     return res.status(500).json({ message: `Gmail senkronizasyonu basarisiz: ${detail}` });
+  }
+});
+
+// Gecici tanilama endpoint'i: Gmail'deki eski ekstreleri yeniden okuyup GERCEK gunluk
+// kapanis bakiyelerini cikarir ve sistemin o tarihteki kumulatif banka bakiyesiyle
+// karsilastirir. Boylece hangi gunde sapma basladigini (ekstre PDF'i yerine sistem
+// verisinde bir hata oldugunu) bulmaya yarar. Sadece okur, veritabanina yazmaz.
+router.get("/bank-statement/gmail-closing-audit", async (req, res) => {
+  try {
+    const days = Math.max(1, Math.min(120, Number(req.query.days) || 60));
+    const usingImap = Boolean(config.gmailBankSync.appPassword?.trim());
+    if (!usingImap) {
+      return res.status(400).json({ message: "Bu denetim sadece IMAP (GMAIL_APP_PASSWORD) kurulumunda calisir" });
+    }
+
+    const imapResult = await fetchImapPdfAttachments(days, 200);
+
+    type AuditEntry = { date: string; fileName: string; statementClosingBalance: number | null };
+    const entries: AuditEntry[] = [];
+    const errors: string[] = [];
+
+    for (const attachment of imapResult.attachments) {
+      try {
+        const rows = await parseBankStatementRowsFromPdfBuffer(attachment.data);
+        if (rows.length === 0) continue;
+        const closing = extractStatementClosingBalance(rows, "newestFirst");
+        const date = rows[0].occurredAt.toISOString().slice(0, 10);
+        entries.push({ date, fileName: attachment.fileName, statementClosingBalance: closing });
+      } catch (err) {
+        errors.push(`${attachment.fileName}: ${err instanceof Error ? err.message : "hata"}`);
+      }
+    }
+
+    entries.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+    const openingBalance = await sumOpeningBankBalance();
+    const allPayments = await prisma.payment.findMany({
+      select: { paidAt: true, totalAmount: true, note: true, method: true },
+    });
+    const allExpenses = await prisma.expense.findMany({
+      where: { paymentMethod: PaymentMethod.BANK_TRANSFER },
+      select: { spentAt: true, amount: true, description: true, reference: true },
+    });
+
+    const rows: Array<{
+      date: string;
+      fileName: string;
+      trueClosingBalance: number | null;
+      systemCumulativeBalance: number;
+      diff: number | null;
+    }> = [];
+
+    for (const entry of entries) {
+      const cutoff = new Date(`${entry.date}T23:59:59.999Z`);
+      let bankIn = 0;
+      let bankOut = 0;
+      for (const p of allPayments) {
+        if (p.paidAt > cutoff) continue;
+        if (!isOperatingBankPaymentRow(p)) continue;
+        if (isExcludedFromBankCashInNote(p.note)) continue;
+        bankIn += Number(p.totalAmount);
+      }
+      for (const e of allExpenses) {
+        if (e.spentAt > cutoff) continue;
+        if (isExcludedFromBankCashOutDescription(e.description, e.reference)) continue;
+        bankOut += Number(e.amount);
+      }
+      const systemCumulativeBalance = Number((openingBalance + bankIn - bankOut).toFixed(2));
+      const diff =
+        entry.statementClosingBalance !== null
+          ? Number((systemCumulativeBalance - entry.statementClosingBalance).toFixed(2))
+          : null;
+      rows.push({
+        date: entry.date,
+        fileName: entry.fileName,
+        trueClosingBalance: entry.statementClosingBalance,
+        systemCumulativeBalance,
+        diff,
+      });
+    }
+
+    return res.json({
+      scannedMessageCount: imapResult.scannedMessageCount,
+      attachmentCount: imapResult.attachments.length,
+      rows,
+      errors,
+    });
+  } catch (err) {
+    console.error("[gmail-closing-audit-failed]", err);
+    const detail = err instanceof Error ? err.message : "Beklenmeyen hata";
+    return res.status(500).json({ message: `Denetim basarisiz: ${detail}` });
   }
 });
 

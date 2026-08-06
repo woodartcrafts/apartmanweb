@@ -804,6 +804,21 @@ export type UploadBatchUploader = {
   email: string;
 };
 
+export type GmailClosingAuditRow = {
+  date: string;
+  fileName: string;
+  trueClosingBalance: number | null;
+  systemCumulativeBalance: number;
+  diff: number | null;
+};
+
+export type GmailClosingAuditResponse = {
+  scannedMessageCount: number;
+  attachmentCount: number;
+  rows: GmailClosingAuditRow[];
+  errors: string[];
+};
+
 export type GmailBankSyncResult = {
   message: string;
   query: string;

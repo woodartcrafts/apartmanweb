@@ -4,6 +4,7 @@ import {
   formatDateTr,
   formatTry,
   type AccountTransferDirection,
+  type GmailClosingAuditRow,
   type UploadBatchDetailsResponse,
   type UploadBatchKind,
   type UploadBatchRow,
@@ -32,6 +33,9 @@ type UploadBatchesPageProps = {
   runUploadBatchQuery: () => Promise<void>;
   gmailSyncRunning: boolean;
   runGmailSyncNow: () => Promise<void>;
+  gmailClosingAuditRunning: boolean;
+  gmailClosingAuditRows: GmailClosingAuditRow[] | null;
+  runGmailClosingAudit: () => Promise<void>;
   goUploadBatchPage: (direction: "prev" | "next") => Promise<void>;
   clearUploadBatchFilters: () => Promise<void>;
   deleteUploadBatch: (row: UploadBatchRow) => Promise<void>;
@@ -63,6 +67,9 @@ export function UploadBatchesPage({
   runUploadBatchQuery,
   gmailSyncRunning,
   runGmailSyncNow,
+  gmailClosingAuditRunning,
+  gmailClosingAuditRows,
+  runGmailClosingAudit,
   goUploadBatchPage,
   clearUploadBatchFilters,
   deleteUploadBatch,
@@ -205,6 +212,15 @@ export function UploadBatchesPage({
             >
               {gmailSyncRunning ? "Gmail kontrol ediliyor..." : "Gmail'den Simdi Kontrol Et"}
             </button>
+            <button
+              className="btn btn-ghost"
+              type="button"
+              disabled={gmailClosingAuditRunning}
+              title="Son 60 gunun ekstrelerini Gmail'den yeniden okuyup gercek kapanis bakiyeleriyle sistem bakiyesini karsilastirir"
+              onClick={() => void runGmailClosingAudit()}
+            >
+              {gmailClosingAuditRunning ? "Denetim calisiyor..." : "Ekstre Bakiye Denetimi (60 gun)"}
+            </button>
             <button className="btn btn-ghost" type="button" onClick={() => void goUploadBatchPage("prev")}>
               Onceki Sayfa
             </button>
@@ -266,6 +282,41 @@ export function UploadBatchesPage({
             </select>
           </label>
         </div>
+
+        {gmailClosingAuditRows && gmailClosingAuditRows.length > 0 && (
+          <div className="table-wrap compact-row-top-gap">
+            <h4>Ekstre Bakiye Denetimi Sonucu</h4>
+            <table className="apartment-list-table">
+              <thead>
+                <tr>
+                  <th>Tarih</th>
+                  <th>Dosya</th>
+                  <th className="col-num">Gercek Kapanis (PDF)</th>
+                  <th className="col-num">Sistem Kumulatif</th>
+                  <th className="col-num">Fark</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gmailClosingAuditRows.map((row) => {
+                  const mismatch = row.diff !== null && Math.abs(row.diff) > 1;
+                  return (
+                    <tr key={row.fileName} className={mismatch ? "text-danger" : undefined}>
+                      <td>{row.date}</td>
+                      <td title={row.fileName}>
+                        <span className="truncate-cell truncate-description">{row.fileName}</span>
+                      </td>
+                      <td className="col-num">
+                        {row.trueClosingBalance !== null ? formatTry(row.trueClosingBalance) : "-"}
+                      </td>
+                      <td className="col-num">{formatTry(row.systemCumulativeBalance)}</td>
+                      <td className="col-num">{row.diff !== null ? formatTry(row.diff) : "-"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <div className="table-wrap">
           <table className="apartment-list-table upload-batches-list-table">
