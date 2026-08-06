@@ -57,8 +57,6 @@ import {
   type LoginResponse,
   type MixedPaymentReportRow,
   type MixedPaymentReportResponse,
-  type ManualReviewMatchRow,
-  type ManualReviewMatchesReportResponse,
   type OccupancyType,
   type OverduePaymentsReportRow,
   type OverduePaymentsReportResponse,
@@ -215,11 +213,6 @@ const AuditLogsPage = lazy(() =>
 const UserSessionsPage = lazy(() =>
   import("./admin/UserSessionsPage").then((module) => ({
     default: module.UserSessionsPage,
-  }))
-);
-const ManualReviewMatchesPage = lazy(() =>
-  import("./admin/ManualReviewMatchesPage").then((module) => ({
-    default: module.ManualReviewMatchesPage,
   }))
 );
 const StatementPage = lazy(() =>
@@ -793,15 +786,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [dashUploadDetailsByBatchId, setDashUploadDetailsByBatchId] = useState<Record<string, UploadBatchDetailsResponse>>({});
   const [dashUploadLoadingId, setDashUploadLoadingId] = useState<string | null>(null);
   const [staffOpenAidatLoading, setStaffOpenAidatLoading] = useState(false);
-  const [manualReviewMatchesRows, setManualReviewMatchesRows] = useState<ManualReviewMatchRow[]>([]);
-  const [manualReviewMatchesTotalCount, setManualReviewMatchesTotalCount] = useState(0);
-  const [manualReviewMatchesLoading, setManualReviewMatchesLoading] = useState(false);
-  const [manualReviewClearingPaymentId, setManualReviewClearingPaymentId] = useState<string | null>(null);
-  const [manualReviewMatchesFilter, setManualReviewMatchesFilter] = useState({
-    from: "",
-    to: "",
-    doorNo: "",
-  });
   const [fractionalClosureRows, setFractionalClosureRows] = useState<FractionalClosureReportRow[]>([]);
   const [fractionalClosureLoading, setFractionalClosureLoading] = useState(false);
   const [overduePaymentsColumnVisibility, setOverduePaymentsColumnVisibility] = useState<
@@ -951,14 +935,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [lastImportInfos, setLastImportInfos] = useState<ImportInfoNote[]>([]);
   const [lastImportInfoTitle, setLastImportInfoTitle] = useState<string>("");
   const [lastImportSummary, setLastImportSummary] = useState<ImportSummary | null>(null);
-  const manualReviewImportInfos = useMemo(
-    () =>
-      lastImportInfos.filter((item) => {
-        const text = item.raw.toLocaleLowerCase("tr");
-        return text.includes("manuel incelemeye birakildi") || text.includes("manual_review");
-      }),
-    [lastImportInfos]
-  );
   const [actionLogs, setActionLogs] = useState<AdminActionLogRow[]>([]);
   const adminSubnavRef = useRef<HTMLDivElement | null>(null);
   const skipNextExpenseReportAutoRefreshRef = useRef(false);
@@ -1126,7 +1102,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/reports/charge-consistency": "CHECK_CHARGE_CONSISTENCY",
       "/admin/reconcile/door-mismatch-report": "CHECK_DOOR_MISMATCH",
       "/admin/reports/bank-statement": "CHECK_BANK_STATEMENT",
-      "/admin/reports/manual-review-matches": "CHECK_MANUAL_REVIEW",
       "/admin/description-door-rules": "SETTINGS_DESC_DOOR",
       "/admin/description-expense-rules": "SETTINGS_DESC_EXPENSE",
       "/admin/resident-content": "RESIDENT_CONTENT",
@@ -1200,7 +1175,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       { path: "/admin/reports/charge-consistency", key: "CHECK_CHARGE_CONSISTENCY" },
       { path: "/admin/reconcile/door-mismatch-report", key: "CHECK_DOOR_MISMATCH" },
       { path: "/admin/reports/bank-statement", key: "CHECK_BANK_STATEMENT" },
-      { path: "/admin/reports/manual-review-matches", key: "CHECK_MANUAL_REVIEW" },
       { path: "/admin/description-door-rules", key: "SETTINGS_DESC_DOOR" },
       { path: "/admin/description-expense-rules", key: "SETTINGS_DESC_EXPENSE" },
       { path: "/admin/resident-content", key: "RESIDENT_CONTENT" },
@@ -5543,105 +5517,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     }
   }
 
-  async function fetchManualReviewMatchesReport(options?: { silent?: boolean }): Promise<void> {
-    const silent = options?.silent ?? false;
-    setManualReviewMatchesLoading(true);
-    if (!silent) {
-      setMessage("Manuel inceleme raporu hazirlaniyor...");
-    }
-
-    try {
-      const params = new URLSearchParams();
-      if (manualReviewMatchesFilter.from) {
-        params.set("from", dateInputToIso(manualReviewMatchesFilter.from));
-      }
-      if (manualReviewMatchesFilter.to) {
-        params.set("to", dateInputToIso(manualReviewMatchesFilter.to));
-      }
-      if (manualReviewMatchesFilter.doorNo.trim()) {
-        params.set("doorNo", manualReviewMatchesFilter.doorNo.trim());
-      }
-      params.set("limit", "1000");
-
-      const endpoint = `/api/admin/reports/manual-review-matches?${params.toString()}`;
-      const data = await authorizedRequest<ManualReviewMatchesReportResponse>(endpoint);
-      setManualReviewMatchesRows(data.rows);
-      setManualReviewMatchesTotalCount(data.totalCount);
-      if (!silent) {
-        setMessage(`Manuel inceleme raporu hazir: ${data.totalCount} kayit`);
-      }
-    } catch (err) {
-      console.error(err);
-      const text = err instanceof Error ? err.message : "Manuel inceleme raporu alinamadi";
-      if (!silent) {
-        setMessage(text);
-      }
-    } finally {
-      setManualReviewMatchesLoading(false);
-    }
-  }
-
-  async function runManualReviewMatchesQuery(): Promise<void> {
-    setLoading(true);
-    try {
-      await fetchManualReviewMatchesReport();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function clearManualReviewMatchesFilters(): void {
-    setManualReviewMatchesFilter({ from: "", to: "", doorNo: "" });
-    setManualReviewMatchesRows([]);
-    setManualReviewMatchesTotalCount(0);
-    setMessage("Manuel inceleme filtresi temizlendi. Listelemek icin Calistir butonuna basin");
-  }
-
-  async function clearManualReviewMatchWarning(row: ManualReviewMatchRow): Promise<void> {
-    const accepted = window.confirm("Bu kayitta sadece manuel inceleme uyarisini temizlemek istiyor musun?");
-    if (!accepted) {
-      return;
-    }
-
-    setLoading(true);
-    setManualReviewClearingPaymentId(row.paymentId);
-    try {
-      await authorizedRequest(`/api/admin/payments/${row.paymentId}/manual-review-dismiss`, { method: "POST" });
-      await Promise.all([fetchManualReviewMatchesReport({ silent: true }), fetchActionLogs()]);
-      setMessage("Manuel inceleme uyarisi temizlendi");
-    } catch (err) {
-      console.error(err);
-      setMessage(err instanceof Error ? err.message : "Manuel inceleme uyarisi temizlenemedi");
-    } finally {
-      setManualReviewClearingPaymentId(null);
-      setLoading(false);
-    }
-  }
-
-  async function clearAllManualReviewWarnings(): Promise<void> {
-    if (manualReviewMatchesRows.length === 0) return;
-    const accepted = window.confirm(
-      `Toplam ${manualReviewMatchesRows.length} kayittaki manuel inceleme uyarisinin tamami temizlenecek. Emin misiniz?`
-    );
-    if (!accepted) return;
-
-    setLoading(true);
-    try {
-      await Promise.all(
-        manualReviewMatchesRows.map((row) =>
-          authorizedRequest(`/api/admin/payments/${row.paymentId}/manual-review-dismiss`, { method: "POST" })
-        )
-      );
-      await Promise.all([fetchManualReviewMatchesReport({ silent: true }), fetchActionLogs()]);
-      setMessage(`${manualReviewMatchesRows.length} kayittaki manuel inceleme uyarisi temizlendi`);
-    } catch (err) {
-      console.error(err);
-      setMessage(err instanceof Error ? err.message : "Toplu temizleme sirasinda hata olustu");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function runOverduePaymentsQuery(): Promise<void> {
     setLoading(true);
     try {
@@ -8845,11 +8720,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       return;
     }
 
-    if (path === "/admin/reports/manual-review-matches") {
-      // Manual-run page: user triggers with button.
-      return;
-    }
-
     if (path === "/admin/reports/staff-open-aidat") {
       if (staffOpenAidatLatestUploadRows.length === 0) {
         void fetchStaffOpenAidatLatestUploads({ silent: true });
@@ -9238,7 +9108,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     overduePaymentsLoading ||
     staffOpenAidatLoading ||
     chargeConsistencyLoading ||
-    manualReviewMatchesLoading ||
     fractionalClosureLoading ||
     doorMismatchLoading ||
     bankTermDepositLoading ||
@@ -9493,9 +9362,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/bank-statement">
               Banka Ekstresi Karsilastirma
-            </NavLink>
-            <NavLink className="btn btn-ghost" to="/admin/reports/manual-review-matches">
-              Manuel Inceleme Gerektiren Eslesmeler
             </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/unclassified">
               Siniflandirilamayanlar
@@ -9954,7 +9820,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                                 <th className="col-num" title="Tahsilat">Tah.</th>
                                 <th className="col-num" title="Gider">Gid.</th>
                                 <th className="col-num" title="Atlanan">Atl.</th>
-                                <th className="col-num" title="Incelenmesi gereken">Inc.Ger.</th>
                                 <th className="col-num" title="Siniflandirilamayanlar">Sınıf</th>
                                 <th className="col-num" title="Bolunme (coklu-daire bolunmesi)">
                                   Böl.
@@ -10013,7 +9878,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                                       <td className="col-num">{row.createdPaymentCount}</td>
                                       <td className="col-num">{row.createdExpenseCount}</td>
                                       <td className="col-num">{row.skippedCount}</td>
-                                      <td className="col-num">{row.manualReviewCount > 0 ? row.manualReviewCount : "-"}</td>
                                       <td className="col-num">{row.unclassifiedCount > 0 ? row.unclassifiedCount : "-"}</td>
                                       <td className="col-num">
                                         {(row.splitPaymentLineCount ?? 0) > 0 ? row.splitPaymentLineCount : "-"}
@@ -10026,7 +9890,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                                     </tr>
                                     {isExpanded && (
                                       <tr>
-                                        <td colSpan={12} className="dash-upload-detail-cell">
+                                        <td colSpan={11} className="dash-upload-detail-cell">
                                           {isLoadingThis && <p className="small">Yukleniyor...</p>}
                                           {!isLoadingThis && detail && (() => {
                                             function cleanDashNote(note: string | null | undefined): string {
@@ -11344,26 +11208,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
               <StaffContactEditPage
                 loading={loading}
                 apartmentOptions={apartmentOptions}
-              />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/reports/manual-review-matches"
-          element={
-            <Suspense fallback={<LazyAdminPageFallback />}>
-              <ManualReviewMatchesPage
-                loading={loading}
-                reportLoading={manualReviewMatchesLoading}
-                rows={manualReviewMatchesRows}
-                totalCount={manualReviewMatchesTotalCount}
-                filter={manualReviewMatchesFilter}
-                setFilter={setManualReviewMatchesFilter}
-                runQuery={runManualReviewMatchesQuery}
-                clearFilters={clearManualReviewMatchesFilters}
-                clearingPaymentId={manualReviewClearingPaymentId}
-                clearWarningRow={clearManualReviewMatchWarning}
-                clearAllWarnings={clearAllManualReviewWarnings}
               />
             </Suspense>
           }
@@ -13938,40 +13782,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 </section>
               )}
 
-              {manualReviewImportInfos.length > 0 && (
-                <section className="card import-manual-review-card">
-                  <h3>Manuel Inceleme Gereken Odemeler</h3>
-                  <div className="import-summary-badges">
-                    <span className="summary-badge summary-badge-manual-review">
-                      Manuel Inceleme: {manualReviewImportInfos.length}
-                    </span>
-                  </div>
-                  <p className="small">
-                    Bu satirlar bilerek otomatik dagitilmaz. Yanlis tahakkuk kapanmasini onlemek icin Tahsilat Raporu
-                    veya Eslestirme ekranindan manuel kontrol edin.
-                  </p>
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Satir</th>
-                          <th>Ham Not</th>
-                          <th>Aciklama</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {manualReviewImportInfos.map((item, idx) => (
-                          <tr key={`${item.raw}-manual-${idx}`}>
-                            <td>{item.rowNo ?? "-"}</td>
-                            <td>{item.raw}</td>
-                            <td>{item.explanation}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              )}
             </section>
           }
         />

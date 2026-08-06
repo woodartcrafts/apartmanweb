@@ -5398,150 +5398,6 @@ router.get("/payments/list", async (req, res) => {
   return res.json(rows.filter((x) => x.source === source));
 });
 
-router.get("/reports/manual-review-matches", async (req, res) => {
-  const querySchema = z.object({
-    from: z.string().datetime().optional(),
-    to: z.string().datetime().optional(),
-    doorNo: z.string().min(1).max(50).optional(),
-    limit: z.coerce.number().int().min(1).max(2000).optional(),
-  });
-
-  const parsed = querySchema.safeParse(req.query);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid query", errors: parsed.error.issues });
-  }
-
-  const { from, to, doorNo, limit } = parsed.data;
-  const normalizedDoorNoFilter = doorNo?.trim() || "";
-
-  const payments = await prisma.payment.findMany({
-    where: {
-      note: {
-        contains: "UNAPPLIED:MANUAL_REVIEW",
-      },
-      paidAt: buildDateRangeFilter(from, to),
-    },
-    include: {
-      importBatch: {
-        select: { id: true, kind: true, fileName: true, uploadedAt: true },
-      },
-      itemLinks: {
-        include: {
-          charge: {
-            select: {
-              apartment: {
-                select: {
-                  id: true,
-                  doorNo: true,
-                  block: { select: { name: true } },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
-    take: limit ?? 500,
-  });
-
-  function parseManualReviewNote(note: string | null): {
-    doorNo: string | null;
-    reference: string | null;
-    description: string | null;
-    reasonCode: "NO_EXACT_MATCH" | "MULTIPLE_EXACT_MATCH" | "UNKNOWN";
-    reasonCount: number | null;
-  } {
-    if (!note) {
-      return {
-        doorNo: null,
-        reference: null,
-        description: null,
-        reasonCode: "UNKNOWN",
-        reasonCount: null,
-      };
-    }
-
-    const parts = note
-      .split(" | ")
-      .map((x) => x.trim())
-      .filter(Boolean);
-
-    const doorPart = parts.find((x) => x.startsWith("DOOR:"));
-    const refPart = parts.find((x) => x.startsWith("BANK_REF:"));
-    const descPart = parts.find((x) => x.startsWith("BANK_DESC:"));
-    const reasonPart = parts.find((x) => x.startsWith("UNAPPLIED:MANUAL_REVIEW:"));
-
-    let reasonCode: "NO_EXACT_MATCH" | "MULTIPLE_EXACT_MATCH" | "UNKNOWN" = "UNKNOWN";
-    let reasonCount: number | null = null;
-    if (reasonPart) {
-      const segments = reasonPart.split(":");
-      const codeSegment = segments[2] ?? "";
-      const countSegment = segments[3] ?? "";
-      if (codeSegment === "NO_EXACT_MATCH") {
-        reasonCode = "NO_EXACT_MATCH";
-      } else if (codeSegment === "MULTIPLE_EXACT_MATCH") {
-        reasonCode = "MULTIPLE_EXACT_MATCH";
-      }
-      const parsedCount = Number(countSegment);
-      reasonCount = Number.isFinite(parsedCount) ? parsedCount : null;
-    }
-
-    return {
-      doorNo: doorPart ? doorPart.slice("DOOR:".length).trim() || null : null,
-      reference: refPart ? refPart.slice("BANK_REF:".length).trim() || null : null,
-      description: descPart ? descPart.slice("BANK_DESC:".length).trim() || null : null,
-      reasonCode,
-      reasonCount,
-    };
-  }
-
-  const rows = payments
-    .map((payment) => {
-      const parsedNote = parseManualReviewNote(payment.note);
-      const apartmentLabels = [...new Set(payment.itemLinks.map((item) => {
-        const blockName = item.charge.apartment.block?.name ?? "-";
-        const door = item.charge.apartment.doorNo;
-        return `${blockName}/${door}`;
-      }))];
-
-      return {
-        paymentId: payment.id,
-        paidAt: payment.paidAt,
-        createdAt: payment.createdAt,
-        totalAmount: Number(payment.totalAmount),
-        method: payment.method,
-        source:
-          payment.importBatch?.kind === ImportBatchType.BANK_STATEMENT_UPLOAD
-            ? "BANK_STATEMENT_UPLOAD"
-            : payment.importBatch?.kind === ImportBatchType.PAYMENT_UPLOAD
-              ? "PAYMENT_UPLOAD"
-              : "MANUAL",
-        importBatchId: payment.importBatch?.id ?? null,
-        importFileName: payment.importBatch?.fileName ?? null,
-        importUploadedAt: payment.importBatch?.uploadedAt ?? null,
-        note: payment.note,
-        doorNo: parsedNote.doorNo,
-        reference: parsedNote.reference,
-        description: parsedNote.description,
-        reasonCode: parsedNote.reasonCode,
-        reasonCount: parsedNote.reasonCount,
-        apartmentLabels,
-      };
-    })
-    .filter((row) => {
-      if (!normalizedDoorNoFilter) {
-        return true;
-      }
-      return (row.doorNo ?? "").trim() === normalizedDoorNoFilter;
-    });
-
-  return res.json({
-    totalCount: rows.length,
-    rows,
-  });
-});
-
 router.get("/reports/reference-search", async (req, res) => {
   const querySchema = z.object({
     reference: z.string().min(1).max(200),
@@ -6110,52 +5966,6 @@ router.put("/payments/:paymentId", async (req, res) => {
     creditAppliedToOtherCharges: editCreditResult?.appliedTotal ?? 0,
     actionLogId: actionLog.id,
     undoUntil: actionLog.undoUntil,
-  });
-});
-
-router.post("/payments/:paymentId/manual-review-dismiss", async (req, res) => {
-  const { paymentId } = req.params;
-
-  const existing = await prisma.payment.findUnique({
-    where: { id: paymentId },
-    select: {
-      id: true,
-      note: true,
-    },
-  });
-
-  if (!existing) {
-    return res.status(404).json({ message: "Payment not found" });
-  }
-
-  const noteParts = parsePaymentNoteParts(existing.note);
-  const cleanedParts = noteParts.filter((part) => {
-    const upper = part.toUpperCase();
-    if (upper.startsWith("UNAPPLIED:MANUAL_REVIEW")) {
-      return false;
-    }
-    if (upper.startsWith("MANUAL_REVIEW:")) {
-      return false;
-    }
-    return true;
-  });
-
-  const nextNote = cleanedParts.length > 0 ? cleanedParts.join(" | ") : null;
-  const changed = nextNote !== existing.note;
-
-  if (changed) {
-    await prisma.payment.update({
-      where: { id: paymentId },
-      data: {
-        note: nextNote,
-      },
-    });
-  }
-
-  return res.json({
-    paymentId,
-    changed,
-    note: nextNote,
   });
 });
 
@@ -8304,17 +8114,9 @@ router.get("/reports/summary", async (_req, res) => {
     .slice(0, 10);
 
   const summaryBatchIds = latestUploadBatches.map((b) => b.id);
-  const [summaryManualReviewGroups, summaryUnclassifiedPaymentGroups, summaryUnclassifiedExpenseGroups] =
+  const [summaryUnclassifiedPaymentGroups, summaryUnclassifiedExpenseGroups] =
     summaryBatchIds.length > 0
     ? await Promise.all([
-        prisma.payment.groupBy({
-          by: ["importBatchId"],
-          where: {
-            importBatchId: { in: summaryBatchIds },
-            note: { contains: "UNAPPLIED:MANUAL_REVIEW" },
-          },
-          _count: { _all: true },
-        }),
         prisma.payment.groupBy({
           by: ["importBatchId"],
           where: {
@@ -8334,13 +8136,7 @@ router.get("/reports/summary", async (_req, res) => {
           _count: { _all: true },
         }),
       ])
-    : [[], [], []];
-  const summaryManualReviewCountMap: Record<string, number> = {};
-  for (const g of summaryManualReviewGroups) {
-    if (g.importBatchId) {
-      summaryManualReviewCountMap[g.importBatchId] = g._count._all;
-    }
-  }
+    : [[], []];
   const summaryUnclassifiedCountMap: Record<string, number> = {};
   for (const g of summaryUnclassifiedPaymentGroups) {
     if (g.importBatchId) {
@@ -8354,7 +8150,6 @@ router.get("/reports/summary", async (_req, res) => {
   }
   const latestUploadBatchesWithReview = latestUploadBatches.map((b) => ({
     ...b,
-    manualReviewCount: summaryManualReviewCountMap[b.id] ?? 0,
     unclassifiedCount: summaryUnclassifiedCountMap[b.id] ?? 0,
   }));
 

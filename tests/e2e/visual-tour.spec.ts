@@ -36,7 +36,6 @@ const PAGES: { label: string; path: string }[] = [
   { label: "04-reports-overdue-payments", path: "/admin/reports/overdue-payments" },
   { label: "05-reports-charge-consistency", path: "/admin/reports/charge-consistency" },
   { label: "06-reports-staff-open-aidat", path: "/admin/reports/staff-open-aidat" },
-  { label: "07-reports-manual-review-matches", path: "/admin/reports/manual-review-matches" },
   { label: "08-reports-monthly-balance-matrix", path: "/admin/reports/monthly-balance-matrix" },
   { label: "09-reports-reference-search", path: "/admin/reports/reference-search" },
   { label: "10-reports-fractional-closures", path: "/admin/reports/fractional-closures" },

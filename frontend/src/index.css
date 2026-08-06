@@ -2105,21 +2105,6 @@ button:active:not(:disabled) {
   color: #8a4f0f;
 }
 
-.summary-badge-manual-review {
-  background: #fde8ea;
-  border-color: #eab0b8;
-  color: #9f1c2a;
-}
-
-.import-manual-review-card {
-  border: 1px solid #e6b8be;
-  background: #fff8f8;
-}
-
-.import-manual-review-card h3 {
-  color: #9f1c2a;
-}
-
 .badge {
   display: inline-block;
   background: #e7f9f2;
@@ -7563,82 +7548,6 @@ details.cc-excluded-card[open] > .cc-excluded-summary::after {
   height: auto !important;
   white-space: nowrap;
 }
-
-.manual-review-matches-page .manual-review-table {
-  width: 100%;
-  min-width: 0;
-  table-layout: fixed;
-}
-
-.manual-review-matches-page .manual-review-table th,
-.manual-review-matches-page .manual-review-table td {
-  white-space: normal;
-  word-break: break-word;
-  overflow-wrap: break-word;
-  vertical-align: top;
-}
-
-/* Odeme Tarihi: 8% — tarih 2 satıra geçebilir */
-.manual-review-matches-page .manual-review-table th:nth-child(1),
-.manual-review-matches-page .manual-review-table td:nth-child(1) {
-  width: 8%;
-}
-
-/* Daire: 5% */
-.manual-review-matches-page .manual-review-table th:nth-child(2),
-.manual-review-matches-page .manual-review-table td:nth-child(2) {
-  width: 5%;
-}
-
-/* Neden: 15% — uzun metin, sarılabilir */
-.manual-review-matches-page .manual-review-table th:nth-child(3),
-.manual-review-matches-page .manual-review-table td:nth-child(3) {
-  width: 15%;
-}
-
-/* Tutar: 7% */
-.manual-review-matches-page .manual-review-table th:nth-child(4),
-.manual-review-matches-page .manual-review-table td:nth-child(4) {
-  width: 7%;
-}
-
-/* Aciklama: 12% */
-.manual-review-matches-page .manual-review-table th:nth-child(5),
-.manual-review-matches-page .manual-review-table td:nth-child(5) {
-  width: 12%;
-}
-
-/* Not: en geniş — 42% */
-.manual-review-matches-page .manual-review-table th:nth-child(6),
-.manual-review-matches-page .manual-review-table td:nth-child(6) {
-  width: 42%;
-}
-
-/* Islem: 11% — buton için yeterli */
-.manual-review-matches-page .manual-review-table th:nth-child(7),
-.manual-review-matches-page .manual-review-table td:nth-child(7) {
-  width: 11%;
-  text-align: center;
-  vertical-align: middle;
-}
-
-.manual-review-matches-page .manual-review-table .actions-cell {
-  text-align: center;
-  vertical-align: middle;
-}
-
-.manual-review-matches-page .manual-review-table .actions-cell .btn {
-  min-width: 92px;
-  height: 30px;
-  padding: 0 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-/* ─────────────────────────────────────────────────────── */
 
 .reference-search-table {
   min-width: 0 !important;

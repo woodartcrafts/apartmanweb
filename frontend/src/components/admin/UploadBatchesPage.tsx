@@ -338,9 +338,6 @@ export function UploadBatchesPage({
                 <th className="col-num" title="Atlanan">
                   Atl.
                 </th>
-                <th className="col-num" title="Incelenmesi gereken">
-                  Inc.Ger.
-                </th>
                 <th className="col-num" title="Siniflandirilamayanlar">
                   Sınıf
                 </th>
@@ -366,7 +363,6 @@ export function UploadBatchesPage({
                     <td className="col-num">{row.createdPaymentCount}</td>
                     <td className="col-num">{row.createdExpenseCount}</td>
                     <td className="col-num">{row.skippedCount}</td>
-                    <td className="col-num">{row.manualReviewCount > 0 ? row.manualReviewCount : "-"}</td>
                     <td className="col-num">{row.unclassifiedCount > 0 ? row.unclassifiedCount : "-"}</td>
                     <td className="col-num">
                       {(row.splitPaymentLineCount ?? 0) > 0 ? row.splitPaymentLineCount : "-"}
@@ -397,7 +393,7 @@ export function UploadBatchesPage({
 
                   {expandedBatchId === row.id && (
                     <tr>
-                      <td colSpan={12}>
+                      <td colSpan={11}>
                         <div className="card table-card compact-row-top-gap">
                           <h4>Yukleme Detayi</h4>
                           {detailsLoadingBatchId === row.id && <p className="small">Detaylar yukleniyor...</p>}
@@ -579,7 +575,7 @@ export function UploadBatchesPage({
 
               {uploadBatchRows.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="empty">
+                  <td colSpan={11} className="empty">
                     Yukleme kaydi yok
                   </td>
                 </tr>

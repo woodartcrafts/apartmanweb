@@ -62,7 +62,6 @@ export type AdminPageKey =
   | "CHECK_CHARGE_CONSISTENCY"
   | "CHECK_DOOR_MISMATCH"
   | "CHECK_BANK_STATEMENT"
-  | "CHECK_MANUAL_REVIEW"
   | "SETTINGS_DESC_DOOR"
   | "SETTINGS_DESC_EXPENSE"
   | "RESIDENT_CONTENT"
@@ -793,7 +792,6 @@ export type UploadBatchRow = {
   createdPaymentCount: number;
   createdExpenseCount: number;
   skippedCount: number;
-  manualReviewCount: number;
   unclassifiedCount: number;
   splitPaymentLineCount: number;
 };
@@ -958,7 +956,6 @@ export type ReportsSummaryResponse = {
     createdPaymentCount: number;
     createdExpenseCount: number;
     skippedCount: number;
-    manualReviewCount: number;
     unclassifiedCount: number;
   }>;
   topExpenses: Array<{
@@ -1273,30 +1270,6 @@ export type ReferenceMovementSearchResponse = {
     net: number;
   };
   rows: ReferenceMovementSearchRow[];
-};
-
-export type ManualReviewMatchRow = {
-  paymentId: string;
-  paidAt: string;
-  createdAt: string;
-  totalAmount: number;
-  method: PaymentMethod;
-  source: "MANUAL" | "BANK_STATEMENT_UPLOAD" | "PAYMENT_UPLOAD";
-  importBatchId: string | null;
-  importFileName: string | null;
-  importUploadedAt: string | null;
-  note: string | null;
-  doorNo: string | null;
-  reference: string | null;
-  description: string | null;
-  reasonCode: "NO_EXACT_MATCH" | "MULTIPLE_EXACT_MATCH" | "UNKNOWN";
-  reasonCount: number | null;
-  apartmentLabels: string[];
-};
-
-export type ManualReviewMatchesReportResponse = {
-  totalCount: number;
-  rows: ManualReviewMatchRow[];
 };
 
 export type DescriptionDoorRule = {

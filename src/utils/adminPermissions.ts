@@ -64,7 +64,6 @@ export type AdminPageKey =
   | "CHECK_CHARGE_CONSISTENCY"
   | "CHECK_DOOR_MISMATCH"
   | "CHECK_BANK_STATEMENT"
-  | "CHECK_MANUAL_REVIEW"
   | "SETTINGS_DESC_DOOR"
   | "SETTINGS_DESC_EXPENSE"
   | "RESIDENT_CONTENT"
@@ -155,7 +154,6 @@ export const ADMIN_PAGE_DEFINITIONS: Array<{ key: AdminPageKey; label: string }>
   { key: "CHECK_CHARGE_CONSISTENCY", label: "Kontrol / Finans Kontrolleri / Tahakkuk Kontrol" },
   { key: "CHECK_DOOR_MISMATCH", label: "Kontrol / Finans Kontrolleri / Banka Eslestirme Kontrolu" },
   { key: "CHECK_BANK_STATEMENT", label: "Kontrol / Finans Kontrolleri / Banka Ekstresi Karsilastirma" },
-  { key: "CHECK_MANUAL_REVIEW", label: "Kontrol / Finans Kontrolleri / Manuel Inceleme Gerektiren Eslesmeler" },
   { key: "SETTINGS_DESC_DOOR", label: "Sistem ve Duzeltme / Esleme / Aciklama-Daire Esleme" },
   { key: "SETTINGS_DESC_EXPENSE", label: "Sistem ve Duzeltme / Esleme / Aciklama-Gider Esleme" },
   { key: "RESIDENT_CONTENT", label: "Sistem ve Duzeltme / Iletisim / Duyurular ve Anketler" },
@@ -274,10 +272,6 @@ export function mapRequestPathToAdminPage(pathname: string, method?: string): Ad
     return "PAYMENTS_LIST_EDIT";
   }
 
-  if (/^\/payments\/[^/]+\/manual-review-dismiss$/.test(pathname)) {
-    return "PAYMENTS_LIST_EDIT";
-  }
-
   if (pathname.startsWith("/payments")) {
     return "PAYMENTS_NEW_CREATE";
   }
@@ -334,7 +328,6 @@ export function mapRequestPathToAdminPage(pathname: string, method?: string): Ad
   if (pathname.startsWith("/reconcile/door-mismatch")) return "CHECK_DOOR_MISMATCH";
   if (pathname.startsWith("/reports/charge-consistency")) return "CHECK_CHARGE_CONSISTENCY";
   if (pathname.startsWith("/reports/bank-statement")) return "CHECK_BANK_STATEMENT";
-  if (pathname.startsWith("/reports/manual-review")) return "CHECK_MANUAL_REVIEW";
 
   if (pathname.startsWith("/description-door-rules")) return "SETTINGS_DESC_DOOR";
   if (pathname.startsWith("/description-expense-rules")) return "SETTINGS_DESC_EXPENSE";

@@ -157,16 +157,8 @@ router.get("/upload-batches", async (req, res) => {
   });
 
   const batchIds = batches.map((b) => b.id);
-  const [manualReviewGroups, unclassifiedPaymentGroups, unclassifiedExpenseGroups] = batchIds.length > 0
+  const [unclassifiedPaymentGroups, unclassifiedExpenseGroups] = batchIds.length > 0
     ? await Promise.all([
-        prisma.payment.groupBy({
-          by: ["importBatchId"],
-          where: {
-            importBatchId: { in: batchIds },
-            note: { contains: "UNAPPLIED:MANUAL_REVIEW" },
-          },
-          _count: { _all: true },
-        }),
         prisma.payment.groupBy({
           by: ["importBatchId"],
           where: {
@@ -186,13 +178,7 @@ router.get("/upload-batches", async (req, res) => {
           _count: { _all: true },
         }),
       ])
-    : [[], [], []];
-  const manualReviewCountMap: Record<string, number> = {};
-  for (const g of manualReviewGroups) {
-    if (g.importBatchId) {
-      manualReviewCountMap[g.importBatchId] = g._count._all;
-    }
-  }
+    : [[], []];
   const unclassifiedCountMap: Record<string, number> = {};
   for (const g of unclassifiedPaymentGroups) {
     if (g.importBatchId) {
@@ -220,7 +206,6 @@ router.get("/upload-batches", async (req, res) => {
       createdPaymentCount: batch.createdPaymentCount,
       createdExpenseCount: batch.createdExpenseCount,
       skippedCount: batch.skippedCount,
-      manualReviewCount: manualReviewCountMap[batch.id] ?? 0,
       unclassifiedCount: unclassifiedCountMap[batch.id] ?? 0,
       splitPaymentLineCount: splitPaymentLineCountMap.get(batch.id) ?? 0,
     }))
