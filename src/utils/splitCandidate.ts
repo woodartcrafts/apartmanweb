@@ -18,6 +18,21 @@ export const KNOWN_SPLIT_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ["35", "45"],
 ];
 
+/**
+ * Ayni kisinin tek havaleyle iki dairenin odemesini sabit tutarla yaptigi durumlar.
+ * Aciklamada odeyen adi ve `fixedDoorNo` geciyorsa `fixedAmount` o daireye, kalan `mainDoorNo`'ya yazilir.
+ * Esit bolen `KNOWN_SPLIT_PAIRS` bu durumlar icin yanlis tutar uretir.
+ */
+export const FIXED_AMOUNT_SPLIT_RULES: ReadonlyArray<{
+  payerKeyword: string;
+  mainDoorNo: string;
+  fixedDoorNo: string;
+  fixedAmount: number;
+}> = [
+  // D3 (babasi) aidat+tadilat, D78 (kendi dairesi, aidati kiraci oduyor) sadece tadilat.
+  { payerKeyword: "mustafa yemen agbulut", mainDoorNo: "3", fixedDoorNo: "78", fixedAmount: 3000 },
+];
+
 function toAsciiLower(input: string): string {
   return input
     .toLocaleLowerCase("tr")
@@ -117,6 +132,35 @@ export function collectAlreadySplitBankRefs(bankRefs: Array<string | null | unde
   }
 
   return new Set([...counts].filter(([, count]) => count > 1).map(([ref]) => ref));
+}
+
+export function resolveFixedAmountSplit(
+  description: string | null | undefined,
+  amount: number
+): Array<{ doorNo: string; amount: number }> {
+  const text = toAsciiLower((description ?? "").trim());
+  if (!text || !Number.isFinite(amount)) {
+    return [];
+  }
+
+  for (const rule of FIXED_AMOUNT_SPLIT_RULES) {
+    if (!text.includes(rule.payerKeyword)) {
+      continue;
+    }
+    if (!new RegExp(`(?:^|\\D)${rule.fixedDoorNo}(?:\\D|$)`).test(text)) {
+      continue;
+    }
+    const mainAmount = Math.round((amount - rule.fixedAmount) * 100) / 100;
+    if (mainAmount <= 0) {
+      continue;
+    }
+    return [
+      { doorNo: rule.mainDoorNo, amount: mainAmount },
+      { doorNo: rule.fixedDoorNo, amount: rule.fixedAmount },
+    ];
+  }
+
+  return [];
 }
 
 /**

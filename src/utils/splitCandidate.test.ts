@@ -3,8 +3,37 @@ import {
   KNOWN_SPLIT_PAIRS,
   collectAlreadySplitBankRefs,
   detectSplitCandidateDoorNos,
+  resolveFixedAmountSplit,
   resolveKnownPairDoorNos,
 } from "./splitCandidate";
+
+describe("resolveFixedAmountSplit", () => {
+  it("gercek aciklamalarda 78'e sabit 3000, kalani 3'e yazar", () => {
+    const expected = [
+      { doorNo: "3", amount: 4700 },
+      { doorNo: "78", amount: 3000 },
+    ];
+    expect(resolveFixedAmountSplit("MUSTAFA YEMEN AĞBULUT*0046*D/3 Aidat +Diafon Boya.D/78 Diafn", 7700)).toEqual(expected);
+    expect(resolveFixedAmountSplit("MUSTAFA YEMEN AĞBULUT*0046*D3ağustos aidat+difon +D:78 *Diaf", 7700)).toEqual(expected);
+  });
+
+  it("78 gecmiyorsa bolmez", () => {
+    expect(resolveFixedAmountSplit("MUSTAFA YEMEN AĞBULUT*0046*D3temmuz aidat*1846832*FAST", 1700)).toEqual([]);
+    expect(resolveFixedAmountSplit("MUSTAFA YEMEN AĞBULUT*0046*Aidat yakıt*7891028*FAST", 2000)).toEqual([]);
+  });
+
+  it("78 baska bir sayinin icindeyse bolmez", () => {
+    expect(resolveFixedAmountSplit("MUSTAFA YEMEN AĞBULUT*0046*Aidat yakıt*1784178*FAST", 7700)).toEqual([]);
+  });
+
+  it("tutar sabit tutari asmiyorsa bolmez", () => {
+    expect(resolveFixedAmountSplit("MUSTAFA YEMEN AĞBULUT*0046*D/78 Diafon", 3000)).toEqual([]);
+  });
+
+  it("baska odeyenin aciklamasinda 78 gecse de bolmez", () => {
+    expect(resolveFixedAmountSplit("d78*NAİL UMUT AYKURT*H2609991821462", 7700)).toEqual([]);
+  });
+});
 
 describe("collectAlreadySplitBankRefs", () => {
   it("birden fazla kayitta gecen referansi bolunmus sayar", () => {

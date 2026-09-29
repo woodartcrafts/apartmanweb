@@ -56,7 +56,7 @@ import {
   sumOperatingBankExpensesOut,
 } from "../utils/operatingBankBalance";
 import { buildDateRangeFilter } from "../utils/dateRange";
-import { KNOWN_SPLIT_PAIRS, detectSplitCandidateDoorNos } from "../utils/splitCandidate";
+import { KNOWN_SPLIT_PAIRS, detectSplitCandidateDoorNos, resolveFixedAmountSplit } from "../utils/splitCandidate";
 import {
   PAYMENT_REFUND_EXPENSE_ITEM_CODE,
   PAYMENT_REFUND_NOTE_PREFIX,
@@ -2649,6 +2649,20 @@ function autoSplitMultiDoorPaymentRows(rows: BankStatementCommitRow[], validDoor
         isAutoSplit: false,
         splitSourceRowNo: undefined,
       });
+      continue;
+    }
+
+    const fixedParts = resolveFixedAmountSplit(row.description, row.amount);
+    if (fixedParts.length > 0 && fixedParts.every((part) => validDoorNos.has(part.doorNo))) {
+      for (const part of fixedParts) {
+        nextRows.push({
+          ...row,
+          doorNo: part.doorNo,
+          amount: part.amount,
+          isAutoSplit: true,
+          splitSourceRowNo: rowNo,
+        });
+      }
       continue;
     }
 
