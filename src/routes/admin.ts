@@ -2086,6 +2086,12 @@ function extractDoorNoFromDescription(
 
   if (matchedDoorCandidates.length > 0) {
     matchedDoorCandidates.sort((a, b) => b.score - a.score);
+    // Ayni kisi birden fazla dairenin odemesini yapabiliyor (or. "Daire 2 Temmuz aidati*NAIL UMUT AYKURT"
+    // isim kurali 78'e gidiyor). Aciklamada acikca "daire N" yaziyorsa o daire isim kuralini gecer.
+    const writtenDoor = extractWrittenDaireDoorNo(description, doorNoSet);
+    if (writtenDoor && writtenDoor !== matchedDoorCandidates[0].doorNo) {
+      return writtenDoor;
+    }
     return matchedDoorCandidates[0].doorNo;
   }
 
@@ -2546,6 +2552,23 @@ function collectExplicitPrefixedDoorCapturesFromNormalizedText(text: string): st
     ...text.matchAll(/\bd\s*[#:\/\.\-]\s*0*(\d{1,4})\b/g),
     ...text.matchAll(/\bd\s+0*(\d{1,4})\b/g),
   ].map((m) => m[1]);
+}
+
+/**
+ * Yalnizca "daire N" yazimini kabul eder ("d 3" gibi kisaltmalar degil). Banka aciklamalari ~60
+ * karakterde kesildigi icin metnin en sonundaki sayi ("... daire 3" <- "daire 30") dikkate alinmaz.
+ */
+function extractWrittenDaireDoorNo(description: string, doorNoSet: Set<string>): string | null {
+  const text = normalizeDoorPatternText(description).trim();
+  const doorNos = [
+    ...new Set(
+      [...text.matchAll(/\bdaire\s*[:#\-\/.]?\s*0*(\d{1,4})\b/g)]
+        .filter((m) => (m.index ?? 0) + m[0].length < text.length)
+        .map((m) => normalizeDoorNoForCompare(m[1]))
+    ),
+  ].filter((doorNo) => doorNoSet.has(doorNo));
+
+  return doorNos.length === 1 ? doorNos[0] : null;
 }
 
 function extractSingleExplicitPrefixedDoorNoFromDescription(description: string, doorNoSet: Set<string>): string | null {
