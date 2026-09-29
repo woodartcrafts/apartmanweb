@@ -2572,6 +2572,9 @@ function extractSingleExplicitPrefixedDoorNoFromDescription(description: string,
  */
 function resolveSplitDoorNosFromDescription(description: string, validDoorNos: Set<string>): string[] {
   const normalizedDescription = normalizeDoorPatternText(description);
+  const explicitDoorNos = collectExplicitPrefixedDoorCapturesFromNormalizedText(normalizedDescription)
+    .map((doorNo) => normalizeDoorNoForCompare(doorNo))
+    .filter((doorNo) => validDoorNos.has(doorNo));
 
   for (const [left, right] of KNOWN_SPLIT_PAIRS) {
     const leftEscaped = left.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -2593,6 +2596,13 @@ function resolveSplitDoorNosFromDescription(description: string, validDoorNos: S
 
     const normalizedLeft = normalizeDoorNoForCompare(left);
     const normalizedRight = normalizeDoorNoForCompare(right);
+
+    // "DAIRE 47 ... *45" gibi aciklamada cift disinda acik bir daire yaziyorsa
+    // odeme o daireye aittir; cift uyesinin gecmesi bolme icin yeterli degildir.
+    if (explicitDoorNos.some((doorNo) => doorNo !== normalizedLeft && doorNo !== normalizedRight)) {
+      continue;
+    }
+
     const knownDoorNos = [normalizedLeft, normalizedRight].filter((doorNo) => validDoorNos.has(doorNo));
 
     if (knownDoorNos.length >= 2) {
