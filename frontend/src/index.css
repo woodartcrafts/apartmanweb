@@ -4586,8 +4586,7 @@ button:active:not(:disabled) {
 
   .monthly-balance-report-page .monthly-balance-table-wrap {
     max-width: 100%;
-    overflow-x: auto;
-    overflow-y: auto;
+    overflow: auto !important;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x pan-y;
   }
@@ -6600,11 +6599,33 @@ td {
   font-size: 0.78rem;
 }
 
+/* Matrix sayfasi: sayfa degil tablo kutusu kayar; basliklar kutunun ustunde sticky kalir */
+.monthly-balance-report-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100dvh - 126px);
+  overflow: hidden;
+}
+
 .monthly-balance-report-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border: 1px solid rgba(18, 89, 145, 0.14);
   background:
     radial-gradient(circle at 88% 10%, rgba(78, 164, 231, 0.18), transparent 42%),
     linear-gradient(145deg, #ffffff 0%, #f6fbff 58%, #f2f8ff 100%);
+}
+
+.monthly-balance-report-card > .section-head,
+.monthly-balance-report-card > .monthly-balance-filter-row,
+.monthly-balance-report-card > .monthly-balance-subtitle,
+.monthly-balance-report-card > .monthly-balance-meta,
+.monthly-balance-report-card > .monthly-balance-stats-grid {
+  flex: 0 0 auto;
 }
 
 .monthly-balance-title {
@@ -6740,10 +6761,47 @@ td {
   outline-offset: 2px;
 }
 
+.monthly-balance-sticky-header {
+  display: none;
+  position: fixed;
+  z-index: 480;
+  overflow: hidden;
+  pointer-events: none;
+  background: #e8edf3;
+  border: 1px solid #c9d9e8;
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  box-shadow: 0 6px 16px rgba(31, 55, 84, 0.16);
+}
+
+.monthly-balance-sticky-header-inner {
+  will-change: transform;
+}
+
+.monthly-balance-sticky-header table {
+  margin: 0;
+  background: #e8edf3;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.monthly-balance-sticky-header th {
+  background: #e8edf3 !important;
+  background-image: none !important;
+  color: #23435f !important;
+  font-weight: 700 !important;
+  box-shadow: inset 0 -1px 0 #c9d9e8;
+}
+
 .monthly-balance-table-wrap {
+  flex: 1 1 auto;
+  min-height: 180px;
+  max-height: none;
   border: 1px solid #c9d9e8;
   border-radius: 12px;
-  overflow: auto;
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
@@ -6751,6 +6809,8 @@ td {
   min-width: 980px;
   width: 100%;
   table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .monthly-balance-matrix-table th,
@@ -6759,11 +6819,19 @@ td {
   font-size: 0.78rem;
   line-height: 1.2;
   white-space: nowrap;
+  border-bottom: 1px solid #d7e4f0;
 }
 
-.monthly-balance-matrix-table thead th {
+/* .table-wrap table thead th kuralindan daha spesifik + !important */
+.monthly-balance-report-page .table-wrap.monthly-balance-table-wrap .monthly-balance-matrix-table thead th {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 40 !important;
   font-weight: 700;
   color: #23435f;
+  background: #e8edf3 !important;
+  background-image: none !important;
+  box-shadow: inset 0 -1px 0 #c9d9e8;
 }
 
 .monthly-balance-matrix-table th:first-child,
@@ -8342,12 +8410,13 @@ details.cc-excluded-card[open] > .cc-excluded-summary::after {
   background: #e8edf3;
 }
 
-.monthly-balance-matrix-table th:nth-child(1) {
+.monthly-balance-report-page .table-wrap.monthly-balance-table-wrap .monthly-balance-matrix-table thead th:nth-child(1) {
   position: sticky !important;
   left: 0 !important;
-  top: 0;
-  z-index: 30 !important;
+  top: 0 !important;
+  z-index: 50 !important;
   background: #e8edf3 !important;
+  background-image: none !important;
 }
 
 .payment-list-table th:nth-child(11),
@@ -10427,6 +10496,16 @@ td.empty {
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* Matrix: mobilde de yalniz tablo kutusu dikey kayar */
+  .report-page.monthly-balance-report-page {
+    max-height: calc(100dvh - 110px);
+  }
+
+  .report-page .monthly-balance-table-wrap {
+    overflow: auto !important;
+    max-height: none;
   }
 
   .report-page .table-wrap > table:not(.overdue-payments-table),

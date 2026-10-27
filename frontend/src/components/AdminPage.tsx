@@ -6024,8 +6024,17 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         }
 
         /* overflow:hidden/auto on the wrapper prevents header repeat — remove for print */
+        body.monthly-balance-print-mode .monthly-balance-report-page,
+        body.monthly-balance-print-mode .monthly-balance-report-card {
+          max-height: none !important;
+          overflow: visible !important;
+          display: block !important;
+        }
+
         body.monthly-balance-print-mode .monthly-balance-table-wrap {
           overflow: visible !important;
+          max-height: none !important;
+          flex: none !important;
           border: none !important;
           border-radius: 0 !important;
         }
@@ -8950,6 +8959,100 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       style.remove();
     };
   }, [location.pathname]);
+
+  // Matrix basliklari: sayfa kaydirilinca da ekranda kalsin (overflow sticky kirilmalarina karsi sabit klon)
+  useEffect(() => {
+    if (location.pathname !== "/admin/reports/monthly-balance-matrix") {
+      document.querySelector(".monthly-balance-sticky-header")?.remove();
+      return;
+    }
+
+    const wrap = document.querySelector<HTMLElement>(".monthly-balance-table-wrap");
+    const table = wrap?.querySelector<HTMLTableElement>("table.monthly-balance-matrix-table");
+    const thead = table?.querySelector("thead");
+    if (!wrap || !table || !thead) {
+      return;
+    }
+
+    document.querySelector(".monthly-balance-sticky-header")?.remove();
+
+    const cloneWrap = document.createElement("div");
+    cloneWrap.className = "monthly-balance-sticky-header";
+    cloneWrap.setAttribute("aria-hidden", "true");
+    const inner = document.createElement("div");
+    inner.className = "monthly-balance-sticky-header-inner";
+    const cloneTable = document.createElement("table");
+    cloneTable.className = table.className;
+    const clonedThead = thead.cloneNode(true) as HTMLTableSectionElement;
+    cloneTable.appendChild(clonedThead);
+    inner.appendChild(cloneTable);
+    cloneWrap.appendChild(inner);
+    document.body.appendChild(cloneWrap);
+
+    const syncColumnWidths = () => {
+      const origThs = thead.querySelectorAll("th");
+      const cloneThs = clonedThead.querySelectorAll("th");
+      origThs.forEach((th, index) => {
+        const target = cloneThs[index] as HTMLElement | undefined;
+        if (!target) {
+          return;
+        }
+        const width = `${th.getBoundingClientRect().width}px`;
+        target.style.width = width;
+        target.style.minWidth = width;
+        target.style.maxWidth = width;
+        target.style.boxSizing = "border-box";
+      });
+      cloneTable.style.width = `${table.getBoundingClientRect().width}px`;
+      cloneTable.style.minWidth = `${table.getBoundingClientRect().width}px`;
+    };
+
+    const update = () => {
+      if (document.body.classList.contains("monthly-balance-print-mode")) {
+        cloneWrap.style.display = "none";
+        return;
+      }
+
+      const subnav = document.querySelector<HTMLElement>(".admin-subnav");
+      const top = Math.max(0, Math.ceil((subnav?.getBoundingClientRect().bottom ?? 0) + 2));
+      const wrapRect = wrap.getBoundingClientRect();
+      const theadRect = thead.getBoundingClientRect();
+      const shouldStick = theadRect.top < top && wrapRect.bottom > top + 48;
+
+      if (!shouldStick) {
+        cloneWrap.style.display = "none";
+        return;
+      }
+
+      syncColumnWidths();
+      cloneWrap.style.display = "block";
+      cloneWrap.style.top = `${top}px`;
+      cloneWrap.style.left = `${wrapRect.left}px`;
+      cloneWrap.style.width = `${wrapRect.width}px`;
+      inner.style.transform = `translateX(${-wrap.scrollLeft}px)`;
+    };
+
+    const onScrollOrResize = () => update();
+    window.addEventListener("scroll", onScrollOrResize, { passive: true });
+    window.addEventListener("resize", onScrollOrResize);
+    wrap.addEventListener("scroll", onScrollOrResize, { passive: true });
+    update();
+    const raf = window.requestAnimationFrame(update);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", onScrollOrResize);
+      window.removeEventListener("resize", onScrollOrResize);
+      wrap.removeEventListener("scroll", onScrollOrResize);
+      cloneWrap.remove();
+    };
+  }, [
+    location.pathname,
+    apartmentBalanceMatrixMonths,
+    sortedApartmentBalanceMatrixRows,
+    apartmentBalanceMatrixYear,
+    apartmentBalanceMatrixTotals,
+  ]);
 
   useEffect(() => {
     const root = adminSubnavRef.current;
