@@ -10005,14 +10005,40 @@ export async function sendDailyDigestEmail(options: {
       pending: digest.pending.count,
     });
     const mail = buildDailyDigestEmail(digest);
-    await sendStatementEmail({
-      from: fromAddress,
-      fromName: process.env.STATEMENT_EMAIL_FROM_NAME?.trim() || "ApartmanWeb",
-      to: recipients,
-      subject: mail.subject,
-      html: mail.html,
-      text: mail.text,
-    });
+    const fromName = process.env.STATEMENT_EMAIL_FROM_NAME?.trim() || "ApartmanWeb";
+    const resendApiKey = process.env.RESEND_API_KEY?.trim();
+    let resendFailure: string | null = null;
+    if (resendApiKey) {
+      // Resend ucretsiz planda dogrulanmis alan adi yoksa yalnizca "onboarding@resend.dev" ile ve
+      // yalnizca Resend hesabinin kendi e-postasina gonderebilir; ozet tam olarak bu durum icin yeterli.
+      const resendFrom = process.env.DIGEST_EMAIL_FROM?.trim() || "onboarding@resend.dev";
+      console.log(`[daily-digest] Resend API ile gonderiliyor -> ${recipients.join(", ")}`);
+      const { error } = await new Resend(resendApiKey).emails.send({
+        from: `${fromName} <${resendFrom}>`,
+        to: recipients,
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+      });
+      if (!error) {
+        return { status: "sent", recipientCount: recipients.length };
+      }
+      resendFailure = `Resend API hatasi: ${(error as { message?: string }).message ?? JSON.stringify(error)}`;
+      console.warn(`[daily-digest] ${resendFailure}`);
+    }
+    try {
+      await sendStatementEmail({
+        from: fromAddress,
+        fromName,
+        to: recipients,
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(resendFailure ? `${resendFailure} | ${message}` : message);
+    }
     return { status: "sent", recipientCount: recipients.length };
   } catch (err) {
     if (claimed) {
