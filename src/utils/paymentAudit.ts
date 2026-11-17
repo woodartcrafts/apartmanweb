@@ -8,11 +8,15 @@
  *  - OVERPAID_CHARGE: bir tahakkuka tutarindan fazla odeme islenmis.
  *  - POSSIBLE_DUPLICATE: ayni gun, ayni tutar, ayni daire; biri Excel biri Gmail/PDF kaynakli (referans turu farkli).
  *  - AWAITING_APPROVAL: onay bekleyen odemeler (bilgi).
+ *
+ * Yonetici bir odemeye bakip "kontrol edildi" isaretlediyse (AUDIT_REVIEWED etiketi) o odeme 1, 2 ve 4.
+ * bulgulardan muaftir; sayisi `reviewedCount` olarak raporda gorunur.
  */
 
 import {
   extractDoorNoTagFromPaymentNote,
   hasManualReconcileLock,
+  isAuditReviewed,
   isAwaitingApproval,
   normalizeDoorNoForCompare,
   parsePaymentNoteParts,
@@ -62,6 +66,8 @@ export type AuditReport = {
   generatedAt: string;
   windowDays: number;
   scannedPaymentCount: number;
+  /** "Kontrol edildi" isaretli oldugu icin bulgu uretilmeyen odeme sayisi. */
+  reviewedCount: number;
   findings: AuditFinding[];
   counts: Record<AuditFindingCode, number>;
 };
@@ -92,8 +98,12 @@ export function auditPayments(input: {
   now?: Date;
 }): AuditReport {
   const findings: AuditFinding[] = [];
+  const reviewedCount = input.payments.filter((payment) => isAuditReviewed(payment.note)).length;
 
   for (const payment of input.payments) {
+    if (isAuditReviewed(payment.note)) {
+      continue;
+    }
     const doorTag = extractDoorNoTagFromPaymentNote(payment.note);
     const normalizedTag = normalizeDoorNoForCompare(doorTag);
     const description = notePart(payment.note, "BANK_DESC:");
@@ -152,6 +162,9 @@ export function auditPayments(input: {
   // 4) Kaynaklar arasi olasi cift kayit: ayni gun + tutar + daire, referans turleri farkli.
   const groups = new Map<string, AuditPaymentInput[]>();
   for (const payment of input.payments) {
+    if (isAuditReviewed(payment.note)) {
+      continue;
+    }
     const ref = notePart(payment.note, "BANK_REF:");
     const doorTag = extractDoorNoTagFromPaymentNote(payment.note);
     if (!ref || !doorTag) {
@@ -217,6 +230,7 @@ export function auditPayments(input: {
     generatedAt: (input.now ?? new Date()).toISOString(),
     windowDays: input.windowDays,
     scannedPaymentCount: input.payments.length,
+    reviewedCount,
     findings,
     counts,
   };

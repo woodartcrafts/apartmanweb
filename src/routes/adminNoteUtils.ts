@@ -79,6 +79,33 @@ export function withApprovedNote(note: string | null, approvedTag: string): stri
   return parts.length > 0 ? parts.join(" | ") : null;
 }
 
+/**
+ * Yonetici gunluk denetimin gosterdigi bir odemeye bakip "dogru, bu haliyle kalsin" dedi.
+ * Bu etiketi tasiyan odemeler denetimde tutarsizlik olarak tekrar gosterilmez. Tahsisata,
+ * mutabakata ya da daire eslestirmeye HICBIR etkisi yoktur; yalnizca denetim listesini sadelestirir.
+ */
+export const AUDIT_REVIEWED_NOTE_PREFIX = "AUDIT_REVIEWED:";
+
+export function isAuditReviewed(note: string | null | undefined): boolean {
+  if (!note) {
+    return false;
+  }
+  return parsePaymentNoteParts(note).some((part) =>
+    part.trim().toUpperCase().startsWith(AUDIT_REVIEWED_NOTE_PREFIX)
+  );
+}
+
+/** Notu "kontrol edildi" olarak isaretler (reviewed=false ise isareti kaldirir). Diger etiketlere dokunmaz. */
+export function withAuditReviewedNote(note: string | null, reviewed: boolean, dayIso: string): string | null {
+  const parts = parsePaymentNoteParts(note).filter(
+    (part) => !part.trim().toUpperCase().startsWith(AUDIT_REVIEWED_NOTE_PREFIX)
+  );
+  if (reviewed) {
+    parts.push(`${AUDIT_REVIEWED_NOTE_PREFIX}${dayIso}`);
+  }
+  return parts.length > 0 ? parts.join(" | ") : null;
+}
+
 export function extractDoorNoTagFromPaymentNote(note: string | null): string | null {
   const doorPart = parsePaymentNoteParts(note).find((part) => part.startsWith("DOOR:"));
   if (!doorPart) {

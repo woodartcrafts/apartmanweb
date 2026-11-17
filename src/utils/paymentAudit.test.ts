@@ -93,4 +93,45 @@ describe("auditPayments", () => {
     expect(hasActionableFindings(report)).toBe(true);
     expect(auditSignature(report)).toBe("WRITTEN_DOOR_MISMATCH:bad:");
   });
+
+  it("'kontrol edildi' isaretli odeme yazili-daire bulgusu uretmez ama sayilir", () => {
+    const report = run([
+      payment(
+        "p1",
+        "BANK_REF:111 | BANK_DESC:AHMET DEMIR*D-24 KASIM 2026 DOGALGAZ AIDAT TL | DOOR:54 | AUDIT_REVIEWED:2026-11-18"
+      ),
+    ]);
+    expect(report.counts.WRITTEN_DOOR_MISMATCH).toBe(0);
+    expect(report.findings).toHaveLength(0);
+    expect(report.reviewedCount).toBe(1);
+    expect(report.scannedPaymentCount).toBe(1);
+  });
+
+  it("'kontrol edildi' isareti yalniz o odemeyi muaf tutar; digeri bulgu vermeye devam eder", () => {
+    const desc = "BANK_DESC:AHMET DEMIR*D-24 KASIM 2026 DOGALGAZ AIDAT TL | DOOR:54";
+    const report = run([
+      payment("ok", `BANK_REF:1 | ${desc} | AUDIT_REVIEWED:2026-11-18`),
+      payment("bad", `BANK_REF:2 | ${desc}`),
+    ]);
+    expect(report.findings.map((f) => f.paymentId)).toEqual(["bad"]);
+    expect(report.reviewedCount).toBe(1);
+  });
+
+  it("'kontrol edildi' isaretli odeme baska daireye yazilmis ve olasi cift kayit olsa da bulgu uretmez", () => {
+    const report = run([
+      payment("a", "BANK_REF:11188005235620261112091856449 | DOOR:54 | AUDIT_REVIEWED:2026-11-18", {
+        linkedDoorNos: ["24"],
+      }),
+      payment("b", "BANK_REF:0123456789ABCDEF | DOOR:54 | AUDIT_REVIEWED:2026-11-18"),
+    ]);
+    expect(report.counts.LINKED_OTHER_APARTMENT).toBe(0);
+    expect(report.counts.POSSIBLE_DUPLICATE).toBe(0);
+  });
+
+  it("onay bekleyen odeme 'kontrol edildi' isaretli olsa da bilgi satirinda sayilmaya devam eder", () => {
+    const report = run([
+      payment("p1", "BANK_REF:1 | DOOR:54 | UNAPPLIED:PENDING_APPROVAL:FIFO_FALLBACK | AUDIT_REVIEWED:2026-11-18"),
+    ]);
+    expect(report.counts.AWAITING_APPROVAL).toBe(1);
+  });
 });

@@ -4627,6 +4627,31 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     }
   }
 
+  async function markPaymentAuditReviewed(paymentId: string): Promise<void> {
+    if (
+      !window.confirm(
+        "Bu odemeyi 'kontrol edildi, dogru' olarak isaretleyip denetim listesinden dusureyim mi? Odemenin dairesi ve borc kapamalari degismez."
+      )
+    ) {
+      return;
+    }
+    setLoading(true);
+    try {
+      await authorizedRequest<{ paymentId: string; reviewed: boolean; changed: boolean }>(
+        "/api/admin/payment-audit/review",
+        { method: "POST", payload: { paymentId, reviewed: true } }
+      );
+      await fetchApartmentCredits({ silent: true });
+      setMessage("Odeme 'kontrol edildi' olarak isaretlendi");
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Odeme isaretlenemedi");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function fetchActionLogs(): Promise<void> {
     try {
       const rows = await authorizedRequest<AdminActionLogRow[]>("/api/admin/actions/logs?limit=50");
@@ -13238,6 +13263,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 refresh={() => fetchApartmentCredits()}
                 applyPendingCredits={applyPendingApartmentCredits}
                 approvePendingCredit={approvePendingCredit}
+                markAuditReviewed={markPaymentAuditReviewed}
               />
             </Suspense>
           }

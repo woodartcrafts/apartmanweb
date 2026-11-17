@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
-import { normalizeDoorNoForCompare } from "./adminNoteUtils";
+import { isAuditReviewed, normalizeDoorNoForCompare, withAuditReviewedNote } from "./adminNoteUtils";
 import { fromCents, toCents } from "../utils/money";
 import {
   auditPayments,
@@ -101,6 +101,43 @@ export function createAdminPaymentAuditRoutes(): Router {
 
     const report = await loadPaymentAuditReport(parsed.data.days ?? DEFAULT_AUDIT_WINDOW_DAYS);
     return res.json(report);
+  });
+
+  /**
+   * Yonetici bir odemeye bakip "kontrol edildi" der (ya da isareti geri alir). Yalnizca odemenin
+   * notuna AUDIT_REVIEWED etiketi ekler/cikarir; tahsisata, mutabakata, dairelere dokunmaz.
+   */
+  router.post("/payment-audit/review", async (req, res) => {
+    const parsed = z
+      .object({ paymentId: z.string().min(1), reviewed: z.boolean().optional() })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid payload", errors: parsed.error.issues });
+    }
+
+    const reviewed = parsed.data.reviewed ?? true;
+    const payment = await prisma.payment.findUnique({
+      where: { id: parsed.data.paymentId },
+      select: { id: true, note: true },
+    });
+    if (!payment) {
+      return res.status(404).json({ message: "Odeme bulunamadi" });
+    }
+    if (isAuditReviewed(payment.note) === reviewed) {
+      return res.json({ paymentId: payment.id, reviewed, changed: false });
+    }
+
+    const nextNote = withAuditReviewedNote(payment.note, reviewed, new Date().toISOString().slice(0, 10));
+    // Not baskasi tarafindan arada degistiyse yazma (eski notun uzerine yazmayalim).
+    const updated = await prisma.payment.updateMany({
+      where: { id: payment.id, note: payment.note },
+      data: { note: nextNote },
+    });
+    if (updated.count === 0) {
+      return res.status(409).json({ message: "Odeme bu sirada degisti, listeyi yenileyip tekrar deneyin" });
+    }
+
+    return res.json({ paymentId: payment.id, reviewed, changed: true });
   });
 
   return router;

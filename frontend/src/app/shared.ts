@@ -747,6 +747,7 @@ export type PaymentAuditReport = {
   generatedAt: string;
   windowDays: number;
   scannedPaymentCount: number;
+  reviewedCount?: number;
   findings: PaymentAuditFinding[];
 };
 

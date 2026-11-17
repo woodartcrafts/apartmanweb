@@ -14,6 +14,7 @@ type ApartmentCreditsPageProps = {
   refresh: () => Promise<void>;
   applyPendingCredits: () => Promise<void>;
   approvePendingCredit: (paymentId: string, chargeIds?: string[]) => Promise<void>;
+  markAuditReviewed: (paymentId: string) => Promise<void>;
 };
 
 const MONTH_NAMES = [
@@ -43,6 +44,7 @@ export function ApartmentCreditsPage({
   refresh,
   applyPendingCredits,
   approvePendingCredit,
+  markAuditReviewed,
 }: ApartmentCreditsPageProps) {
   const allPendingCredits = useMemo(() => data?.pendingCredits ?? [], [data]);
   const approvalRows = useMemo(
@@ -229,7 +231,9 @@ export function ApartmentCreditsPage({
           Denetim Bulgulari
           <span className="small">
             {audit
-              ? ` (son ${audit.windowDays} gun, ${audit.scannedPaymentCount} odeme tarandi)`
+              ? ` (son ${audit.windowDays} gun, ${audit.scannedPaymentCount} odeme tarandi${
+                  audit.reviewedCount ? `, ${audit.reviewedCount} odeme 'kontrol edildi' isaretli` : ""
+                })`
               : ""}
           </span>
         </h4>
@@ -250,6 +254,21 @@ export function ApartmentCreditsPage({
               >
                 {finding.severity === "HIGH" ? "[Onemli] " : finding.severity === "MEDIUM" ? "[Orta] " : "[Bilgi] "}
                 {finding.message}
+                {finding.paymentId ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={loading}
+                      onClick={() => {
+                        void markAuditReviewed(finding.paymentId as string).catch(() => undefined);
+                      }}
+                    >
+                      Kontrol edildi, dogru
+                    </button>
+                  </>
+                ) : null}
               </li>
             ))}
           </ul>
