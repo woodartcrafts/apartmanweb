@@ -56,13 +56,19 @@ describe("collectAlreadySplitBankRefs", () => {
 
 describe("resolveKnownPairDoorNos", () => {
   it("cift birlikte gectiginde ikisini birden dondurur", () => {
-    expect(resolveKnownPairDoorNos("BULENT GUNER*0099*D57VED93 MAYIS26AIDATLAR")).toEqual(["57", "93"]);
+    expect(resolveKnownPairDoorNos("ECE*0099*D35VED45 MAYIS26AIDATLAR")).toEqual(["35", "45"]);
     expect(resolveKnownPairDoorNos("daire 48 ve 65 aidat")).toEqual(["48", "65"]);
   });
 
   it("ciftin tek uyesi gectiginde de ikisini dondurur (kullanici istegi)", () => {
-    expect(resolveKnownPairDoorNos("daire 57 mayis aidat")).toEqual(["57", "93"]);
+    expect(resolveKnownPairDoorNos("daire 65 mayis aidat")).toEqual(["48", "65"]);
     expect(resolveKnownPairDoorNos("d 35 haziran")).toEqual(["35", "45"]);
+  });
+
+  it("57/93 artik otomatik bolunmez (ayri ayri odeniyor)", () => {
+    expect(resolveKnownPairDoorNos("MURADIYE GUNER*0067*DAIRE:93 BULENT GUNER DOGALGAZ UCRETI")).toEqual([]);
+    expect(resolveKnownPairDoorNos("Daire: 57 Buket Guner Dogalgaz Ucreti")).toEqual([]);
+    expect(resolveKnownPairDoorNos("D57VED93 MAYIS AIDAT")).toEqual([]);
   });
 
   it("bilinen cift disindaki daireler icin bos doner", () => {
@@ -78,7 +84,7 @@ describe("resolveKnownPairDoorNos", () => {
   });
 
   it("tanimli ciftler kullanicinin verdigi listeyle ayni", () => {
-    expect(KNOWN_SPLIT_PAIRS.flat().sort()).toEqual(["35", "45", "48", "57", "65", "93"]);
+    expect(KNOWN_SPLIT_PAIRS.flat().sort()).toEqual(["35", "45", "48", "65"]);
   });
 });
 
