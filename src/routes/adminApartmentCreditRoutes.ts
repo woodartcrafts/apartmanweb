@@ -42,7 +42,7 @@ type RefreshChargeStatuses = (
 ) => Promise<void>;
 
 /** Bekleyen tutarin nicin dagitilmadigini insan diline cevirir. */
-function describePendingReason(note: string | null): string {
+export function describePendingReason(note: string | null): string {
   const parts = parsePaymentNoteParts(note);
 
   if (isAwaitingApproval(note)) {

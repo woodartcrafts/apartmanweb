@@ -1,7 +1,17 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
-import { isAuditReviewed, normalizeDoorNoForCompare, withAuditReviewedNote } from "./adminNoteUtils";
+import {
+  extractDoorNoTagFromPaymentNote,
+  isAuditReviewed,
+  isAwaitingApproval,
+  normalizeDoorNoForCompare,
+  parsePaymentNoteParts,
+  parseRefundedAmountFromNote,
+  withAuditReviewedNote,
+} from "./adminNoteUtils";
+import { describePendingReason } from "./adminApartmentCreditRoutes";
+import type { DailyDigest, DigestPaymentLine, DigestSendResult, DigestSyncSummary } from "../utils/dailyDigest";
 import { fromCents, toCents } from "../utils/money";
 import {
   auditPayments,
@@ -88,7 +98,86 @@ export async function loadPaymentAuditReport(windowDays: number = DEFAULT_AUDIT_
   return auditPayments({ payments: paymentInputs, charges, doorNoSet, windowDays });
 }
 
-export function createAdminPaymentAuditRoutes(): Router {
+const DIGEST_CREDIT_SCAN_LIMIT = 5000;
+
+function bankDescriptionOf(note: string | null): string {
+  const part = parsePaymentNoteParts(note).find((candidate) => candidate.startsWith("BANK_DESC:"));
+  return part ? part.slice("BANK_DESC:".length).trim() : "";
+}
+
+/**
+ * Gunluk ozet e-postasi icin salt-okunur veri: denetim bulgulari + onay bekleyen odemeler +
+ * ortada kalan (borca yazilmamis) alacaklar. Alacak tanimi Daire Alacaklari ekraniyla aynidir.
+ */
+export async function loadDailyDigest(
+  sync: DigestSyncSummary | null,
+  now: Date,
+  timeZone: string
+): Promise<DailyDigest> {
+  const audit = await loadPaymentAuditReport();
+
+  const candidates = await prisma.payment.findMany({
+    where: {
+      note: { contains: "DOOR:" },
+      OR: [{ itemLinks: { none: {} } }, { note: { contains: "UNAPPLIED:" } }],
+    },
+    select: {
+      id: true,
+      paidAt: true,
+      totalAmount: true,
+      note: true,
+      itemLinks: { select: { amount: true } },
+    },
+    orderBy: [{ paidAt: "desc" }],
+    take: DIGEST_CREDIT_SCAN_LIMIT,
+  });
+
+  const awaiting: DigestPaymentLine[] = [];
+  const pendingLines: DigestPaymentLine[] = [];
+  let pendingTotalCents = 0;
+
+  for (const payment of candidates) {
+    const linkedCents = payment.itemLinks.reduce((sum, item) => sum + toCents(item.amount), 0);
+    const refundedCents = toCents(parseRefundedAmountFromNote(payment.note));
+    const pendingCents = toCents(payment.totalAmount) - linkedCents - refundedCents;
+    if (pendingCents <= 0) {
+      continue;
+    }
+    const doorTag = extractDoorNoTagFromPaymentNote(payment.note);
+    const line: DigestPaymentLine = {
+      paidAt: payment.paidAt.toISOString(),
+      amount: fromCents(pendingCents),
+      doorLabel: doorTag ? `Daire ${doorTag}` : "Daire ?",
+      description: bankDescriptionOf(payment.note),
+      reason: describePendingReason(payment.note),
+    };
+    if (isAwaitingApproval(payment.note)) {
+      awaiting.push(line);
+    } else {
+      pendingLines.push(line);
+      pendingTotalCents += pendingCents;
+    }
+  }
+
+  const dayLabel = new Intl.DateTimeFormat("tr-TR", {
+    timeZone,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(now);
+
+  return {
+    dayLabel,
+    sync,
+    audit,
+    awaiting,
+    pending: { count: pendingLines.length, total: fromCents(pendingTotalCents), lines: pendingLines },
+  };
+}
+
+export function createAdminPaymentAuditRoutes(deps: {
+  sendDigest: (options: { force: boolean }) => Promise<DigestSendResult>;
+}): Router {
   const router = Router();
 
   router.get("/payment-audit", async (req, res) => {
@@ -138,6 +227,17 @@ export function createAdminPaymentAuditRoutes(): Router {
     }
 
     return res.json({ paymentId: payment.id, reviewed, changed: true });
+  });
+
+  /** Gunluk ozeti simdi e-postayla gonderir (test / elle tetikleme). Gunluk "gonderildi" kaydini yoklamaz. */
+  router.post("/payment-audit/send-digest", async (_req, res) => {
+    try {
+      const result = await deps.sendDigest({ force: true });
+      return res.json(result);
+    } catch (err) {
+      console.error("[daily-digest] manual send failed", err);
+      return res.status(502).json({ message: "Ozet e-postasi gonderilemedi" });
+    }
   });
 
   return router;

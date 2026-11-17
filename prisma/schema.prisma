@@ -548,3 +548,9 @@ model SecureNote {
 
   @@index([sortOrder])
 }
+
+/// Gunluk ozet e-postasinin o gun gonderildigini isaretler (yeniden baslatmada ve birden fazla serviste tekrar gonderimi onler).
+model DailyDigestLog {
+  dayKey String   @id
+  sentAt DateTime @default(now())
+}

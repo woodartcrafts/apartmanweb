@@ -33,9 +33,9 @@ import { createAdminAccountTransferRoutes } from "./adminAccountTransferRoutes";
 import { createAdminPaymentRefundRoutes } from "./adminPaymentRefundRoutes";
 import { createAdminSplitCandidateRoutes } from "./adminSplitCandidateRoutes";
 import { createAdminApartmentCreditRoutes } from "./adminApartmentCreditRoutes";
-import { createAdminPaymentAuditRoutes, loadPaymentAuditReport } from "./adminPaymentAuditRoutes";
+import { createAdminPaymentAuditRoutes, loadDailyDigest } from "./adminPaymentAuditRoutes";
 import { sendHeartbeat } from "../utils/heartbeat";
-import { auditSignature, formatAuditText, hasActionableFindings } from "../utils/paymentAudit";
+import { buildDailyDigestEmail, type DigestSendResult, type DigestSyncSummary } from "../utils/dailyDigest";
 import { createAdminCashCashflowRoutes } from "./adminCashCashflowRoutes";
 import {
   ACCOUNT_TRANSFER_NOTE_PREFIX,
@@ -6066,7 +6066,7 @@ router.use(
   })
 );
 router.use(createAdminApartmentCreditRoutes({ refreshChargeStatusesForIds }));
-router.use(createAdminPaymentAuditRoutes());
+router.use(createAdminPaymentAuditRoutes({ sendDigest: ({ force }) => sendDailyDigestEmail({ force }) }));
 router.use(createAdminCashCashflowRoutes());
 router.use(createAdminUploadBatchRoutes({ refreshChargeStatusesForIds }));
 
@@ -9947,59 +9947,88 @@ router.delete("/payment-items/:paymentItemId", async (req, res) => {
   return res.status(204).send();
 });
 
-let lastSentPaymentAuditSignature: string | null = null;
+/** Gunluk ozet e-postasinin alicilari (virgul/noktali virgul/bosluk ile ayrilmis). Tanimsizsa ozet gonderilmez. */
+function paymentAuditRecipients(): string[] {
+  return (process.env.PAYMENT_AUDIT_EMAIL_TO ?? "")
+    .split(/[,;\s]+/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
 
 /**
- * Gunluk salt-okunur denetim. Sonuc her zaman log'a yazilir; e-posta YALNIZCA
- * PAYMENT_AUDIT_EMAIL_TO tanimliysa ve bakilmasi gereken (bilgi disi) bulgu varsa, ayni bulgu
- * kumesi daha once gonderilmediyse gider. Hicbir kaydi degistirmez.
+ * Gunluk ozet e-postasi. `force=false` (zamanlayici): ayni gun ikinci kez gonderilmez; "gonderildi"
+ * kaydi veritabaninda tutulur, boylece yeniden baslatmada ya da iki serviste tekrar gonderim olmaz.
+ * Gonderim basarisiz olursa kayit geri alinir ve sonraki calismada yeniden denenir. Hicbir odeme kaydini degistirmez.
  */
-export async function runScheduledPaymentAudit(): Promise<void> {
+export async function sendDailyDigestEmail(options: {
+  sync?: DigestSyncSummary | null;
+  force: boolean;
+}): Promise<DigestSendResult> {
+  const recipients = paymentAuditRecipients();
+  if (recipients.length === 0) {
+    return { status: "no_recipient", recipientCount: 0 };
+  }
+
+  const fromAddress =
+    process.env.STATEMENT_EMAIL_FROM?.trim() ||
+    process.env.STATEMENT_EMAIL_SMTP_USER?.trim() ||
+    config.gmailBankSync.gmailUser?.trim() ||
+    "";
+  if (!fromAddress) {
+    console.warn("[daily-digest] e-posta gonderici adresi tanimli degil, e-posta atlandi");
+    return { status: "no_sender", recipientCount: recipients.length };
+  }
+
+  const timeZone = config.gmailBankSync.scheduleTimeZone;
+  const now = new Date();
+  const dayKey = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+
+  let claimed = false;
+  if (!options.force) {
+    try {
+      await prisma.dailyDigestLog.create({ data: { dayKey } });
+      claimed = true;
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        return { status: "already_sent", recipientCount: recipients.length };
+      }
+      throw err;
+    }
+  }
+
   try {
-    const report = await loadPaymentAuditReport();
-    console.log("[payment-audit] completed", {
-      scannedPaymentCount: report.scannedPaymentCount,
-      counts: report.counts,
+    const digest = await loadDailyDigest(options.sync ?? null, now, timeZone);
+    console.log("[daily-digest] built", {
+      scannedPaymentCount: digest.audit.scannedPaymentCount,
+      counts: digest.audit.counts,
+      awaiting: digest.awaiting.length,
+      pending: digest.pending.count,
     });
-
-    const recipients = (process.env.PAYMENT_AUDIT_EMAIL_TO ?? "")
-      .split(/[,;\s]+/)
-      .map((value) => value.trim())
-      .filter(Boolean);
-    if (recipients.length === 0 || !hasActionableFindings(report)) {
-      return;
-    }
-
-    const signature = auditSignature(report);
-    if (signature === lastSentPaymentAuditSignature) {
-      return;
-    }
-
-    const fromAddress =
-      process.env.STATEMENT_EMAIL_FROM?.trim() ||
-      process.env.STATEMENT_EMAIL_SMTP_USER?.trim() ||
-      config.gmailBankSync.gmailUser?.trim() ||
-      "";
-    if (!fromAddress) {
-      console.warn("[payment-audit] e-posta gonderici adresi tanimli degil, e-posta atlandi");
-      return;
-    }
-
-    const text = formatAuditText(report);
+    const mail = buildDailyDigestEmail(digest);
     await sendStatementEmail({
       from: fromAddress,
       fromName: process.env.STATEMENT_EMAIL_FROM_NAME?.trim() || "ApartmanWeb",
       to: recipients,
-      subject: "ApartmanWeb denetimi: bakilmasi gereken odeme kayitlari var",
-      html: `<pre style="font-family:inherit;white-space:pre-wrap">${text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")}</pre>`,
-      text,
+      subject: mail.subject,
+      html: mail.html,
+      text: mail.text,
     });
-    lastSentPaymentAuditSignature = signature;
+    return { status: "sent", recipientCount: recipients.length };
   } catch (err) {
-    console.error("[payment-audit] failed", err);
+    if (claimed) {
+      await prisma.dailyDigestLog.delete({ where: { dayKey } }).catch(() => undefined);
+    }
+    throw err;
+  }
+}
+
+/** Zamanlayicinin gunluk ozet adimi: hata verse de ana akisi bozmaz. */
+export async function runScheduledPaymentAudit(sync: DigestSyncSummary | null = null): Promise<void> {
+  try {
+    const result = await sendDailyDigestEmail({ sync, force: false });
+    console.log("[daily-digest]", result);
+  } catch (err) {
+    console.error("[daily-digest] failed", err);
   }
 }
 
@@ -10009,6 +10038,7 @@ export async function runScheduledGmailBankSync(): Promise<void> {
   }
 
   let syncFailureNote: string | null = null;
+  let syncSummary: DigestSyncSummary | null = null;
   try {
     const result = await runGmailBankSync();
     console.log("[gmail-bank-sync] completed", {
@@ -10019,6 +10049,14 @@ export async function runScheduledGmailBankSync(): Promise<void> {
       skippedRowCount: result.skippedRowCount,
       errors: result.errors.length,
     });
+    syncSummary = {
+      importedPaymentCount: result.importedPaymentCount,
+      importedExpenseCount: result.importedExpenseCount,
+      importedBatchCount: result.importedBatchCount,
+      skippedRowCount: result.skippedRowCount,
+      errorCount: result.errors.length,
+      failureNote: null,
+    };
     if (result.errors.length > 0) {
       syncFailureNote = `gmail-bank-sync: ${result.errors.length} hata (ilki: ${result.errors[0]})`;
     }
@@ -10026,13 +10064,23 @@ export async function runScheduledGmailBankSync(): Promise<void> {
     console.error("[gmail-bank-sync] failed", err);
     syncFailureNote = `gmail-bank-sync basarisiz: ${err instanceof Error ? err.message : String(err)}`;
   }
+  if (syncFailureNote) {
+    syncSummary = {
+      importedPaymentCount: syncSummary?.importedPaymentCount ?? 0,
+      importedExpenseCount: syncSummary?.importedExpenseCount ?? 0,
+      importedBatchCount: syncSummary?.importedBatchCount ?? 0,
+      skippedRowCount: syncSummary?.skippedRowCount ?? 0,
+      errorCount: syncSummary?.errorCount ?? 1,
+      failureNote: syncFailureNote,
+    };
+  }
 
   // Disaridaki izleme servisine nabiz: hatasiz bitti -> "ok"; hata varsa -> "fail" (adres tanimliysa).
   // Hic nabiz gelmezse (uygulama kapali, senkron hic calismadi) servis telefona uyari gonderir.
   await sendHeartbeat(syncFailureNote ? "fail" : "ok", syncFailureNote ?? undefined);
 
   // Yeni odemeler senkronla geldigi icin denetim her zaman senkrondan sonra calisir.
-  await runScheduledPaymentAudit();
+  await runScheduledPaymentAudit(syncSummary);
 }
 
 router.get("/login-logs", async (req, res) => {

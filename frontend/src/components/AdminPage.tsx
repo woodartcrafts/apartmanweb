@@ -4627,6 +4627,30 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     }
   }
 
+  async function sendPaymentAuditDigest(): Promise<void> {
+    setLoading(true);
+    try {
+      const result = await authorizedRequest<{
+        status: "sent" | "no_recipient" | "already_sent" | "no_sender";
+        recipientCount: number;
+      }>("/api/admin/payment-audit/send-digest", { method: "POST", payload: {} });
+      setMessage(
+        result.status === "sent"
+          ? `Gunluk ozet ${result.recipientCount} alicinin e-postasina gonderildi`
+          : result.status === "no_recipient"
+            ? "Ozet gonderilmedi: e-posta alicisi tanimli degil (PAYMENT_AUDIT_EMAIL_TO)"
+            : result.status === "no_sender"
+              ? "Ozet gonderilmedi: gonderen e-posta adresi tanimli degil"
+              : "Bugunun ozeti zaten gonderilmis"
+      );
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Ozet e-postasi gonderilemedi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function markPaymentAuditReviewed(paymentId: string): Promise<void> {
     if (
       !window.confirm(
@@ -13264,6 +13288,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 applyPendingCredits={applyPendingApartmentCredits}
                 approvePendingCredit={approvePendingCredit}
                 markAuditReviewed={markPaymentAuditReviewed}
+                sendAuditDigest={sendPaymentAuditDigest}
               />
             </Suspense>
           }
