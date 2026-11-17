@@ -89,6 +89,7 @@ import {
   type AccountTransferDirection,
   type AccountTransferRow,
   type ApartmentCreditsResponse,
+  type PaymentAuditReport,
   type ApplyPendingCreditsResult,
   type ApprovePendingCreditResult,
   type CashCashflowResponse,
@@ -670,6 +671,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [splitCandidatesPageLoading, setSplitCandidatesPageLoading] = useState(false);
   const [apartmentCreditsData, setApartmentCreditsData] = useState<ApartmentCreditsResponse | null>(null);
   const [apartmentCreditsPageLoading, setApartmentCreditsPageLoading] = useState(false);
+  const [paymentAuditData, setPaymentAuditData] = useState<PaymentAuditReport | null>(null);
   const [cashCashflowData, setCashCashflowData] = useState<CashCashflowResponse | null>(null);
   const [cashCashflowPageLoading, setCashCashflowPageLoading] = useState(false);
   const [cashCashflowFrom, setCashCashflowFrom] = useState("");
@@ -4515,6 +4517,13 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     try {
       const data = await authorizedRequest<ApartmentCreditsResponse>("/api/admin/apartment-credits");
       setApartmentCreditsData(data);
+      // Salt-okunur denetim: basarisiz olsa da alacak sayfasi calismaya devam eder.
+      try {
+        setPaymentAuditData(await authorizedRequest<PaymentAuditReport>("/api/admin/payment-audit"));
+      } catch (auditErr) {
+        console.error(auditErr);
+        setPaymentAuditData(null);
+      }
       if (!silent) {
         setMessage(
           `Bekleyen alacak: ${formatTry(data.pendingTotal)}, fazla odenmis tahakkuk: ${data.overpaidCharges.length}`
@@ -13225,6 +13234,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 loading={loading}
                 pageLoading={apartmentCreditsPageLoading}
                 data={apartmentCreditsData}
+                audit={paymentAuditData}
                 refresh={() => fetchApartmentCredits()}
                 applyPendingCredits={applyPendingApartmentCredits}
                 approvePendingCredit={approvePendingCredit}

@@ -725,6 +725,29 @@ export type ApartmentCreditsResponse = {
   overpaidTotal: number;
 };
 
+export type PaymentAuditFinding = {
+  code:
+    | "WRITTEN_DOOR_MISMATCH"
+    | "LINKED_OTHER_APARTMENT"
+    | "OVERPAID_CHARGE"
+    | "POSSIBLE_DUPLICATE"
+    | "AWAITING_APPROVAL";
+  severity: "HIGH" | "MEDIUM" | "INFO";
+  message: string;
+  paymentId?: string;
+  chargeId?: string;
+  doorNo?: string | null;
+  amount?: number;
+  paidAt?: string;
+};
+
+export type PaymentAuditReport = {
+  generatedAt: string;
+  windowDays: number;
+  scannedPaymentCount: number;
+  findings: PaymentAuditFinding[];
+};
+
 export type ApplyPendingCreditsResult = {
   appliedPaymentCount: number;
   createdItemCount: number;

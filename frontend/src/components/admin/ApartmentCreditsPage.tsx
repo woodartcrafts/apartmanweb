@@ -3,12 +3,14 @@ import {
   formatDateTr,
   formatTry,
   type ApartmentCreditsResponse,
+  type PaymentAuditReport,
 } from "../../app/shared";
 
 type ApartmentCreditsPageProps = {
   loading: boolean;
   pageLoading: boolean;
   data: ApartmentCreditsResponse | null;
+  audit: PaymentAuditReport | null;
   refresh: () => Promise<void>;
   applyPendingCredits: () => Promise<void>;
   approvePendingCredit: (paymentId: string, chargeIds?: string[]) => Promise<void>;
@@ -37,6 +39,7 @@ export function ApartmentCreditsPage({
   loading,
   pageLoading,
   data,
+  audit,
   refresh,
   applyPendingCredits,
   approvePendingCredit,
@@ -214,6 +217,36 @@ export function ApartmentCreditsPage({
             DIKKAT: taranan kayit sayisi limite takildi, liste eksik olabilir.
           </p>
         ) : null}
+
+        <h4 className="compact-row-top-gap">
+          Denetim Bulgulari
+          <span className="small">
+            {audit
+              ? ` (son ${audit.windowDays} gun, ${audit.scannedPaymentCount} odeme tarandi)`
+              : ""}
+          </span>
+        </h4>
+        <p className="small">
+          Gunluk otomatik denetim yalnizca okur, hicbir kaydi degistirmez. Asagidakiler sistemin
+          kendi kayitlarindaki tutarsizliklardir; duzeltme Duzeltmeler ekranindan elle yapilir.
+        </p>
+        {!audit ? (
+          <p className="small">Denetim sonucu alinamadi.</p>
+        ) : audit.findings.length === 0 ? (
+          <p className="small">Bakilmasi gereken bulgu yok.</p>
+        ) : (
+          <ul className="small">
+            {audit.findings.map((finding, index) => (
+              <li
+                key={`${finding.code}-${finding.paymentId ?? finding.chargeId ?? index}`}
+                className={finding.severity === "HIGH" ? "text-danger" : undefined}
+              >
+                {finding.severity === "HIGH" ? "[Onemli] " : finding.severity === "MEDIUM" ? "[Orta] " : "[Bilgi] "}
+                {finding.message}
+              </li>
+            ))}
+          </ul>
+        )}
 
         <h4 className="compact-row-top-gap">
           Onay Bekleyen Odemeler
