@@ -71,7 +71,7 @@ import {
 } from "../utils/apartmentCredit";
 import { fromCents, toCents } from "../utils/money";
 import { findCrossSourceDuplicateRowNos } from "../utils/bankRowDedup";
-import { isLowConfidenceAutoMatch } from "../utils/paymentApproval";
+import { isLowConfidenceAutoMatch, restrictSpillToPrimaryTypes } from "../utils/paymentApproval";
 import { extractWrittenDoorNoFromNormalizedText } from "../utils/doorHint";
 import {
   mapRequestMethodToAdminAction,
@@ -3783,8 +3783,17 @@ async function processBankStatementImport(params: {
               const hintedChargeIds = new Set(hintedSelection.charges.map((charge) => charge.chargeId));
               const hintedOrdered = openCharges.filter((charge) => hintedChargeIds.has(charge.chargeId));
               const remainingOrdered = openCharges.filter((charge) => !hintedChargeIds.has(charge.chargeId));
-              // Apply hinted candidates first but continue with remaining open debts for leftover amount.
-              orderedCharges = [...hintedOrdered, ...remainingOrdered];
+              // Ipucuyla secilen kalemler once kapatilir. Artan tutar yalnizca AYNI turdeki diger
+              // acik kalemlere tasar; baska tura (dogalgaz artigi aidata ya da tersi) yazilmaz,
+              // kalan tutar daire alacagi olarak bekler.
+              orderedCharges = [
+                ...hintedOrdered,
+                ...restrictSpillToPrimaryTypes(
+                  hintedOrdered,
+                  remainingOrdered,
+                  (chargeId) => chargeMetaById.get(chargeId)?.chargeTypeCode
+                ),
+              ];
               autoMatchHintReason = hintedSelection.reason;
             } else if (subsetSelection) {
               const subsetChargeIds = new Set(subsetSelection.charges.map((charge) => charge.chargeId));

@@ -50,20 +50,34 @@ export function ApartmentCreditsPage({
     () => allPendingCredits.filter((row) => !row.pendingApproval),
     [allPendingCredits]
   );
+  // Tur kisitina takilan alacaklar: ayni turde acik borc yok ama dairede baska acik kalemler var.
+  // Otomatik yazilmaz; yonetici hangi kalemlere yazilacagini kendisi secer.
+  const typeBlockedRows = useMemo(
+    () =>
+      pendingCredits.filter(
+        (row) =>
+          row.typeRestriction !== null &&
+          row.autoApplyBlocker !== null &&
+          (row.approvalOpenCharges ?? []).length > 0
+      ),
+    [pendingCredits]
+  );
   const overpaidCharges = data?.overpaidCharges ?? [];
 
   // Yonetici onerilen kalemleri degistirdiyse paymentId -> secili kalem listesi.
   const [selectionByPayment, setSelectionByPayment] = useState<Record<string, string[]>>({});
 
-  function proposedChargeIds(row: (typeof approvalRows)[number]): string[] {
+  type CreditRow = (typeof allPendingCredits)[number];
+
+  function proposedChargeIds(row: CreditRow): string[] {
     return (row.approvalProposal ?? []).map((item) => item.chargeId);
   }
 
-  function currentSelection(row: (typeof approvalRows)[number]): string[] {
+  function currentSelection(row: CreditRow): string[] {
     return selectionByPayment[row.paymentId] ?? proposedChargeIds(row);
   }
 
-  function toggleCharge(row: (typeof approvalRows)[number], chargeId: string): void {
+  function toggleCharge(row: CreditRow, chargeId: string): void {
     const current = currentSelection(row);
     const next = current.includes(chargeId)
       ? current.filter((id) => id !== chargeId)
@@ -71,7 +85,7 @@ export function ApartmentCreditsPage({
     setSelectionByPayment((prev) => ({ ...prev, [row.paymentId]: next }));
   }
 
-  async function approve(row: (typeof approvalRows)[number]): Promise<void> {
+  async function approve(row: CreditRow): Promise<void> {
     const selected = currentSelection(row);
     const proposed = proposedChargeIds(row);
     const unchanged =
@@ -86,6 +100,76 @@ export function ApartmentCreditsPage({
       delete rest[row.paymentId];
       return rest;
     });
+  }
+
+  function renderPickerTable(rows: CreditRow[], buttonLabel: string) {
+    return (
+      <div className="table-wrap compact-row-top-gap">
+        <table className="apartment-list-table report-compact-table">
+          <thead>
+            <tr>
+              <th>Tarih</th>
+              <th>Daire</th>
+              <th className="col-num">Tutar</th>
+              <th>Yazilacak borc kalemleri</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const selected = currentSelection(row);
+              const openCharges = row.approvalOpenCharges ?? [];
+              return (
+                <tr key={row.paymentId}>
+                  <td>{formatDateTr(row.paidAt)}</td>
+                  <td>{row.apartmentLabel ?? row.doorNo ?? "-"}</td>
+                  <td className="col-num">{formatTry(row.pendingAmount)}</td>
+                  <td>
+                    {row.typeRestriction ? (
+                      <div className="small">Alacagin turu: {row.typeRestriction.join(" / ")}</div>
+                    ) : null}
+                    {openCharges.length === 0 ? (
+                      <span className="text-danger">Dairede acik borc yok</span>
+                    ) : (
+                      openCharges.map((charge) => {
+                        const proposedAmount = row.approvalProposal?.find(
+                          (item) => item.chargeId === charge.chargeId
+                        )?.amount;
+                        return (
+                          <label key={charge.chargeId} style={{ display: "block" }}>
+                            <input
+                              type="checkbox"
+                              checked={selected.includes(charge.chargeId)}
+                              onChange={() => toggleCharge(row, charge.chargeId)}
+                              disabled={loading}
+                            />{" "}
+                            {formatPeriod(charge.periodYear, charge.periodMonth)} -{" "}
+                            {charge.chargeTypeName} (kalan {formatTry(charge.remaining)})
+                            {proposedAmount !== undefined
+                              ? ` - onerilen ${formatTry(proposedAmount)}`
+                              : ""}
+                          </label>
+                        );
+                      })
+                    )}
+                  </td>
+                  <td>
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      onClick={() => void approve(row)}
+                      disabled={loading || pageLoading || selected.length === 0}
+                    >
+                      {buttonLabel}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
   const blockedCount = useMemo(
@@ -144,69 +228,24 @@ export function ApartmentCreditsPage({
         {approvalRows.length === 0 ? (
           <p className="small">Onay bekleyen odeme yok.</p>
         ) : (
-          <div className="table-wrap compact-row-top-gap">
-            <table className="apartment-list-table report-compact-table">
-              <thead>
-                <tr>
-                  <th>Tarih</th>
-                  <th>Daire</th>
-                  <th className="col-num">Tutar</th>
-                  <th>Yazilacak borc kalemleri</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {approvalRows.map((row) => {
-                  const selected = currentSelection(row);
-                  const openCharges = row.approvalOpenCharges ?? [];
-                  return (
-                    <tr key={row.paymentId}>
-                      <td>{formatDateTr(row.paidAt)}</td>
-                      <td>{row.apartmentLabel ?? row.doorNo ?? "-"}</td>
-                      <td className="col-num">{formatTry(row.pendingAmount)}</td>
-                      <td>
-                        {openCharges.length === 0 ? (
-                          <span className="text-danger">Dairede acik borc yok</span>
-                        ) : (
-                          openCharges.map((charge) => {
-                            const proposedAmount = row.approvalProposal?.find(
-                              (item) => item.chargeId === charge.chargeId
-                            )?.amount;
-                            return (
-                              <label key={charge.chargeId} style={{ display: "block" }}>
-                                <input
-                                  type="checkbox"
-                                  checked={selected.includes(charge.chargeId)}
-                                  onChange={() => toggleCharge(row, charge.chargeId)}
-                                  disabled={loading}
-                                />{" "}
-                                {formatPeriod(charge.periodYear, charge.periodMonth)} -{" "}
-                                {charge.chargeTypeName} (kalan {formatTry(charge.remaining)})
-                                {proposedAmount !== undefined
-                                  ? ` - onerilen ${formatTry(proposedAmount)}`
-                                  : ""}
-                              </label>
-                            );
-                          })
-                        )}
-                      </td>
-                      <td>
-                        <button
-                          className="btn btn-primary"
-                          type="button"
-                          onClick={() => void approve(row)}
-                          disabled={loading || pageLoading || selected.length === 0}
-                        >
-                          Onayla
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          renderPickerTable(approvalRows, "Onayla")
         )}
+
+        {typeBlockedRows.length > 0 ? (
+          <>
+            <h4 className="compact-row-top-gap">
+              Tura Takilan Alacaklar
+              <span className="small"> ({typeBlockedRows.length} odeme)</span>
+            </h4>
+            <p className="small">
+              Bu odemelerin fazla kismi belirli bir borc turunden (ornegin dogalgaz) geldigi icin
+              yalnizca ayni turdeki borcu kapatabilir; dairede o turden acik borc kalmadigi icin
+              otomatik yazilmadi. Dairenin baska acik kalemleri asagida. Yazmak istediginiz
+              kalemleri siz isaretleyin; hicbiri onceden secili degildir.
+            </p>
+            {renderPickerTable(typeBlockedRows, "Secili Kalemlere Yaz")}
+          </>
+        ) : null}
 
         <h4 className="compact-row-top-gap">
           Bekleyen Alacaklar

@@ -139,7 +139,7 @@ export function createAdminApartmentCreditRoutes(deps: {
         itemLinks: {
           select: {
             amount: true,
-            charge: { select: { apartmentId: true } },
+            charge: { select: { apartmentId: true, chargeType: { select: { code: true, name: true } } } },
           },
         },
       },
@@ -187,17 +187,32 @@ export function createAdminApartmentCreditRoutes(deps: {
           pendingApproval: isAwaitingApproval(payment.note),
           approvalProposal: null as ApprovalProposalRow[] | null,
           approvalOpenCharges: null as ApprovalOpenChargeRow[] | null,
+          /** Fazla tutarin yalnizca yazilabilecegi tahakkuk turleri (adlari); kisitlama yoksa null. */
+          typeRestriction: (() => {
+            if (isAwaitingApproval(payment.note)) {
+              return null;
+            }
+            const names = [
+              ...new Set(payment.itemLinks.map((item) => item.charge.chargeType.name)),
+            ];
+            return names.length > 0 ? names : null;
+          })() as string[] | null,
+          typeRestrictionCodes: [
+            ...new Set(payment.itemLinks.map((item) => item.charge.chargeType.code)),
+          ],
         };
       })
       .filter((row): row is NonNullable<typeof row> => row !== null);
 
-    // Onay bekleyen odemeler icin onerilen dagitimi (vade sirasiyla FIFO) ve secilebilir
-    // acik kalemleri hesapla. Ayni dairede birden cok bekleyen odeme varsa kalemler sirayla tuketilir.
-    const approvalRows = pendingCredits.filter((row) => row.pendingApproval && row.apartmentId);
-    if (approvalRows.length > 0) {
-      const approvalApartmentIds = [...new Set(approvalRows.map((row) => row.apartmentId as string))];
-      const approvalCharges = await prisma.charge.findMany({
-        where: { apartmentId: { in: approvalApartmentIds } },
+    // Elle uygulanabilecek satirlar: onay bekleyenler ve tur kisitina takilanlar. Bunlar icin
+    // dairenin acik kalemlerini getiriyoruz; onay bekleyenlere ayrica onerilen dagitim hesaplanir.
+    const needsChargesRows = pendingCredits.filter(
+      (row) => row.apartmentId && (row.pendingApproval || row.typeRestriction !== null)
+    );
+    if (needsChargesRows.length > 0) {
+      const apartmentIdsForCharges = [...new Set(needsChargesRows.map((row) => row.apartmentId as string))];
+      const chargesForRows = await prisma.charge.findMany({
+        where: { apartmentId: { in: apartmentIdsForCharges } },
         select: {
           id: true,
           apartmentId: true,
@@ -205,7 +220,7 @@ export function createAdminApartmentCreditRoutes(deps: {
           periodYear: true,
           periodMonth: true,
           description: true,
-          chargeType: { select: { name: true } },
+          chargeType: { select: { code: true, name: true } },
           paymentItems: { select: { amount: true } },
         },
         orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
@@ -213,9 +228,9 @@ export function createAdminApartmentCreditRoutes(deps: {
 
       const openByApartment = new Map<
         string,
-        Array<ApprovalChargeSlot & { meta: ApprovalOpenChargeRow }>
+        Array<ApprovalChargeSlot & { chargeTypeCode: string; meta: ApprovalOpenChargeRow }>
       >();
-      for (const charge of approvalCharges) {
+      for (const charge of chargesForRows) {
         const paidCents = charge.paymentItems.reduce((sum, item) => sum + toCents(item.amount), 0);
         const remainingCents = toCents(charge.amount) - paidCents;
         if (remainingCents <= 0) {
@@ -225,6 +240,7 @@ export function createAdminApartmentCreditRoutes(deps: {
         list.push({
           chargeId: charge.id,
           remainingCents,
+          chargeTypeCode: charge.chargeType.code,
           meta: {
             chargeId: charge.id,
             periodYear: charge.periodYear,
@@ -237,26 +253,37 @@ export function createAdminApartmentCreditRoutes(deps: {
         openByApartment.set(charge.apartmentId, list);
       }
 
-      const orderedApprovalRows = [...approvalRows].sort(
+      const orderedRows = [...needsChargesRows].sort(
         (a, b) => new Date(a.paidAt).getTime() - new Date(b.paidAt).getTime()
       );
-      for (const row of orderedApprovalRows) {
+      for (const row of orderedRows) {
         const slots = openByApartment.get(row.apartmentId as string) ?? [];
         row.approvalOpenCharges = slots.map((slot) => slot.meta);
-        const plan = planApprovalAllocation({
-          amountCents: toCents(row.pendingAmount),
-          charges: slots.map((slot) => ({ chargeId: slot.chargeId, remainingCents: slot.remainingCents })),
-        });
-        row.approvalProposal = plan.allocations.map((allocation) => ({
-          chargeId: allocation.chargeId,
-          amount: fromCents(allocation.amountCents),
-        }));
-        // Sonraki bekleyen odeme ayni kalemleri tekrar onermesin.
-        for (const allocation of plan.allocations) {
-          const slot = slots.find((candidate) => candidate.chargeId === allocation.chargeId);
-          if (slot) {
-            slot.remainingCents -= allocation.amountCents;
+
+        if (row.pendingApproval) {
+          const plan = planApprovalAllocation({
+            amountCents: toCents(row.pendingAmount),
+            charges: slots.map((slot) => ({ chargeId: slot.chargeId, remainingCents: slot.remainingCents })),
+          });
+          row.approvalProposal = plan.allocations.map((allocation) => ({
+            chargeId: allocation.chargeId,
+            amount: fromCents(allocation.amountCents),
+          }));
+          // Sonraki bekleyen odeme ayni kalemleri tekrar onermesin.
+          for (const allocation of plan.allocations) {
+            const slot = slots.find((candidate) => candidate.chargeId === allocation.chargeId);
+            if (slot) {
+              slot.remainingCents -= allocation.amountCents;
+            }
           }
+          continue;
+        }
+
+        // Tur kisitli alacak: ayni turde acik kalem yoksa otomatik uygulanmaz, elle secilebilir.
+        const allowedCodes = row.typeRestrictionCodes;
+        const hasAllowedOpenCharge = slots.some((slot) => allowedCodes.includes(slot.chargeTypeCode));
+        if (row.autoApplyBlocker === null && !hasAllowedOpenCharge) {
+          row.autoApplyBlocker = `Yalnizca ${(row.typeRestriction ?? []).join(" / ")} borcuna otomatik yazilir; su an acik ${(row.typeRestriction ?? []).join(" / ")} borcu yok`;
         }
       }
     }
@@ -373,9 +400,11 @@ export function createAdminApartmentCreditRoutes(deps: {
   });
 
   /**
-   * Onay bekleyen odemeyi borca yazar. `chargeIds` verilmezse onerilen dagitim (vade sirasiyla
-   * tum acik kalemler); verilirse yalnizca o kalemlere, verilen sirayla yazilir.
-   * Onaylanan odeme `RECONCILE_LOCK:MANUAL` kilidini korur: insan karari mutabakatla bozulmaz.
+   * Bekleyen odemeyi elle borca yazar.
+   * - Onay bekleyen odeme: `chargeIds` verilmezse onerilen dagitim (vade sirasiyla tum acik
+   *   kalemler); verilirse yalnizca o kalemlere, verilen sirayla yazilir. Onaylanan odeme
+   *   `RECONCILE_LOCK:MANUAL` kilidini tasir: insan karari mutabakatla bozulmaz.
+   * - Diger bekleyen alacaklar (ornegin tur kisitina takilanlar): `chargeIds` ZORUNLUDUR.
    */
   router.post("/apartment-credits/approve", async (req, res) => {
     const parsed = z
@@ -394,14 +423,20 @@ export function createAdminApartmentCreditRoutes(deps: {
         id: true,
         totalAmount: true,
         note: true,
-        itemLinks: { select: { amount: true } },
+        itemLinks: { select: { amount: true, charge: { select: { apartmentId: true } } } },
       },
     });
     if (!payment) {
       return res.status(404).json({ message: "Odeme bulunamadi" });
     }
-    if (!isAwaitingApproval(payment.note)) {
-      return res.status(409).json({ message: "Bu odeme onay beklemiyor (daha once islenmis olabilir)" });
+    const awaitingApproval = isAwaitingApproval(payment.note);
+    // Onay beklemeyen (ornegin tura takilmis) alacaklar yalnizca yoneticinin ACIKCA sectigi
+    // kalemlere yazilir; varsayilan FIFO onerisi sadece onay bekleyen odemeler icindir.
+    if (!awaitingApproval && !(parsed.data.chargeIds && parsed.data.chargeIds.length > 0)) {
+      return res.status(409).json({ message: "Bu odeme icin yazilacak borc kalemlerini secmelisiniz" });
+    }
+    if (!awaitingApproval && !extractDoorNoTagFromPaymentNote(payment.note)) {
+      return res.status(422).json({ message: "Odemenin daire etiketi yok" });
     }
 
     const doorTag = extractDoorNoTagFromPaymentNote(payment.note);
@@ -411,6 +446,11 @@ export function createAdminApartmentCreditRoutes(deps: {
     );
     if (!apartment) {
       return res.status(422).json({ message: "Odemenin daire etiketi bir daireyle eslesmiyor" });
+    }
+
+    // Baska dairelere de dagilmis odemeye dokunma: kalan tutarin hangi daireye ait oldugu belirsiz.
+    if (payment.itemLinks.some((item) => item.charge.apartmentId !== apartment.id)) {
+      return res.status(422).json({ message: "Odeme baska dairelere de dagilmis; elle duzeltilmeli" });
     }
 
     const linkedCents = payment.itemLinks.reduce((sum, item) => sum + toCents(item.amount), 0);
@@ -447,16 +487,23 @@ export function createAdminApartmentCreditRoutes(deps: {
       return res.status(409).json({ message: "Dairede yazilacak acik borc yok" });
     }
 
-    const approvedTag =
-      parsed.data.chargeIds && parsed.data.chargeIds.length > 0
-        ? "AUTO_MATCH:MANUAL_APPROVED"
-        : "AUTO_MATCH:FIFO_FALLBACK:APPROVED";
-    let nextNote = withApprovedNote(payment.note, approvedTag);
-    if (plan.leftoverCents > 0) {
-      nextNote = withOverpaymentNote(nextNote, doorTag ?? "", fromCents(plan.leftoverCents));
-    }
-    if (nextNote && !nextNote.includes(MANUAL_RECONCILE_LOCK_TAG)) {
-      nextNote = `${nextNote} | ${MANUAL_RECONCILE_LOCK_TAG}`;
+    let nextNote: string | null;
+    if (awaitingApproval) {
+      const approvedTag =
+        parsed.data.chargeIds && parsed.data.chargeIds.length > 0
+          ? "AUTO_MATCH:MANUAL_APPROVED"
+          : "AUTO_MATCH:FIFO_FALLBACK:APPROVED";
+      nextNote = withApprovedNote(payment.note, approvedTag);
+      if (plan.leftoverCents > 0) {
+        nextNote = withOverpaymentNote(nextNote, doorTag ?? "", fromCents(plan.leftoverCents));
+      }
+      if (nextNote && !nextNote.includes(MANUAL_RECONCILE_LOCK_TAG)) {
+        nextNote = `${nextNote} | ${MANUAL_RECONCILE_LOCK_TAG}`;
+      }
+    } else {
+      // Tura takilmis alacak: yalnizca kalan alacak etiketini guncelle. Kilit eklenmez ki
+      // artan tutar (varsa) sonraki tahakkuklara kendiliginden yazilmaya devam etsin.
+      nextNote = withOverpaymentNote(payment.note, doorTag ?? "", fromCents(plan.leftoverCents));
     }
 
     try {

@@ -37,12 +37,34 @@ export type PendingCreditSource = {
   surplusCents: number;
   paidAt: Date;
   createdAt: Date;
+  /**
+   * Odemenin zaten yazildigi tahakkuk turleri (ornegin DOGALGAZ). Doluysa fazla tutar
+   * yalnizca bu turlerdeki tahakkuklara otomatik yazilir: dogalgaz odemesinin artigi aidata
+   * (ya da tersi) sizmaz. Bos/undefined ise tur kisitlamasi yoktur (eski davranis).
+   */
+  allowedChargeTypeCodes?: string[];
 };
 
 export type OpenChargeSlot = {
   chargeId: string;
   remainingCents: number;
+  /** Tahakkuk turu kodu. Verilmediyse tur kisitlamasi bu kaleme uygulanmaz. */
+  chargeTypeCode?: string;
 };
+
+/** Bir kalemin, kaynagin tur kisitlamasina uyup uymadigi. */
+export function slotAllowedForSource(
+  slot: OpenChargeSlot,
+  allowedChargeTypeCodes: string[] | undefined
+): boolean {
+  if (!allowedChargeTypeCodes || allowedChargeTypeCodes.length === 0) {
+    return true;
+  }
+  if (!slot.chargeTypeCode) {
+    return true;
+  }
+  return allowedChargeTypeCodes.includes(slot.chargeTypeCode);
+}
 
 export type PlannedCreditAllocation = {
   paymentId: string;
@@ -90,6 +112,9 @@ export function planPendingCreditAllocations(
         break;
       }
       if (slot.remainingCents <= 0) {
+        continue;
+      }
+      if (!slotAllowedForSource(slot, source.allowedChargeTypeCodes)) {
         continue;
       }
 
@@ -242,7 +267,7 @@ export async function applyPendingApartmentCredits(params: {
           id: true,
           amount: true,
           chargeId: true,
-          charge: { select: { apartmentId: true } },
+          charge: { select: { apartmentId: true, chargeType: { select: { code: true } } } },
         },
       },
     },
@@ -293,11 +318,13 @@ export async function applyPendingApartmentCredits(params: {
     }
 
     const list = sourcesByApartment.get(apartmentId) ?? [];
+    const homeTypeCodes = [...new Set(payment.itemLinks.map((item) => item.charge.chargeType.code))];
     list.push({
       paymentId: payment.id,
       surplusCents,
       paidAt: payment.paidAt,
       createdAt: payment.createdAt,
+      allowedChargeTypeCodes: homeTypeCodes.length > 0 ? homeTypeCodes : undefined,
     });
     sourcesByApartment.set(apartmentId, list);
   }
@@ -316,6 +343,7 @@ export async function applyPendingApartmentCredits(params: {
       id: true,
       apartmentId: true,
       amount: true,
+      chargeType: { select: { code: true } },
       paymentItems: { select: { amount: true } },
     },
     orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
@@ -332,7 +360,7 @@ export async function applyPendingApartmentCredits(params: {
       continue;
     }
     const list = openChargesByApartment.get(charge.apartmentId) ?? [];
-    list.push({ chargeId: charge.id, remainingCents });
+    list.push({ chargeId: charge.id, remainingCents, chargeTypeCode: charge.chargeType.code });
     openChargesByApartment.set(charge.apartmentId, list);
   }
 

@@ -90,3 +90,27 @@ export function planApprovalAllocation(params: {
 
   return { allocations, leftoverCents: remaining, invalidChargeIds };
 }
+
+/**
+ * Aciklama ipucuyla secilen (ornegin "dogalgaz") kalemleri kapattiktan sonra artan tutar,
+ * YALNIZCA ayni turdeki diger kalemlere tasar. Baska turdeki kalemlere (dogalgaz artigi
+ * aidata ya da tersi) yazilmaz; kalan tutar daire alacagi olarak bekler.
+ *
+ * `typeCodeOf` bir kalem icin tur kodunu dondurur; bilinmiyorsa (undefined) kalem kisitlanmaz.
+ */
+export function restrictSpillToPrimaryTypes<T extends { chargeId: string }>(
+  primary: T[],
+  rest: T[],
+  typeCodeOf: (chargeId: string) => string | undefined
+): T[] {
+  const primaryTypes = new Set(
+    primary.map((charge) => typeCodeOf(charge.chargeId)).filter((code): code is string => Boolean(code))
+  );
+  if (primaryTypes.size === 0) {
+    return rest;
+  }
+  return rest.filter((charge) => {
+    const code = typeCodeOf(charge.chargeId);
+    return !code || primaryTypes.has(code);
+  });
+}

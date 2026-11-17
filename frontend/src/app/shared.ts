@@ -679,8 +679,10 @@ export type ApartmentPendingCreditRow = {
   pendingApproval: boolean;
   /** Onerilen dagitim (vade sirasiyla). Yalnizca onay bekleyen odemelerde dolu. */
   approvalProposal: Array<{ chargeId: string; amount: number }> | null;
-  /** Secilebilir acik kalemler. Yalnizca onay bekleyen odemelerde dolu. */
+  /** Secilebilir acik kalemler. Onay bekleyen ve tura takilan odemelerde dolu. */
   approvalOpenCharges: ApprovalOpenChargeRow[] | null;
+  /** Fazla tutarin yalnizca yazilabilecegi tahakkuk turleri (adlari); kisitlama yoksa null. */
+  typeRestriction: string[] | null;
 };
 
 export type ApprovalOpenChargeRow = {
