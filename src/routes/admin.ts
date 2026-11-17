@@ -71,6 +71,7 @@ import {
 } from "../utils/apartmentCredit";
 import { fromCents, toCents } from "../utils/money";
 import { findCrossSourceDuplicateRowNos } from "../utils/bankRowDedup";
+import { isLowConfidenceAutoMatch } from "../utils/paymentApproval";
 import {
   mapRequestMethodToAdminAction,
   mapRequestPathToAdminPage,
@@ -78,6 +79,7 @@ import {
 } from "../utils/adminPermissions";
 import {
   MANUAL_RECONCILE_LOCK_TAG,
+  PENDING_APPROVAL_NOTE_PREFIX,
   buildPaymentNote,
   extractDoorNoTagFromPaymentNote,
   hasManualReconcileLock,
@@ -3807,6 +3809,38 @@ async function processBankStatementImport(params: {
             autoMatchHintReason = "FIFO_FALLBACK";
           }
           } // end else (no fifoSumMatch)
+        }
+
+        // "Emin degilsem yazma" kapisi: dusuk guvenli eslestirme (ornegin FIFO_FALLBACK) hicbir
+        // borca yazilmaz; odeme "onay bekliyor" olarak kaydedilir. Yonetici Bekleyen Alacaklar
+        // ekraninda onerilen kalemleri gorup tek dokunusla onaylar ya da baska kalem secer.
+        if (isLowConfidenceAutoMatch(autoMatchHintReason)) {
+          const method = row.paymentMethod ?? derivePaymentMethod(row.txType);
+          const noteParts = [
+            reference ? `BANK_REF:${reference}` : undefined,
+            row.description ? `BANK_DESC:${row.description}` : undefined,
+            detectedDoorNo ? `DOOR:${detectedDoorNo}` : undefined,
+            `${PENDING_APPROVAL_NOTE_PREFIX}:${autoMatchHintReason}`,
+            MANUAL_RECONCILE_LOCK_TAG,
+            splitNoteTag,
+          ].filter(Boolean) as string[];
+
+          await prisma.payment.create({
+            data: {
+              importBatchId: batch.id,
+              paidAt: row.occurredAt,
+              method,
+              note: noteParts.join(" | "),
+              totalAmount: Number(row.amount.toFixed(2)),
+              createdById: uploadedById,
+            },
+          });
+
+          paymentCreatedCount += 1;
+          infos.push(
+            `Satir ${rowNo}: Hangi borca ait oldugu belli degil, odeme ONAY BEKLIYOR olarak kaydedildi (${detectedDoorNo}) ${infoContextTag}`
+          );
+          continue;
         }
 
         let remainingToAllocate = paymentAmount;

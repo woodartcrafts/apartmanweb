@@ -90,6 +90,7 @@ import {
   type AccountTransferRow,
   type ApartmentCreditsResponse,
   type ApplyPendingCreditsResult,
+  type ApprovePendingCreditResult,
   type CashCashflowResponse,
   type PaymentRefundAppliedRow,
   type PaymentRefundApplyResult,
@@ -4595,6 +4596,28 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     } catch (err) {
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Bekleyen alacaklar islenemedi");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function approvePendingCredit(paymentId: string, chargeIds?: string[]): Promise<void> {
+    setLoading(true);
+    try {
+      const result = await authorizedRequest<ApprovePendingCreditResult>(
+        "/api/admin/apartment-credits/approve",
+        { method: "POST", payload: chargeIds && chargeIds.length > 0 ? { paymentId, chargeIds } : { paymentId } }
+      );
+      await fetchApartmentCredits({ silent: true });
+      setMessage(
+        result.leftover > 0
+          ? `${formatTry(result.appliedTotal)} borca yazildi, ${formatTry(result.leftover)} alacak olarak bekliyor`
+          : `${formatTry(result.appliedTotal)} onaylanip borca yazildi`
+      );
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Odeme onaylanamadi");
       throw err;
     } finally {
       setLoading(false);
@@ -13355,6 +13378,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 data={apartmentCreditsData}
                 refresh={() => fetchApartmentCredits()}
                 applyPendingCredits={applyPendingApartmentCredits}
+                approvePendingCredit={approvePendingCredit}
               />
             </Suspense>
           }

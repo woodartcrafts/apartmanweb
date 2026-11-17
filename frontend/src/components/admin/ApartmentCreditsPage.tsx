@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   formatDateTr,
   formatTry,
@@ -11,6 +11,7 @@ type ApartmentCreditsPageProps = {
   data: ApartmentCreditsResponse | null;
   refresh: () => Promise<void>;
   applyPendingCredits: () => Promise<void>;
+  approvePendingCredit: (paymentId: string, chargeIds?: string[]) => Promise<void>;
 };
 
 const MONTH_NAMES = [
@@ -38,9 +39,54 @@ export function ApartmentCreditsPage({
   data,
   refresh,
   applyPendingCredits,
+  approvePendingCredit,
 }: ApartmentCreditsPageProps) {
-  const pendingCredits = data?.pendingCredits ?? [];
+  const allPendingCredits = useMemo(() => data?.pendingCredits ?? [], [data]);
+  const approvalRows = useMemo(
+    () => allPendingCredits.filter((row) => row.pendingApproval),
+    [allPendingCredits]
+  );
+  const pendingCredits = useMemo(
+    () => allPendingCredits.filter((row) => !row.pendingApproval),
+    [allPendingCredits]
+  );
   const overpaidCharges = data?.overpaidCharges ?? [];
+
+  // Yonetici onerilen kalemleri degistirdiyse paymentId -> secili kalem listesi.
+  const [selectionByPayment, setSelectionByPayment] = useState<Record<string, string[]>>({});
+
+  function proposedChargeIds(row: (typeof approvalRows)[number]): string[] {
+    return (row.approvalProposal ?? []).map((item) => item.chargeId);
+  }
+
+  function currentSelection(row: (typeof approvalRows)[number]): string[] {
+    return selectionByPayment[row.paymentId] ?? proposedChargeIds(row);
+  }
+
+  function toggleCharge(row: (typeof approvalRows)[number], chargeId: string): void {
+    const current = currentSelection(row);
+    const next = current.includes(chargeId)
+      ? current.filter((id) => id !== chargeId)
+      : [...current, chargeId];
+    setSelectionByPayment((prev) => ({ ...prev, [row.paymentId]: next }));
+  }
+
+  async function approve(row: (typeof approvalRows)[number]): Promise<void> {
+    const selected = currentSelection(row);
+    const proposed = proposedChargeIds(row);
+    const unchanged =
+      selected.length === proposed.length && selected.every((id) => proposed.includes(id));
+    // Acik kalem sirasini koru (vade sirasi).
+    const ordered = (row.approvalOpenCharges ?? [])
+      .map((charge) => charge.chargeId)
+      .filter((id) => selected.includes(id));
+    await approvePendingCredit(row.paymentId, unchanged ? undefined : ordered);
+    setSelectionByPayment((prev) => {
+      const rest = { ...prev };
+      delete rest[row.paymentId];
+      return rest;
+    });
+  }
 
   const blockedCount = useMemo(
     () => pendingCredits.filter((row) => row.autoApplyBlocker !== null).length,
@@ -84,6 +130,83 @@ export function ApartmentCreditsPage({
             DIKKAT: taranan kayit sayisi limite takildi, liste eksik olabilir.
           </p>
         ) : null}
+
+        <h4 className="compact-row-top-gap">
+          Onay Bekleyen Odemeler
+          <span className="small"> ({approvalRows.length} odeme)</span>
+        </h4>
+        <p className="small">
+          Sistem bu odemelerin hangi borca ait oldugundan emin olamadi (dairede birden cok acik
+          kalem var, tutar ve aciklama hangisini gosterdigini belli etmiyor). Yanlis kalemi
+          kapatmamak icin hicbir borca yazilmadi. Onerilen kalemleri kontrol edip onaylayin ya da
+          farkli kalemleri isaretleyin.
+        </p>
+        {approvalRows.length === 0 ? (
+          <p className="small">Onay bekleyen odeme yok.</p>
+        ) : (
+          <div className="table-wrap compact-row-top-gap">
+            <table className="apartment-list-table report-compact-table">
+              <thead>
+                <tr>
+                  <th>Tarih</th>
+                  <th>Daire</th>
+                  <th className="col-num">Tutar</th>
+                  <th>Yazilacak borc kalemleri</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {approvalRows.map((row) => {
+                  const selected = currentSelection(row);
+                  const openCharges = row.approvalOpenCharges ?? [];
+                  return (
+                    <tr key={row.paymentId}>
+                      <td>{formatDateTr(row.paidAt)}</td>
+                      <td>{row.apartmentLabel ?? row.doorNo ?? "-"}</td>
+                      <td className="col-num">{formatTry(row.pendingAmount)}</td>
+                      <td>
+                        {openCharges.length === 0 ? (
+                          <span className="text-danger">Dairede acik borc yok</span>
+                        ) : (
+                          openCharges.map((charge) => {
+                            const proposedAmount = row.approvalProposal?.find(
+                              (item) => item.chargeId === charge.chargeId
+                            )?.amount;
+                            return (
+                              <label key={charge.chargeId} style={{ display: "block" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={selected.includes(charge.chargeId)}
+                                  onChange={() => toggleCharge(row, charge.chargeId)}
+                                  disabled={loading}
+                                />{" "}
+                                {formatPeriod(charge.periodYear, charge.periodMonth)} -{" "}
+                                {charge.chargeTypeName} (kalan {formatTry(charge.remaining)})
+                                {proposedAmount !== undefined
+                                  ? ` - onerilen ${formatTry(proposedAmount)}`
+                                  : ""}
+                              </label>
+                            );
+                          })
+                        )}
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-primary"
+                          type="button"
+                          onClick={() => void approve(row)}
+                          disabled={loading || pageLoading || selected.length === 0}
+                        >
+                          Onayla
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <h4 className="compact-row-top-gap">
           Bekleyen Alacaklar

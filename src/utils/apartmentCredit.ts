@@ -20,6 +20,7 @@ import {
   OVERPAYMENT_NOTE_PREFIX,
   extractDoorNoTagFromPaymentNote,
   hasManualReconcileLock,
+  isAwaitingApproval,
   isSystemPreallocatedManualReview,
   normalizeDoorNoForCompare,
   parsePaymentNoteParts,
@@ -154,7 +155,12 @@ export function capAllocationsToRemainingDebt(
  * Bir odemenin bekleyen alacak olarak degerlendirilip degerlendirilemeyecegini
  * belirler. Insan karari bekleyen kayitlara dokunmayiz.
  */
-function isEligibleForAutoApply(note: string | null): boolean {
+export function isEligibleForAutoApply(note: string | null): boolean {
+  // Onay bekleyen odeme yoneticinin kararini bekler; sistem kendi basina dagitmaz.
+  if (isAwaitingApproval(note)) {
+    return false;
+  }
+
   if (hasManualReconcileLock(note) && !isSystemPreallocatedManualReview(note)) {
     return false;
   }

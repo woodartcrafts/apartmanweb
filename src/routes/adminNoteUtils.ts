@@ -52,6 +52,33 @@ export function isSystemPreallocatedManualReview(note: string | null | undefined
   );
 }
 
+/**
+ * Sistemin hangi borca ait oldugundan EMIN olmadigi odeme: hicbir tahakkuka yazilmaz,
+ * "onay bekliyor" olarak bekler. Yonetici onaylayana kadar otomatik uygulama ve mutabakat
+ * bu odemeye dokunmaz (bu yuzden `RECONCILE_LOCK:MANUAL` kilidi ile birlikte yazilir).
+ */
+export const PENDING_APPROVAL_NOTE_PREFIX = "UNAPPLIED:PENDING_APPROVAL";
+
+export function isAwaitingApproval(note: string | null | undefined): boolean {
+  if (!note) {
+    return false;
+  }
+  return parsePaymentNoteParts(note).some((part) =>
+    part.trim().toUpperCase().startsWith(PENDING_APPROVAL_NOTE_PREFIX)
+  );
+}
+
+/** Onay bekleyen notu onaylanmis hale getirir: bekleme etiketini siler, kararin izini birakir. */
+export function withApprovedNote(note: string | null, approvedTag: string): string | null {
+  const parts = parsePaymentNoteParts(note).filter(
+    (part) => !part.trim().toUpperCase().startsWith(PENDING_APPROVAL_NOTE_PREFIX)
+  );
+  if (!parts.some((part) => part.trim().toUpperCase() === approvedTag.toUpperCase())) {
+    parts.push(approvedTag);
+  }
+  return parts.length > 0 ? parts.join(" | ") : null;
+}
+
 export function extractDoorNoTagFromPaymentNote(note: string | null): string | null {
   const doorPart = parsePaymentNoteParts(note).find((part) => part.startsWith("DOOR:"));
   if (!doorPart) {

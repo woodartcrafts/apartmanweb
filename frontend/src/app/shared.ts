@@ -675,6 +675,28 @@ export type ApartmentPendingCreditRow = {
   reason: string;
   /** null ise yeni tahakkuk olustugunda kendiliginden uygulanir. */
   autoApplyBlocker: string | null;
+  /** Sistem hangi borca ait oldugundan emin degil; yonetici onayi bekliyor. */
+  pendingApproval: boolean;
+  /** Onerilen dagitim (vade sirasiyla). Yalnizca onay bekleyen odemelerde dolu. */
+  approvalProposal: Array<{ chargeId: string; amount: number }> | null;
+  /** Secilebilir acik kalemler. Yalnizca onay bekleyen odemelerde dolu. */
+  approvalOpenCharges: ApprovalOpenChargeRow[] | null;
+};
+
+export type ApprovalOpenChargeRow = {
+  chargeId: string;
+  periodYear: number;
+  periodMonth: number;
+  chargeTypeName: string;
+  description: string | null;
+  remaining: number;
+};
+
+export type ApprovePendingCreditResult = {
+  paymentId: string;
+  appliedTotal: number;
+  leftover: number;
+  itemCount: number;
 };
 
 export type OverpaidChargeRow = {

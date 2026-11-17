@@ -3,15 +3,30 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 import {
+  MANUAL_RECONCILE_LOCK_TAG,
   extractDoorNoTagFromPaymentNote,
   hasManualReconcileLock,
+  isAwaitingApproval,
   isSystemPreallocatedManualReview,
   normalizeDoorNoForCompare,
   parsePaymentNoteParts,
   parseRefundedAmountFromNote,
+  withApprovedNote,
+  withOverpaymentNote,
 } from "./adminNoteUtils";
 import { applyPendingApartmentCredits } from "../utils/apartmentCredit";
 import { fromCents, toCents } from "../utils/money";
+import { planApprovalAllocation, type ApprovalChargeSlot } from "../utils/paymentApproval";
+
+type ApprovalProposalRow = { chargeId: string; amount: number };
+type ApprovalOpenChargeRow = {
+  chargeId: string;
+  periodYear: number;
+  periodMonth: number;
+  chargeTypeName: string;
+  description: string | null;
+  remaining: number;
+};
 
 const PENDING_CREDIT_LIMIT = 5000;
 const OVERPAID_CHARGE_LIMIT = 2000;
@@ -24,6 +39,10 @@ type RefreshChargeStatuses = (
 /** Bekleyen tutarin nicin dagitilmadigini insan diline cevirir. */
 function describePendingReason(note: string | null): string {
   const parts = parsePaymentNoteParts(note);
+
+  if (isAwaitingApproval(note)) {
+    return "Hangi borca ait oldugu belli degil - onay bekliyor";
+  }
 
   for (const part of parts) {
     const upper = part.trim().toUpperCase();
@@ -61,6 +80,10 @@ function describeAutoApplyBlocker(params: {
   apartmentFound: boolean;
   linkedApartmentCount: number;
 }): string | null {
+  if (isAwaitingApproval(params.note)) {
+    return "Onayinizi bekliyor (kendiliginden yazilmaz)";
+  }
+
   if (!params.apartmentFound) {
     return "Daire etiketi bir daireyle eslesmiyor";
   }
@@ -161,9 +184,82 @@ export function createAdminApartmentCreditRoutes(deps: {
             apartmentFound: Boolean(apartment),
             linkedApartmentCount: linkedApartmentIds.size,
           }),
+          pendingApproval: isAwaitingApproval(payment.note),
+          approvalProposal: null as ApprovalProposalRow[] | null,
+          approvalOpenCharges: null as ApprovalOpenChargeRow[] | null,
         };
       })
       .filter((row): row is NonNullable<typeof row> => row !== null);
+
+    // Onay bekleyen odemeler icin onerilen dagitimi (vade sirasiyla FIFO) ve secilebilir
+    // acik kalemleri hesapla. Ayni dairede birden cok bekleyen odeme varsa kalemler sirayla tuketilir.
+    const approvalRows = pendingCredits.filter((row) => row.pendingApproval && row.apartmentId);
+    if (approvalRows.length > 0) {
+      const approvalApartmentIds = [...new Set(approvalRows.map((row) => row.apartmentId as string))];
+      const approvalCharges = await prisma.charge.findMany({
+        where: { apartmentId: { in: approvalApartmentIds } },
+        select: {
+          id: true,
+          apartmentId: true,
+          amount: true,
+          periodYear: true,
+          periodMonth: true,
+          description: true,
+          chargeType: { select: { name: true } },
+          paymentItems: { select: { amount: true } },
+        },
+        orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+      });
+
+      const openByApartment = new Map<
+        string,
+        Array<ApprovalChargeSlot & { meta: ApprovalOpenChargeRow }>
+      >();
+      for (const charge of approvalCharges) {
+        const paidCents = charge.paymentItems.reduce((sum, item) => sum + toCents(item.amount), 0);
+        const remainingCents = toCents(charge.amount) - paidCents;
+        if (remainingCents <= 0) {
+          continue;
+        }
+        const list = openByApartment.get(charge.apartmentId) ?? [];
+        list.push({
+          chargeId: charge.id,
+          remainingCents,
+          meta: {
+            chargeId: charge.id,
+            periodYear: charge.periodYear,
+            periodMonth: charge.periodMonth,
+            chargeTypeName: charge.chargeType.name,
+            description: charge.description ?? null,
+            remaining: fromCents(remainingCents),
+          },
+        });
+        openByApartment.set(charge.apartmentId, list);
+      }
+
+      const orderedApprovalRows = [...approvalRows].sort(
+        (a, b) => new Date(a.paidAt).getTime() - new Date(b.paidAt).getTime()
+      );
+      for (const row of orderedApprovalRows) {
+        const slots = openByApartment.get(row.apartmentId as string) ?? [];
+        row.approvalOpenCharges = slots.map((slot) => slot.meta);
+        const plan = planApprovalAllocation({
+          amountCents: toCents(row.pendingAmount),
+          charges: slots.map((slot) => ({ chargeId: slot.chargeId, remainingCents: slot.remainingCents })),
+        });
+        row.approvalProposal = plan.allocations.map((allocation) => ({
+          chargeId: allocation.chargeId,
+          amount: fromCents(allocation.amountCents),
+        }));
+        // Sonraki bekleyen odeme ayni kalemleri tekrar onermesin.
+        for (const allocation of plan.allocations) {
+          const slot = slots.find((candidate) => candidate.chargeId === allocation.chargeId);
+          if (slot) {
+            slot.remainingCents -= allocation.amountCents;
+          }
+        }
+      }
+    }
 
     // --- 2. Fazla odenmis tahakkuklar: odenen > tahakkuk tutari ---
     // Eski elle giris yolu fazla tutari dogrudan tahakkuga yazabiliyordu;
@@ -274,6 +370,135 @@ export function createAdminApartmentCreditRoutes(deps: {
     });
 
     return res.json(result);
+  });
+
+  /**
+   * Onay bekleyen odemeyi borca yazar. `chargeIds` verilmezse onerilen dagitim (vade sirasiyla
+   * tum acik kalemler); verilirse yalnizca o kalemlere, verilen sirayla yazilir.
+   * Onaylanan odeme `RECONCILE_LOCK:MANUAL` kilidini korur: insan karari mutabakatla bozulmaz.
+   */
+  router.post("/apartment-credits/approve", async (req, res) => {
+    const parsed = z
+      .object({
+        paymentId: z.string().min(1),
+        chargeIds: z.array(z.string().min(1)).max(200).optional(),
+      })
+      .safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+    }
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: parsed.data.paymentId },
+      select: {
+        id: true,
+        totalAmount: true,
+        note: true,
+        itemLinks: { select: { amount: true } },
+      },
+    });
+    if (!payment) {
+      return res.status(404).json({ message: "Odeme bulunamadi" });
+    }
+    if (!isAwaitingApproval(payment.note)) {
+      return res.status(409).json({ message: "Bu odeme onay beklemiyor (daha once islenmis olabilir)" });
+    }
+
+    const doorTag = extractDoorNoTagFromPaymentNote(payment.note);
+    const apartments = await prisma.apartment.findMany({ select: { id: true, doorNo: true } });
+    const apartment = apartments.find(
+      (apt) => normalizeDoorNoForCompare(apt.doorNo) === normalizeDoorNoForCompare(doorTag)
+    );
+    if (!apartment) {
+      return res.status(422).json({ message: "Odemenin daire etiketi bir daireyle eslesmiyor" });
+    }
+
+    const linkedCents = payment.itemLinks.reduce((sum, item) => sum + toCents(item.amount), 0);
+    const refundedCents = toCents(parseRefundedAmountFromNote(payment.note));
+    const availableCents = toCents(payment.totalAmount) - linkedCents - refundedCents;
+    if (availableCents <= 0) {
+      return res.status(409).json({ message: "Dagitilacak tutar kalmamis" });
+    }
+
+    const charges = await prisma.charge.findMany({
+      where: { apartmentId: apartment.id },
+      select: { id: true, amount: true, paymentItems: { select: { amount: true } } },
+      orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+    });
+    const slots: ApprovalChargeSlot[] = charges.map((charge) => ({
+      chargeId: charge.id,
+      remainingCents:
+        toCents(charge.amount) -
+        charge.paymentItems.reduce((sum, item) => sum + toCents(item.amount), 0),
+    }));
+
+    const plan = planApprovalAllocation({
+      amountCents: availableCents,
+      charges: slots,
+      preferredChargeIds: parsed.data.chargeIds,
+    });
+    if (plan.invalidChargeIds.length > 0) {
+      return res.status(400).json({
+        message: "Secilen kalemlerden bazilari bu dairenin acik borcu degil",
+        invalidChargeIds: plan.invalidChargeIds,
+      });
+    }
+    if (plan.allocations.length === 0) {
+      return res.status(409).json({ message: "Dairede yazilacak acik borc yok" });
+    }
+
+    const approvedTag =
+      parsed.data.chargeIds && parsed.data.chargeIds.length > 0
+        ? "AUTO_MATCH:MANUAL_APPROVED"
+        : "AUTO_MATCH:FIFO_FALLBACK:APPROVED";
+    let nextNote = withApprovedNote(payment.note, approvedTag);
+    if (plan.leftoverCents > 0) {
+      nextNote = withOverpaymentNote(nextNote, doorTag ?? "", fromCents(plan.leftoverCents));
+    }
+    if (nextNote && !nextNote.includes(MANUAL_RECONCILE_LOCK_TAG)) {
+      nextNote = `${nextNote} | ${MANUAL_RECONCILE_LOCK_TAG}`;
+    }
+
+    try {
+      await prisma.$transaction(
+        async (tx) => {
+          // Es zamanli ikinci onayi engelle: not hala ayni (onay bekliyor) olmali.
+          const claimed = await tx.payment.updateMany({
+            where: { id: payment.id, note: payment.note },
+            data: { note: nextNote },
+          });
+          if (claimed.count !== 1) {
+            throw new Error("APPROVAL_CONFLICT");
+          }
+
+          await tx.paymentItem.createMany({
+            data: plan.allocations.map((allocation) => ({
+              paymentId: payment.id,
+              chargeId: allocation.chargeId,
+              amount: fromCents(allocation.amountCents),
+            })),
+          });
+
+          await deps.refreshChargeStatusesForIds(
+            plan.allocations.map((allocation) => allocation.chargeId),
+            tx
+          );
+        },
+        { timeout: 30000 }
+      );
+    } catch (err) {
+      if (err instanceof Error && err.message === "APPROVAL_CONFLICT") {
+        return res.status(409).json({ message: "Bu odeme baska bir islemle zaten guncellendi" });
+      }
+      throw err;
+    }
+
+    return res.json({
+      paymentId: payment.id,
+      appliedTotal: fromCents(plan.allocations.reduce((sum, a) => sum + a.amountCents, 0)),
+      leftover: fromCents(plan.leftoverCents),
+      itemCount: plan.allocations.length,
+    });
   });
 
   return router;
