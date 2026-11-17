@@ -7636,7 +7636,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   // Backend karsiligi: src/utils/splitCandidate.ts -> KNOWN_SPLIT_PAIRS
   function resolveSplitDoorNosFromDescription(description: string, validDoorNos: Set<string>): string[] {
     const knownPairs = [
-      ["57", "93"],
       ["48", "65"],
       ["35", "45"],
     ] as const;
