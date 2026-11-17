@@ -10005,48 +10005,14 @@ export async function sendDailyDigestEmail(options: {
       pending: digest.pending.count,
     });
     const mail = buildDailyDigestEmail(digest);
-    const fromName = process.env.STATEMENT_EMAIL_FROM_NAME?.trim() || "ApartmanWeb";
-    try {
-      await sendStatementEmail({
-        from: fromAddress,
-        fromName,
-        to: recipients,
-        subject: mail.subject,
-        html: mail.html,
-        text: mail.text,
-      });
-    } catch (primaryErr) {
-      // Birincil servis (Brevo vb.) reddederse, uygulamanin zaten kullandigi Gmail hesabindan dene.
-      const gmailUser = config.gmailBankSync.gmailUser?.trim();
-      const gmailPassword = config.gmailBankSync.appPassword?.replace(/\s+/g, "");
-      const primaryMessage = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
-      if (!gmailUser || !gmailPassword) {
-        throw primaryErr;
-      }
-      console.warn(`[daily-digest] birincil gonderim basarisiz (${primaryMessage}); Gmail SMTP yedegi deneniyor`);
-      try {
-        const transporter = nodemailer.createTransport({
-          host: "smtp.gmail.com",
-          port: 465,
-          secure: true,
-          auth: { user: gmailUser, pass: gmailPassword },
-          connectionTimeout: 15_000,
-          greetingTimeout: 10_000,
-          socketTimeout: 20_000,
-        });
-        await transporter.sendMail({
-          from: `"${fromName}" <${gmailUser}>`,
-          to: recipients,
-          subject: mail.subject,
-          html: mail.html,
-          text: mail.text,
-        });
-        console.log("[daily-digest] Gmail SMTP yedegi ile gonderildi");
-      } catch (fallbackErr) {
-        const fallbackMessage = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-        throw new Error(`${primaryMessage} | Gmail SMTP yedegi de basarisiz: ${fallbackMessage}`);
-      }
-    }
+    await sendStatementEmail({
+      from: fromAddress,
+      fromName: process.env.STATEMENT_EMAIL_FROM_NAME?.trim() || "ApartmanWeb",
+      to: recipients,
+      subject: mail.subject,
+      html: mail.html,
+      text: mail.text,
+    });
     return { status: "sent", recipientCount: recipients.length };
   } catch (err) {
     if (claimed) {
