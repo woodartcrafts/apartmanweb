@@ -1331,6 +1331,8 @@ export type BankStatementPreviewRow = {
   entryType: "PAYMENT" | "EXPENSE";
   isAutoSplit?: boolean;
   splitSourceRowNo?: number | null;
+  /** Sunucu: birden fazla daireye benziyor ama otomatik bolunmedi (yalnizca uyari). */
+  isSplitCandidate?: boolean;
   doorNo: string | null;
   expenseItemId: string | null;
   description: string;

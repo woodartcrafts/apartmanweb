@@ -1344,22 +1344,16 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   );
 
   const bankPreviewRowsWithFlags = useMemo(() => {
-    const validDoorNos = new Set(
-      apartmentOptions
-        .flatMap((apt) => [apt.doorNo, normalizeDoorNoForMatch(apt.doorNo)])
-        .filter(Boolean)
-    );
-
     return bankPreviewRows.map((row, sourceIndex) => {
       const isMissing =
         (row.entryType === "PAYMENT" && !(row.doorNo ?? "").trim()) ||
         (row.entryType === "EXPENSE" && !row.expenseItemId);
-      const splitDoorNos = resolveSplitDoorNos(row, validDoorNos);
-      const isSplitCandidate = row.isAutoSplit !== true && splitDoorNos.length >= 2;
+      // Bolme ve aday tespiti yalnizca sunucuda yapilir; ekran sunucunun bayragini gosterir.
+      const isSplitCandidate = row.isAutoSplit !== true && row.isSplitCandidate === true;
 
       return { row, sourceIndex, isMissing, isSplitCandidate };
     });
-  }, [bankPreviewRows, apartmentOptions]);
+  }, [bankPreviewRows]);
 
   const hasBankPreviewMissingRows = useMemo(
     () => bankPreviewRowsWithFlags.some((row) => row.isMissing),
@@ -7595,16 +7589,13 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         fileName: string;
         totalRows: number;
         statementClosingBalance: number | null;
+        autoSplitSourceCount?: number;
         rows: BankStatementPreviewRow[];
       };
 
-      const validDoorNos = new Set(
-        apartmentOptions
-          .flatMap((apt) => [apt.doorNo, normalizeDoorNoForMatch(apt.doorNo)])
-          .filter(Boolean)
-      );
-      const autoSplit = autoSplitBankPreviewRows(result.rows, validDoorNos);
-      setBankPreviewRows(autoSplit.rows);
+      // Coklu daire bolme sunucuda yapildi; satirlar bolunmus halde gelir.
+      const autoSplitSourceCount = result.autoSplitSourceCount ?? 0;
+      setBankPreviewRows(result.rows);
       setBankPreviewFilterMissingOnly(false);
       setBankPreviewFilterSplitOnly(false);
       resetBankPreviewHeaderFilters();
@@ -7618,8 +7609,8 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       void fetchBankReconciliationReport({ silent: true });
 
       setMessage(
-        autoSplit.splitSourceCount > 0
-          ? `Onizleme hazir. ${result.totalRows} satirdan ${autoSplit.splitSourceCount} coklu daire satiri otomatik bolundu.`
+        autoSplitSourceCount > 0
+          ? `Onizleme hazir. ${result.totalRows} satirdan ${autoSplitSourceCount} coklu daire satiri otomatik bolundu.`
           : `Onizleme hazir. ${result.totalRows} satiri duzenleyip kaydedebilirsiniz.`
       );
       void fetchBulkStatement({ silent: true });
@@ -7635,74 +7626,13 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     setBankPreviewRows((prev) => prev.map((row, i) => (i === index ? updater(row) : row)));
   }
 
-  function normalizeDoorPatternText(value: string): string {
-    return value
-      .toLocaleLowerCase("tr")
-      .replace(/ı/g, "i")
-      .replace(/ş/g, "s")
-      .replace(/ğ/g, "g")
-      .replace(/ü/g, "u")
-      .replace(/ö/g, "o")
-      .replace(/ç/g, "c")
-      .replace(/Ä±/g, "i")
-      .replace(/ÅŸ/g, "s")
-      .replace(/ÄŸ/g, "g")
-      .replace(/Ã¼/g, "u")
-      .replace(/Ã¶/g, "o")
-      .replace(/Ã§/g, "c");
-  }
-
-  // Otomatik bolme SADECE bu ciftler icin yapilir. Genel sezgisel kaliplar
-  // kaldirildi: "daire 06-07" gibi tarih araliklarini daire sanip odemeleri
-  // yanlis dairelere dagitiyordu. Diger coklu daire supheleri artik
-  // "Bolunme Ihtimali Olan Tahsilatlar" sayfasinda listelenip elle bolunuyor.
-  // Backend karsiligi: src/utils/splitCandidate.ts -> KNOWN_SPLIT_PAIRS
-  function resolveSplitDoorNosFromDescription(description: string, validDoorNos: Set<string>): string[] {
-    const knownPairs = [
-      ["48", "65"],
-      ["35", "45"],
-    ] as const;
-
-    const normalizedDescription = normalizeDoorPatternText(description);
-
-    for (const [left, right] of knownPairs) {
-      const leftEscaped = left.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const rightEscaped = right.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-      const pairPattern = new RegExp(
-        `(?:^|\\D)${leftEscaped}\\s*(?:-|/|ve|veya|&)\\s*${rightEscaped}(?:\\D|$)|(?:^|\\D)${rightEscaped}\\s*(?:-|/|ve|veya|&)\\s*${leftEscaped}(?:\\D|$)`,
-        "i"
-      );
-      const leftToken = new RegExp(`(?:^|\\D)${leftEscaped}(?:\\D|$)`, "i");
-      const rightToken = new RegExp(`(?:^|\\D)${rightEscaped}(?:\\D|$)`, "i");
-
-      const isKnownPairMentioned = pairPattern.test(normalizedDescription);
-      const isSingleKnownMemberMentioned =
-        leftToken.test(normalizedDescription) || rightToken.test(normalizedDescription);
-
-      if (!isKnownPairMentioned && !isSingleKnownMemberMentioned) {
-        continue;
-      }
-
-      const knownDoorNos = [left, right]
-        .map((doorNo) => normalizeDoorNoForMatch(doorNo))
-        .filter((doorNo) => validDoorNos.has(doorNo));
-
-      if (knownDoorNos.length >= 2) {
-        return knownDoorNos;
-      }
-    }
-
-    return [];
-  }
-
   function normalizeDoorNoForMatch(value: string): string {
     const trimmed = value.trim();
     if (!trimmed) {
       return "";
     }
 
-    const withPrefix = trimmed.match(/^(?:D|DAIRE)\s*[:#\-\/.]?\s*0*(\d{1,4})$/i);
+    const withPrefix = trimmed.match(/^(?:D|DAIRE)\s*[:#\-/.]?\s*0*(\d{1,4})$/i);
     if (withPrefix?.[1]) {
       return String(Number(withPrefix[1]));
     }
@@ -7713,87 +7643,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
     }
 
     return trimmed;
-  }
-
-  // Sadece aciklamaya bakilir. Onizlemedeki daire kolonu bilerek okunmuyor:
-  // backend yalnizca aciklamaya baktigi icin, kolonu da okumak onizleme ile
-  // Gmail sync arasinda farkli sonuc uretiyordu.
-  function resolveSplitDoorNos(row: BankStatementPreviewRow, validDoorNos: Set<string>): string[] {
-    if (row.entryType !== "PAYMENT") {
-      return [];
-    }
-
-    return resolveSplitDoorNosFromDescription(row.description, validDoorNos);
-  }
-
-  function autoSplitBankPreviewRows(
-    rows: BankStatementPreviewRow[],
-    validDoorNos: Set<string>
-  ): { rows: BankStatementPreviewRow[]; splitSourceCount: number } {
-    const nextRows: BankStatementPreviewRow[] = [];
-    let splitSourceCount = 0;
-
-    for (const row of rows) {
-      if (row.entryType !== "PAYMENT" || !Number.isFinite(row.amount) || row.amount <= 0) {
-        nextRows.push({
-          ...row,
-          isAutoSplit: false,
-          splitSourceRowNo: null,
-        });
-        continue;
-      }
-
-      const mergedCandidates = resolveSplitDoorNos(row, validDoorNos);
-
-      if (mergedCandidates.length < 2) {
-        nextRows.push({
-          ...row,
-          isAutoSplit: false,
-          splitSourceRowNo: null,
-        });
-        continue;
-      }
-
-      splitSourceCount += 1;
-      const count = mergedCandidates.length;
-      const base = Math.floor((row.amount / count) * 100) / 100;
-      const remainder = Number((row.amount - base * count).toFixed(2));
-
-      mergedCandidates.forEach((doorNo, idx) => {
-        nextRows.push({
-          ...row,
-          doorNo,
-          amount: Number((base + (idx === 0 ? remainder : 0)).toFixed(2)),
-          isAutoSplit: true,
-          splitSourceRowNo: row.rowNo,
-        });
-      });
-    }
-
-    return { rows: nextRows, splitSourceCount };
-  }
-
-  function onAutoSplitMultiDoorBankRows(): void {
-    if (bankPreviewRows.length === 0) {
-      setMessage("Onizleme satiri yok");
-      return;
-    }
-
-    const validDoorNos = new Set(
-      apartmentOptions
-        .flatMap((apt) => [apt.doorNo, normalizeDoorNoForMatch(apt.doorNo)])
-        .filter(Boolean)
-    );
-
-    const { rows: nextRows, splitSourceCount } = autoSplitBankPreviewRows(bankPreviewRows, validDoorNos);
-
-    if (splitSourceCount === 0) {
-      setMessage("Bolinecek coklu daire satiri bulunamadi");
-      return;
-    }
-
-    setBankPreviewRows(nextRows);
-    setMessage(`${splitSourceCount} satir coklu daireye gore otomatik bolundu. Kayit oncesi kontrol edin.`);
   }
 
   async function onCommitBankStatementPreview(): Promise<void> {
@@ -13789,14 +13638,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                     </table>
                   </div>
                   <div className="compact-row compact-row-top-gap">
-                    <button
-                      className="btn btn-ghost"
-                      type="button"
-                      disabled={loading}
-                      onClick={onAutoSplitMultiDoorBankRows}
-                    >
-                      Coklu Daire Satirlarini Bol
-                    </button>
                     <button
                       className="btn btn-primary"
                       type="button"

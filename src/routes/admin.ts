@@ -56,7 +56,8 @@ import {
   sumOperatingBankExpensesOut,
 } from "../utils/operatingBankBalance";
 import { buildDateRangeFilter } from "../utils/dateRange";
-import { KNOWN_SPLIT_PAIRS, detectSplitCandidateDoorNos, resolveFixedAmountSplit } from "../utils/splitCandidate";
+import { detectSplitCandidateDoorNos } from "../utils/splitCandidate";
+import { collectExplicitDoorCapturesFromNormalizedText, planAutoSplit } from "../utils/autoSplit";
 import {
   PAYMENT_REFUND_EXPENSE_ITEM_CODE,
   PAYMENT_REFUND_NOTE_PREFIX,
@@ -2547,18 +2548,6 @@ function normalizeDoorPatternText(value: string): string {
 }
 
 /**
- * Çoklu daire bölme ve tek daire eşleştirme için ortak kalıplar (normalize edilmiş metin üzerinde).
- * "d" için ayırıcı veya boşluk şart — "d0ğalgaz" gibi PDF bozması daire sayısı değildir.
- */
-function collectExplicitPrefixedDoorCapturesFromNormalizedText(text: string): string[] {
-  return [
-    ...text.matchAll(/\bdaire(?:ler)?\s*[:#\-\/.]?\s*0*(\d{1,4})\b/g),
-    ...text.matchAll(/\bd\s*[#:\/\.\-]\s*0*(\d{1,4})\b/g),
-    ...text.matchAll(/\bd\s+0*(\d{1,4})\b/g),
-  ].map((m) => m[1]);
-}
-
-/**
  * Aciklamada ACIKCA yazilmis tek daire ("daire N" ya da "D-N"); kurallar icin bkz. utils/doorHint.ts.
  */
 function extractWrittenDaireDoorNo(description: string, doorNoSet: Set<string>): string | null {
@@ -2572,120 +2561,10 @@ function extractSingleExplicitPrefixedDoorNoFromDescription(description: string,
   }
 
   const unique = [
-    ...new Set(collectExplicitPrefixedDoorCapturesFromNormalizedText(text).map((x) => normalizeDoorNoForCompare(x))),
+    ...new Set(collectExplicitDoorCapturesFromNormalizedText(text).map((x) => normalizeDoorNoForCompare(x))),
   ].filter((doorNo) => doorNoSet.has(doorNo));
 
   return unique.length === 1 ? unique[0] : null;
-}
-
-/**
- * Otomatik bolme SADECE `KNOWN_SPLIT_PAIRS` icin yapilir.
- *
- * Eskiden bu fonksiyon bilinen cift bulamazsa genel sezgisel kaliplara
- * dusuyordu; "daire 06-07" gibi tarih araliklarini daire sanip odemeleri
- * yanlis dairelere dagitiyordu. Artik genel kaliplar yalnizca
- * "Bolunme Ihtimali Olan Tahsilatlar" sayfasinda aday gostermek icin
- * kullaniliyor, bolme karari kullaniciya ait.
- */
-function resolveSplitDoorNosFromDescription(description: string, validDoorNos: Set<string>): string[] {
-  const normalizedDescription = normalizeDoorPatternText(description);
-  const explicitDoorNos = collectExplicitPrefixedDoorCapturesFromNormalizedText(normalizedDescription)
-    .map((doorNo) => normalizeDoorNoForCompare(doorNo))
-    .filter((doorNo) => validDoorNos.has(doorNo));
-
-  for (const [left, right] of KNOWN_SPLIT_PAIRS) {
-    const leftEscaped = left.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const rightEscaped = right.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-    const pairPattern = new RegExp(
-      `(?:^|\\D)${leftEscaped}\\s*(?:-|/|ve|veya|&)\\s*${rightEscaped}(?:\\D|$)|(?:^|\\D)${rightEscaped}\\s*(?:-|/|ve|veya|&)\\s*${leftEscaped}(?:\\D|$)`,
-      "i"
-    );
-    const leftToken = new RegExp(`(?:^|\\D)${leftEscaped}(?:\\D|$)`, "i");
-    const rightToken = new RegExp(`(?:^|\\D)${rightEscaped}(?:\\D|$)`, "i");
-
-    const isKnownPairMentioned = pairPattern.test(normalizedDescription);
-    const isSingleKnownMemberMentioned = leftToken.test(normalizedDescription) || rightToken.test(normalizedDescription);
-
-    if (!isKnownPairMentioned && !isSingleKnownMemberMentioned) {
-      continue;
-    }
-
-    const normalizedLeft = normalizeDoorNoForCompare(left);
-    const normalizedRight = normalizeDoorNoForCompare(right);
-
-    // "DAIRE 47 ... *45" gibi aciklamada cift disinda acik bir daire yaziyorsa
-    // odeme o daireye aittir; cift uyesinin gecmesi bolme icin yeterli degildir.
-    if (explicitDoorNos.some((doorNo) => doorNo !== normalizedLeft && doorNo !== normalizedRight)) {
-      continue;
-    }
-
-    const knownDoorNos = [normalizedLeft, normalizedRight].filter((doorNo) => validDoorNos.has(doorNo));
-
-    if (knownDoorNos.length >= 2) {
-      return knownDoorNos;
-    }
-  }
-
-  return [];
-}
-
-function autoSplitMultiDoorPaymentRows(rows: BankStatementCommitRow[], validDoorNos: Set<string>): BankStatementCommitRow[] {
-  const nextRows: BankStatementCommitRow[] = [];
-
-  for (let i = 0; i < rows.length; i += 1) {
-    const row = rows[i];
-    const rowNo = i + 1;
-
-    if (row.entryType !== "PAYMENT" || !Number.isFinite(row.amount) || row.amount <= 0) {
-      nextRows.push({
-        ...row,
-        isAutoSplit: false,
-        splitSourceRowNo: undefined,
-      });
-      continue;
-    }
-
-    const fixedParts = resolveFixedAmountSplit(row.description, row.amount);
-    if (fixedParts.length > 0 && fixedParts.every((part) => validDoorNos.has(part.doorNo))) {
-      for (const part of fixedParts) {
-        nextRows.push({
-          ...row,
-          doorNo: part.doorNo,
-          amount: part.amount,
-          isAutoSplit: true,
-          splitSourceRowNo: rowNo,
-        });
-      }
-      continue;
-    }
-
-    const mergedCandidates = resolveSplitDoorNosFromDescription(row.description, validDoorNos);
-    if (mergedCandidates.length < 2) {
-      nextRows.push({
-        ...row,
-        isAutoSplit: false,
-        splitSourceRowNo: undefined,
-      });
-      continue;
-    }
-
-    const count = mergedCandidates.length;
-    const base = Math.floor((row.amount / count) * 100) / 100;
-    const remainder = Number((row.amount - base * count).toFixed(2));
-
-    mergedCandidates.forEach((doorNo, idx) => {
-      nextRows.push({
-        ...row,
-        doorNo,
-        amount: Number((base + (idx === 0 ? remainder : 0)).toFixed(2)),
-        isAutoSplit: true,
-        splitSourceRowNo: rowNo,
-      });
-    });
-  }
-
-  return nextRows;
 }
 
 async function parseBankStatementRowsFromPdfBuffer(fileBuffer: Buffer): Promise<BankStatementRow[]> {
@@ -2933,14 +2812,7 @@ export async function runGmailBankSync(uploadedById?: string): Promise<{
 
   const allAttachments: Array<{ key: string; fileName: string; data: Buffer }> = [];
   let scannedMessageCount = 0;
-  const apartmentsForSplit = await prisma.apartment.findMany({
-    select: { doorNo: true },
-  });
-  const validDoorNosForSplit = new Set(
-    apartmentsForSplit
-      .flatMap((apt) => [apt.doorNo, normalizeDoorNoForCompare(apt.doorNo)])
-      .filter((value): value is string => Boolean(value && value.trim().length > 0))
-  );
+  const validDoorNosForSplit = await loadValidDoorNoSet();
 
   if (usingImap) {
     const imapResult = await fetchImapPdfAttachments();
@@ -3009,7 +2881,7 @@ export async function runGmailBankSync(uploadedById?: string): Promise<{
         paymentMethod: derivePaymentMethod(row.txType),
       }));
 
-      const commitRows = autoSplitMultiDoorPaymentRows(rawCommitRows, validDoorNosForSplit);
+      const commitRows = planAutoSplit(rawCommitRows, validDoorNosForSplit).rows;
 
       const result = await processBankStatementImport({
         rows: commitRows,
@@ -6503,6 +6375,17 @@ router.post("/payments/upload", upload.single("file"), async (req, res) => {
   });
 });
 
+/** Bolme ve daire eslestirmede gecerli sayilan daire numaralari (yazildigi ve sayisal bicimiyle). */
+async function loadValidDoorNoSet(): Promise<Set<string>> {
+  const apartments = await prisma.apartment.findMany({ select: { doorNo: true } });
+  const doorNoSet = new Set<string>();
+  for (const apt of apartments) {
+    doorNoSet.add(apt.doorNo);
+    doorNoSet.add(normalizeDoorNoForCompare(apt.doorNo));
+  }
+  return doorNoSet;
+}
+
 router.post("/bank-statement/preview", upload.single("file"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: "File is required" });
@@ -6518,14 +6401,7 @@ router.post("/bank-statement/preview", upload.single("file"), async (req, res) =
     return res.status(400).json({ message: "No valid bank statement rows found" });
   }
 
-  const apartments = await prisma.apartment.findMany({
-    select: { doorNo: true },
-  });
-  const doorNoSet = new Set<string>();
-  for (const apt of apartments) {
-    doorNoSet.add(apt.doorNo);
-    doorNoSet.add(String(Number(apt.doorNo)));
-  }
+  const doorNoSet = await loadValidDoorNoSet();
 
   const expenseItems = await prisma.expenseItemDefinition.findMany({
     where: { isActive: true },
@@ -6555,7 +6431,22 @@ router.post("/bank-statement/preview", upload.single("file"), async (req, res) =
     expenseItemId: rule.expenseItemId,
   }));
 
-  const previewRows = rows.map((row, idx) => {
+  type PreviewRow = {
+    rowNo: number;
+    occurredAt: string;
+    amount: number;
+    entryType: "PAYMENT" | "EXPENSE";
+    doorNo: string | null;
+    expenseItemId: string | null;
+    description: string;
+    reference: string | null;
+    txType: string | null;
+    paymentMethod: PaymentMethod;
+    isAutoSplit?: boolean;
+    splitSourceRowNo?: number | null;
+  };
+
+  const previewRows: PreviewRow[] = rows.map((row, idx) => {
     const isPayment = row.amount > 0;
     return {
       rowNo: idx + 1,
@@ -6571,11 +6462,23 @@ router.post("/bank-statement/preview", upload.single("file"), async (req, res) =
     };
   });
 
+  // Bolme yalnizca sunucuda yapilir; ekran bolunmus satirlari oldugu gibi gosterir ve geri yollar.
+  const split = planAutoSplit(previewRows, doorNoSet, { rowNoOf: (row) => row.rowNo });
+  const responseRows = split.rows.map((row) => ({
+    ...row,
+    // Birden fazla daireye benzeyen ama otomatik bolunmeyen satirlar icin uyari bayragi.
+    isSplitCandidate:
+      row.entryType === "PAYMENT" &&
+      row.isAutoSplit !== true &&
+      detectSplitCandidateDoorNos(row.description).length >= 2,
+  }));
+
   return res.json({
     fileName: req.file.originalname,
     totalRows: rows.length,
     statementClosingBalance,
-    rows: previewRows,
+    autoSplitSourceCount: split.splitSourceCount,
+    rows: responseRows,
   });
 });
 
@@ -6698,7 +6601,7 @@ router.post("/bank-statement/import", upload.single("file"), async (req, res) =>
       return res.status(400).json({ message: "No valid bank statement rows found" });
     }
 
-    const commitRows: BankStatementCommitRow[] = rows.map((row) => ({
+    const rawCommitRows: BankStatementCommitRow[] = rows.map((row) => ({
       occurredAt: row.occurredAt,
       amount: Number(Math.abs(row.amount).toFixed(2)),
       entryType: row.amount > 0 ? "PAYMENT" : "EXPENSE",
@@ -6707,6 +6610,8 @@ router.post("/bank-statement/import", upload.single("file"), async (req, res) =>
       txType: row.txType,
       paymentMethod: derivePaymentMethod(row.txType),
     }));
+    // Onizleme ve Gmail ile ayni bolme kurali (eskiden bu yol hic bolmuyordu).
+    const commitRows = planAutoSplit(rawCommitRows, await loadValidDoorNoSet()).rows;
 
     const result = await processBankStatementImport({
       rows: commitRows,

@@ -14,7 +14,8 @@
 /**
  * Otomatik bolunmesine izin verilen daire ciftleri. Kullanici tarafindan belirlendi.
  * 57/93 (Muradiye Guner) Kasim 2026'dan itibaren daireleri ayri ayri odedigi icin listeden cikarildi.
- * Frontend karsiligi: AdminPage.tsx -> resolveSplitDoorNosFromDescription (knownPairs).
+ * Bolme yalnizca sunucuda, utils/autoSplit.ts uzerinden yapilir; ekranda bu listenin kopyasi YOKTUR.
+ * Yeni cift eklemek icin yalnizca bu listeyi (ve testi) guncellemek yeterlidir.
  */
 export const KNOWN_SPLIT_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ["48", "65"],
@@ -36,7 +37,7 @@ export const FIXED_AMOUNT_SPLIT_RULES: ReadonlyArray<{
   { payerKeyword: "mustafa yemen agbulut", mainDoorNo: "3", fixedDoorNo: "78", fixedAmount: 3000 },
 ];
 
-function toAsciiLower(input: string): string {
+export function toAsciiLower(input: string): string {
   return input
     .toLocaleLowerCase("tr")
     .replace(/ı/g, "i")
