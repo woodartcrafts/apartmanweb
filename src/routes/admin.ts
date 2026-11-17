@@ -72,6 +72,7 @@ import {
 import { fromCents, toCents } from "../utils/money";
 import { findCrossSourceDuplicateRowNos } from "../utils/bankRowDedup";
 import { isLowConfidenceAutoMatch } from "../utils/paymentApproval";
+import { extractWrittenDoorNoFromNormalizedText } from "../utils/doorHint";
 import {
   mapRequestMethodToAdminAction,
   mapRequestPathToAdminPage,
@@ -2558,20 +2559,10 @@ function collectExplicitPrefixedDoorCapturesFromNormalizedText(text: string): st
 }
 
 /**
- * Yalnizca "daire N" yazimini kabul eder ("d 3" gibi kisaltmalar degil). Banka aciklamalari ~60
- * karakterde kesildigi icin metnin en sonundaki sayi ("... daire 3" <- "daire 30") dikkate alinmaz.
+ * Aciklamada ACIKCA yazilmis tek daire ("daire N" ya da "D-N"); kurallar icin bkz. utils/doorHint.ts.
  */
 function extractWrittenDaireDoorNo(description: string, doorNoSet: Set<string>): string | null {
-  const text = normalizeDoorPatternText(description).trim();
-  const doorNos = [
-    ...new Set(
-      [...text.matchAll(/\bdaire\s*[:#\-\/.]?\s*0*(\d{1,4})\b/g)]
-        .filter((m) => (m.index ?? 0) + m[0].length < text.length)
-        .map((m) => normalizeDoorNoForCompare(m[1]))
-    ),
-  ].filter((doorNo) => doorNoSet.has(doorNo));
-
-  return doorNos.length === 1 ? doorNos[0] : null;
+  return extractWrittenDoorNoFromNormalizedText(normalizeDoorPatternText(description), doorNoSet);
 }
 
 function extractSingleExplicitPrefixedDoorNoFromDescription(description: string, doorNoSet: Set<string>): string | null {
