@@ -34,6 +34,7 @@ import { createAdminPaymentRefundRoutes } from "./adminPaymentRefundRoutes";
 import { createAdminSplitCandidateRoutes } from "./adminSplitCandidateRoutes";
 import { createAdminApartmentCreditRoutes } from "./adminApartmentCreditRoutes";
 import { createAdminPaymentAuditRoutes, loadPaymentAuditReport } from "./adminPaymentAuditRoutes";
+import { sendHeartbeat } from "../utils/heartbeat";
 import { auditSignature, formatAuditText, hasActionableFindings } from "../utils/paymentAudit";
 import { createAdminCashCashflowRoutes } from "./adminCashCashflowRoutes";
 import {
@@ -10007,6 +10008,7 @@ export async function runScheduledGmailBankSync(): Promise<void> {
     return;
   }
 
+  let syncFailureNote: string | null = null;
   try {
     const result = await runGmailBankSync();
     console.log("[gmail-bank-sync] completed", {
@@ -10017,9 +10019,17 @@ export async function runScheduledGmailBankSync(): Promise<void> {
       skippedRowCount: result.skippedRowCount,
       errors: result.errors.length,
     });
+    if (result.errors.length > 0) {
+      syncFailureNote = `gmail-bank-sync: ${result.errors.length} hata (ilki: ${result.errors[0]})`;
+    }
   } catch (err) {
     console.error("[gmail-bank-sync] failed", err);
+    syncFailureNote = `gmail-bank-sync basarisiz: ${err instanceof Error ? err.message : String(err)}`;
   }
+
+  // Disaridaki izleme servisine nabiz: hatasiz bitti -> "ok"; hata varsa -> "fail" (adres tanimliysa).
+  // Hic nabiz gelmezse (uygulama kapali, senkron hic calismadi) servis telefona uyari gonderir.
+  await sendHeartbeat(syncFailureNote ? "fail" : "ok", syncFailureNote ?? undefined);
 
   // Yeni odemeler senkronla geldigi icin denetim her zaman senkrondan sonra calisir.
   await runScheduledPaymentAudit();
