@@ -114,3 +114,31 @@ export function restrictSpillToPrimaryTypes<T extends { chargeId: string }>(
     return !code || primaryTypes.has(code);
   });
 }
+
+export type HistoryPayment = {
+  amountCents: number;
+  /** Odemenin kapattigi borclarin tur kodlari (tekrarsiz). */
+  typeCodes: string[];
+};
+
+export type HistoryTypeHint = { typeCode: string; count: number };
+
+/**
+ * Ayni dairenin gecmisteki ayni tutarli odemeleri hep AYNI turu kapatmissa o turu ipucu olarak doner.
+ * Gecmis yoksa, karisiksa (farkli turler) ya da odeme birden cok tur kapatmissa null.
+ * Yalnizca ipucudur: odeme otomatik yazilmaz, onay ekraninda gosterilir.
+ */
+export function suggestTypeFromHistory(amountCents: number, history: HistoryPayment[]): HistoryTypeHint | null {
+  const matching = history.filter((entry) => entry.amountCents === amountCents && entry.typeCodes.length > 0);
+  if (matching.length === 0) {
+    return null;
+  }
+  if (matching.some((entry) => entry.typeCodes.length !== 1)) {
+    return null;
+  }
+  const first = matching[0].typeCodes[0];
+  if (matching.some((entry) => entry.typeCodes[0] !== first)) {
+    return null;
+  }
+  return { typeCode: first, count: matching.length };
+}

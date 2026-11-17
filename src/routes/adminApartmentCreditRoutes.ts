@@ -16,7 +16,12 @@ import {
 } from "./adminNoteUtils";
 import { applyPendingApartmentCredits } from "../utils/apartmentCredit";
 import { fromCents, toCents } from "../utils/money";
-import { planApprovalAllocation, type ApprovalChargeSlot } from "../utils/paymentApproval";
+import {
+  planApprovalAllocation,
+  suggestTypeFromHistory,
+  type ApprovalChargeSlot,
+  type HistoryPayment,
+} from "../utils/paymentApproval";
 
 type ApprovalProposalRow = { chargeId: string; amount: number };
 type ApprovalOpenChargeRow = {
@@ -187,6 +192,8 @@ export function createAdminApartmentCreditRoutes(deps: {
           pendingApproval: isAwaitingApproval(payment.note),
           approvalProposal: null as ApprovalProposalRow[] | null,
           approvalOpenCharges: null as ApprovalOpenChargeRow[] | null,
+          /** Gecmis ipucu: ayni daire ayni tutari daha once hep bu turde odemis (yalnizca bilgi). */
+          historyHint: null as { typeName: string; count: number } | null,
           /** Fazla tutarin yalnizca yazilabilecegi tahakkuk turleri (adlari); kisitlama yoksa null. */
           typeRestriction: (() => {
             if (isAwaitingApproval(payment.note)) {
@@ -253,6 +260,40 @@ export function createAdminApartmentCreditRoutes(deps: {
         openByApartment.set(charge.apartmentId, list);
       }
 
+      // Gecmis ipucu: onay bekleyen odemelerin dairelerinde daha once ayni tutarin hangi turu
+      // kapattigina bakilir. Yalnizca bilgi amaclidir; otomatik yazim yapmaz.
+      const approvalApartmentIds = [
+        ...new Set(needsChargesRows.filter((row) => row.pendingApproval).map((row) => row.apartmentId as string)),
+      ];
+      const historyByApartment = new Map<string, Array<HistoryPayment & { typeNames: Map<string, string> }>>();
+      if (approvalApartmentIds.length > 0) {
+        const pastPayments = await prisma.payment.findMany({
+          where: { itemLinks: { some: { charge: { apartmentId: { in: approvalApartmentIds } } } } },
+          select: {
+            totalAmount: true,
+            itemLinks: {
+              select: {
+                charge: {
+                  select: { apartmentId: true, chargeType: { select: { code: true, name: true } } },
+                },
+              },
+            },
+          },
+          take: 20000,
+        });
+        for (const past of pastPayments) {
+          const apartmentIds = new Set(past.itemLinks.map((item) => item.charge.apartmentId));
+          if (apartmentIds.size !== 1) {
+            continue;
+          }
+          const apartmentId = [...apartmentIds][0];
+          const typeNames = new Map(past.itemLinks.map((item) => [item.charge.chargeType.code, item.charge.chargeType.name]));
+          const list = historyByApartment.get(apartmentId) ?? [];
+          list.push({ amountCents: toCents(past.totalAmount), typeCodes: [...typeNames.keys()], typeNames });
+          historyByApartment.set(apartmentId, list);
+        }
+      }
+
       const orderedRows = [...needsChargesRows].sort(
         (a, b) => new Date(a.paidAt).getTime() - new Date(b.paidAt).getTime()
       );
@@ -261,6 +302,13 @@ export function createAdminApartmentCreditRoutes(deps: {
         row.approvalOpenCharges = slots.map((slot) => slot.meta);
 
         if (row.pendingApproval) {
+          const history = historyByApartment.get(row.apartmentId as string) ?? [];
+          const hint = suggestTypeFromHistory(toCents(row.totalAmount), history);
+          if (hint) {
+            const typeName =
+              history.find((entry) => entry.typeNames.has(hint.typeCode))?.typeNames.get(hint.typeCode) ?? hint.typeCode;
+            row.historyHint = { typeName, count: hint.count };
+          }
           const plan = planApprovalAllocation({
             amountCents: toCents(row.pendingAmount),
             charges: slots.map((slot) => ({ chargeId: slot.chargeId, remainingCents: slot.remainingCents })),

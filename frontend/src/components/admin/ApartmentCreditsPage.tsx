@@ -131,6 +131,12 @@ export function ApartmentCreditsPage({
                     {row.typeRestriction ? (
                       <div className="small">Alacagin turu: {row.typeRestriction.join(" / ")}</div>
                     ) : null}
+                    {row.historyHint ? (
+                      <div className="small">
+                        Gecmis ipucu: bu daire ayni tutari daha once {row.historyHint.count} kez{" "}
+                        {row.historyHint.typeName} icin odemis (kesin degil, siz karar verin).
+                      </div>
+                    ) : null}
                     {openCharges.length === 0 ? (
                       <span className="text-danger">Dairede acik borc yok</span>
                     ) : (
@@ -148,6 +154,7 @@ export function ApartmentCreditsPage({
                             />{" "}
                             {formatPeriod(charge.periodYear, charge.periodMonth)} -{" "}
                             {charge.chargeTypeName} (kalan {formatTry(charge.remaining)})
+                            {row.historyHint?.typeName === charge.chargeTypeName ? " - gecmise uygun" : ""}
                             {proposedAmount !== undefined
                               ? ` - onerilen ${formatTry(proposedAmount)}`
                               : ""}

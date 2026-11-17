@@ -6,7 +6,7 @@ import {
   withApprovedNote,
 } from "../routes/adminNoteUtils";
 import { isEligibleForAutoApply } from "./apartmentCredit";
-import { isLowConfidenceAutoMatch, planApprovalAllocation } from "./paymentApproval";
+import { isLowConfidenceAutoMatch, planApprovalAllocation, suggestTypeFromHistory } from "./paymentApproval";
 
 describe("isLowConfidenceAutoMatch", () => {
   it("FIFO_FALLBACK dusuk guvenlidir (sonekli hali de)", () => {
@@ -116,5 +116,33 @@ describe("onay bekleyen not etiketi", () => {
     const once = withApprovedNote(pendingNote, "AUTO_MATCH:MANUAL_APPROVED");
     const twice = withApprovedNote(once, "AUTO_MATCH:MANUAL_APPROVED");
     expect(twice).toBe(once);
+  });
+});
+
+describe("suggestTypeFromHistory", () => {
+  const h = (amountCents: number, ...typeCodes: string[]) => ({ amountCents, typeCodes });
+
+  it("ayni tutar hep ayni turu kapatmissa ipucu verir", () => {
+    expect(suggestTypeFromHistory(132500, [h(132500, "DOGALGAZ"), h(132500, "DOGALGAZ"), h(50000, "AIDAT")])).toEqual({
+      typeCode: "DOGALGAZ",
+      count: 2,
+    });
+  });
+
+  it("gecmis yoksa null", () => {
+    expect(suggestTypeFromHistory(132500, [])).toBeNull();
+    expect(suggestTypeFromHistory(132500, [h(50000, "AIDAT")])).toBeNull();
+  });
+
+  it("ayni tutar farkli turleri kapatmissa belirsiz: null", () => {
+    expect(suggestTypeFromHistory(132500, [h(132500, "DOGALGAZ"), h(132500, "AIDAT")])).toBeNull();
+  });
+
+  it("gecmiste birden cok turu kapatan odeme varsa belirsiz: null", () => {
+    expect(suggestTypeFromHistory(132500, [h(132500, "AIDAT", "DOGALGAZ")])).toBeNull();
+  });
+
+  it("tur kapatmamis (bos) gecmis kayitlari yok sayilir", () => {
+    expect(suggestTypeFromHistory(132500, [h(132500), h(132500, "AIDAT")])).toEqual({ typeCode: "AIDAT", count: 1 });
   });
 });

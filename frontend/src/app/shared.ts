@@ -683,6 +683,8 @@ export type ApartmentPendingCreditRow = {
   approvalOpenCharges: ApprovalOpenChargeRow[] | null;
   /** Fazla tutarin yalnizca yazilabilecegi tahakkuk turleri (adlari); kisitlama yoksa null. */
   typeRestriction: string[] | null;
+  /** Ayni daire ayni tutari daha once hep bu turde odemis (yalnizca bilgi). */
+  historyHint: { typeName: string; count: number } | null;
 };
 
 export type ApprovalOpenChargeRow = {
