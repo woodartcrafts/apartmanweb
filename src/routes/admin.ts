@@ -70,6 +70,7 @@ import {
   type ApplyPendingCreditsResult,
 } from "../utils/apartmentCredit";
 import { fromCents, toCents } from "../utils/money";
+import { findCrossSourceDuplicateRowNos } from "../utils/bankRowDedup";
 import {
   mapRequestMethodToAdminAction,
   mapRequestPathToAdminPage,
@@ -3183,6 +3184,35 @@ async function processBankStatementImport(params: {
   const positiveCount = rows.filter((r) => r.entryType === "PAYMENT").length;
   const negativeCount = rows.filter((r) => r.entryType === "EXPENSE").length;
 
+  // Ayni banka islemi hem Excel (dekont no referansi) hem Gmail PDF (hash referansi) ile gelebilir.
+  // Referanslar birbirini tutmadigi icin kaynaklar arasi mukerrerleri tarih+tutar+aciklama ile bul.
+  let crossSourceDuplicateRowNos = new Set<number>();
+  {
+    const incomingPaymentTimes = rows
+      .filter((r) => r.entryType === "PAYMENT" && Number.isFinite(r.amount) && r.amount > 0)
+      .map((r) => r.occurredAt.getTime());
+    if (incomingPaymentTimes.length > 0) {
+      const dayMs = 86_400_000;
+      const earliest = incomingPaymentTimes.reduce((min, value) => (value < min ? value : min));
+      const latest = incomingPaymentTimes.reduce((max, value) => (value > max ? value : max));
+      const existingBankPayments = await prisma.payment.findMany({
+        where: {
+          paidAt: { gte: new Date(earliest - 2 * dayMs), lte: new Date(latest + 2 * dayMs) },
+          note: { contains: "BANK_REF:" },
+        },
+        select: { note: true, paidAt: true, totalAmount: true },
+      });
+      crossSourceDuplicateRowNos = findCrossSourceDuplicateRowNos(
+        rows,
+        existingBankPayments.map((payment) => ({
+          note: payment.note,
+          paidAt: payment.paidAt,
+          totalAmount: Number(payment.totalAmount),
+        }))
+      );
+    }
+  }
+
   const openChargeRows = await prisma.charge.findMany({
     where: { status: "OPEN" },
     select: {
@@ -3544,6 +3574,14 @@ async function processBankStatementImport(params: {
 
     try {
       if (row.entryType === "PAYMENT") {
+        if (crossSourceDuplicateRowNos.has(rowNo)) {
+          skippedCount += 1;
+          errors.push(
+            `Satir ${rowNo}: Ayni islem baska kaynaktan (Excel/PDF) zaten yuklenmis (tarih+tutar+aciklama), atlandi`
+          );
+          continue;
+        }
+
         if (reference) {
           if (paymentReferenceSet.has(reference)) {
             if (!isSplitPaymentRow) {
