@@ -11,9 +11,12 @@
  * zararsizdir; kullanici listeden "Bolunmesin" diyerek gecebilir.
  */
 
-/** Otomatik bolunmesine izin verilen daire ciftleri. Kullanici tarafindan belirlendi. */
+/**
+ * Otomatik bolunmesine izin verilen daire ciftleri. Kullanici tarafindan belirlendi.
+ * 57/93 (Muradiye Guner) Kasim 2026'dan itibaren daireleri ayri ayri odedigi icin listeden cikarildi.
+ * Frontend karsiligi: AdminPage.tsx -> resolveSplitDoorNosFromDescription (knownPairs).
+ */
 export const KNOWN_SPLIT_PAIRS: ReadonlyArray<readonly [string, string]> = [
-  ["57", "93"],
   ["48", "65"],
   ["35", "45"],
 ];
