@@ -236,7 +236,8 @@ export function createAdminPaymentAuditRoutes(deps: {
       return res.json(result);
     } catch (err) {
       console.error("[daily-digest] manual send failed", err);
-      return res.status(502).json({ message: "Ozet e-postasi gonderilemedi" });
+      const detail = err instanceof Error ? err.message.replace(/\s+/g, " ").slice(0, 300) : "";
+      return res.status(502).json({ message: detail ? `Ozet e-postasi gonderilemedi: ${detail}` : "Ozet e-postasi gonderilemedi" });
     }
   });
 
