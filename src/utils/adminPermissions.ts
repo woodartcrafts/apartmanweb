@@ -337,6 +337,7 @@ export function mapRequestPathToAdminPage(pathname: string, method?: string): Ad
   if (pathname.startsWith("/payment-refunds")) return "PAYMENT_REFUNDS";
   if (pathname.startsWith("/split-candidates")) return "SPLIT_CANDIDATES";
   if (pathname.startsWith("/apartment-credits")) return "APARTMENT_CREDITS";
+  if (pathname.startsWith("/payment-audit")) return "APARTMENT_CREDITS";
   if (pathname.startsWith("/manual-closures")) return "MANUAL_CLOSURES";
   if (pathname.startsWith("/audit-logs")) return "AUDIT_LOGS";
   if (pathname.startsWith("/login-logs")) return "LOGIN_LOGS";

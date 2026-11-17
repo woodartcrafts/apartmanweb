@@ -1,56 +1,59 @@
 import { describe, expect, it } from "vitest";
 import { auditPayments } from "./paymentAudit";
-import { buildDailyDigestEmail, digestAttentionCount, type DailyDigest, type DigestPaymentLine } from "./dailyDigest";
+import {
+  dayKeyInZone,
+  digestAttentionCount,
+  isDailyReportOverdue,
+  mergeSyncSummaries,
+  minutesOfDayInZone,
+  type DailyDigest,
+  type DigestPaymentLine,
+  type DigestSyncSummary,
+} from "./dailyDigest";
 
 const emptyAudit = () => auditPayments({ payments: [], charges: [], doorNoSet: new Set(), windowDays: 45 });
 const line = (n: number): DigestPaymentLine => ({
-  paidAt: `2026-11-${String(10 + (n % 10)).padStart(2, "0")}T00:00:00.000Z`,
+  paidAt: "2026-11-12T00:00:00.000Z",
   amount: 1325,
-  doorLabel: `D${n}`,
+  doorLabel: `Daire ${n}`,
   description: "AHMET DEMIR*D-24 KASIM 2026 DOĞALGAZ AİDAT",
   reason: "Açık borcu aşan ödeme",
 });
 const base = (): DailyDigest => ({
+  dayKey: "2026-11-18",
+  generatedAt: "2026-11-18T09:00:00.000Z",
   dayLabel: "18.11.2026",
   sync: null,
   audit: emptyAudit(),
   awaiting: [],
   pending: { count: 0, total: 0, lines: [] },
 });
+const sync = (overrides: Partial<DigestSyncSummary> = {}): DigestSyncSummary => ({
+  importedPaymentCount: 0,
+  importedExpenseCount: 0,
+  importedBatchCount: 0,
+  skippedRowCount: 0,
+  errorCount: 0,
+  failureNote: null,
+  ...overrides,
+});
 
-describe("buildDailyDigestEmail", () => {
-  it("hiçbir şey yoksa 'bakılacak bir şey yok' der", () => {
-    const mail = buildDailyDigestEmail(base());
-    expect(mail.subject).toBe("ApartmanWeb günlük özet 18.11.2026: bakılacak bir şey yok");
-    expect(mail.text).toContain("Bugün bakılması gereken bir kayıt yok.");
+describe("digestAttentionCount", () => {
+  it("hiçbir şey yoksa 0", () => {
     expect(digestAttentionCount(base())).toBe(0);
   });
 
-  it("senkron sonucu, onay bekleyenler ve bekleyen alacaklar listelenir", () => {
+  it("onay bekleyenler ve senkron hatası sayılır; ortada kalan alacak tek başına sayılmaz", () => {
     const digest: DailyDigest = {
       ...base(),
-      sync: { importedPaymentCount: 5, importedExpenseCount: 1, importedBatchCount: 2, skippedRowCount: 0, errorCount: 0, failureNote: null },
+      sync: sync({ errorCount: 1, failureNote: "Gmail oturumu reddedildi" }),
       awaiting: [line(1), line(2)],
       pending: { count: 1, total: 1000, lines: [line(3)] },
     };
-    const mail = buildDailyDigestEmail(digest);
-    expect(mail.subject).toContain("bakılması gereken 2 konu var");
-    expect(mail.text).toContain("5 yeni ödeme, 1 gider işlendi");
-    expect(mail.text).toContain("ONAY BEKLEYEN ÖDEMELER (2)");
-    expect(mail.text).toContain("ORTADA KALAN ALACAKLAR: 1 ödeme, toplam 1.000,00 TL");
-    expect(mail.text).toContain("D3");
+    expect(digestAttentionCount(digest)).toBe(3);
   });
 
-  it("senkron hatası konu sayısına eklenir ve başta görünür", () => {
-    const digest: DailyDigest = {
-      ...base(),
-      sync: { importedPaymentCount: 0, importedExpenseCount: 0, importedBatchCount: 0, skippedRowCount: 0, errorCount: 1, failureNote: "Gmail oturumu reddedildi" },
-    };
-    expect(digestAttentionCount(digest)).toBe(1);
-    expect(buildDailyDigestEmail(digest).text).toContain("Gmail senkronu SORUNLU: Gmail oturumu reddedildi");
-  });
-
-  it("denetim bulguları listelenir; liste 15 satırla sınırlanır ve kalan sayısı yazılır", () => {
+  it("önemli/orta bulgular sayılır, INFO sayılmaz", () => {
     const audit = auditPayments({
       payments: [
         { id: "p1", paidAt: new Date("2026-11-12T00:00:00Z"), totalAmount: 1325, note: "BANK_REF:1 | BANK_DESC:X D-24 KASIM AIDAT TL | DOOR:54", linkedDoorNos: [] },
@@ -59,20 +62,57 @@ describe("buildDailyDigestEmail", () => {
       doorNoSet: new Set(["24", "54"]),
       windowDays: 45,
     });
-    const many = Array.from({ length: 20 }, (_, i) => line(i + 1));
-    const mail = buildDailyDigestEmail({ ...base(), audit, pending: { count: 20, total: 26500, lines: many } });
-    expect(mail.text).toContain("BAKILMASI GEREKEN KAYITLAR (1)");
-    expect(mail.text).toContain("[ÖNEMLİ]");
-    expect(mail.text).toContain("… ve 5 kayıt daha");
-    expect(mail.text.split("\n").filter((l) => l.startsWith("- 1")).length).toBeLessThanOrEqual(16);
+    const actionable = audit.findings.filter((finding) => finding.severity !== "INFO").length;
+    expect(actionable).toBeGreaterThan(0);
+    expect(digestAttentionCount({ ...base(), audit })).toBe(actionable);
+  });
+});
+
+describe("saat dilimi yardımcıları (Europe/Istanbul, UTC+3)", () => {
+  const tz = "Europe/Istanbul";
+
+  it("UTC gece yarısından sonraki saatler İstanbul'da aynı güne düşer, 21:00 UTC ertesi güne", () => {
+    expect(dayKeyInZone(new Date("2026-11-18T08:00:00Z"), tz)).toBe("2026-11-18");
+    expect(dayKeyInZone(new Date("2026-11-17T21:00:00Z"), tz)).toBe("2026-11-18");
+    expect(dayKeyInZone(new Date("2026-11-17T20:59:00Z"), tz)).toBe("2026-11-17");
   });
 
-  it("HTML çıktısı kaçışlıdır", () => {
-    const mail = buildDailyDigestEmail({
-      ...base(),
-      awaiting: [{ ...line(1), description: "<b>&</b>" }],
-    });
-    expect(mail.html).toContain("&lt;b&gt;&amp;&lt;/b&gt;");
-    expect(mail.html).not.toContain("<b>&</b>");
+  it("günün dakikası İstanbul saatine göre hesaplanır", () => {
+    expect(minutesOfDayInZone(new Date("2026-11-18T09:00:00Z"), tz)).toBe(12 * 60);
+    expect(minutesOfDayInZone(new Date("2026-11-17T21:00:00Z"), tz)).toBe(0);
+  });
+});
+
+describe("isDailyReportOverdue", () => {
+  const tz = "Europe/Istanbul";
+  const args = { timeZone: tz, scheduleHour: 12, scheduleMinute: 0 };
+
+  it("bugünün raporu varsa asla gecikmiş değildir", () => {
+    expect(isDailyReportOverdue({ ...args, now: new Date("2026-11-18T20:00:00Z"), hasTodayReport: true })).toBe(false);
+  });
+
+  it("12:00 + 30 dk toleransından önce uyarı vermez", () => {
+    expect(isDailyReportOverdue({ ...args, now: new Date("2026-11-18T09:29:00Z"), hasTodayReport: false })).toBe(false);
+    expect(isDailyReportOverdue({ ...args, now: new Date("2026-11-18T05:00:00Z"), hasTodayReport: false })).toBe(false);
+  });
+
+  it("12:30'dan sonra rapor yoksa uyarır", () => {
+    expect(isDailyReportOverdue({ ...args, now: new Date("2026-11-18T09:30:00Z"), hasTodayReport: false })).toBe(true);
+  });
+});
+
+describe("mergeSyncSummaries", () => {
+  it("biri yoksa diğerini döndürür", () => {
+    expect(mergeSyncSummaries(null, null)).toBeNull();
+    expect(mergeSyncSummaries(null, sync({ importedPaymentCount: 2 }))?.importedPaymentCount).toBe(2);
+    expect(mergeSyncSummaries(sync({ importedPaymentCount: 3 }), null)?.importedPaymentCount).toBe(3);
+  });
+
+  it("ice aktarılanlar toplanır, hata durumu son çalışmanınkidir", () => {
+    const merged = mergeSyncSummaries(
+      sync({ importedPaymentCount: 5, importedExpenseCount: 1, importedBatchCount: 2, errorCount: 1, failureNote: "eski hata" }),
+      sync({ importedPaymentCount: 1, importedBatchCount: 1 })
+    );
+    expect(merged).toEqual(sync({ importedPaymentCount: 6, importedExpenseCount: 1, importedBatchCount: 3 }));
   });
 });

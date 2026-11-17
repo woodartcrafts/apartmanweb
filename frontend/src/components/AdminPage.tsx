@@ -282,6 +282,11 @@ const SplitCandidatesPage = lazy(() =>
     default: module.SplitCandidatesPage,
   }))
 );
+const DailyAuditReportPage = lazy(() =>
+  import("./admin/DailyAuditReportPage").then((module) => ({
+    default: module.DailyAuditReportPage,
+  }))
+);
 const ApartmentCreditsPage = lazy(() =>
   import("./admin/ApartmentCreditsPage").then((module) => ({
     default: module.ApartmentCreditsPage,
@@ -1113,6 +1118,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/payment-refunds": "PAYMENT_REFUNDS",
       "/admin/split-candidates": "SPLIT_CANDIDATES",
       "/admin/apartment-credits": "APARTMENT_CREDITS",
+      "/admin/audit-report": "APARTMENT_CREDITS",
       "/admin/manual-closures": "MANUAL_CLOSURES",
       "/admin/audit-logs": "AUDIT_LOGS",
       "/admin/login-logs": "LOGIN_LOGS",
@@ -4622,30 +4628,6 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       console.error(err);
       setMessage(err instanceof Error ? err.message : "Odeme onaylanamadi");
       throw err;
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function sendPaymentAuditDigest(): Promise<void> {
-    setLoading(true);
-    try {
-      const result = await authorizedRequest<{
-        status: "sent" | "no_recipient" | "already_sent" | "no_sender";
-        recipientCount: number;
-      }>("/api/admin/payment-audit/send-digest", { method: "POST", payload: {} });
-      setMessage(
-        result.status === "sent"
-          ? `Gunluk ozet ${result.recipientCount} alicinin e-postasina gonderildi`
-          : result.status === "no_recipient"
-            ? "Ozet gonderilmedi: e-posta alicisi tanimli degil (PAYMENT_AUDIT_EMAIL_TO)"
-            : result.status === "no_sender"
-              ? "Ozet gonderilmedi: gonderen e-posta adresi tanimli degil"
-              : "Bugunun ozeti zaten gonderilmis"
-      );
-    } catch (err) {
-      console.error(err);
-      setMessage(err instanceof Error ? err.message : "Ozet e-postasi gonderilemedi");
     } finally {
       setLoading(false);
     }
@@ -9407,6 +9389,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <NavLink className="btn btn-ghost" to="/admin/apartment-credits">
               Fazla Odeme ve Daire Alacaklari
             </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/audit-report">
+              Gunluk Denetim Raporu
+            </NavLink>
           </div>
         </details>
 
@@ -13288,8 +13273,15 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 applyPendingCredits={applyPendingApartmentCredits}
                 approvePendingCredit={approvePendingCredit}
                 markAuditReviewed={markPaymentAuditReviewed}
-                sendAuditDigest={sendPaymentAuditDigest}
               />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/audit-report"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <DailyAuditReportPage request={authorizedRequest} />
             </Suspense>
           }
         />

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   formatDateTr,
   formatTry,
@@ -15,7 +16,6 @@ type ApartmentCreditsPageProps = {
   applyPendingCredits: () => Promise<void>;
   approvePendingCredit: (paymentId: string, chargeIds?: string[]) => Promise<void>;
   markAuditReviewed: (paymentId: string) => Promise<void>;
-  sendAuditDigest: () => Promise<void>;
 };
 
 const MONTH_NAMES = [
@@ -46,7 +46,6 @@ export function ApartmentCreditsPage({
   applyPendingCredits,
   approvePendingCredit,
   markAuditReviewed,
-  sendAuditDigest,
 }: ApartmentCreditsPageProps) {
   const allPendingCredits = useMemo(() => data?.pendingCredits ?? [], [data]);
   const approvalRows = useMemo(
@@ -242,17 +241,8 @@ export function ApartmentCreditsPage({
         <p className="small">
           Gunluk otomatik denetim yalnizca okur, hicbir kaydi degistirmez. Asagidakiler sistemin
           kendi kayitlarindaki tutarsizliklardir; duzeltme Duzeltmeler ekranindan elle yapilir.
-          Her gun 12:00 senkronundan sonra ozet e-posta olarak gonderilir.{" "}
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={loading}
-            onClick={() => {
-              void sendAuditDigest();
-            }}
-          >
-            Ozeti simdi e-postayla gonder
-          </button>
+          Her gun 12:00 senkronundan sonra sonuc{" "}
+          <Link to="/admin/audit-report">Gunluk Denetim Raporu</Link> sayfasina yazilir.
         </p>
         {!audit ? (
           <p className="small">Denetim sonucu alinamadi.</p>

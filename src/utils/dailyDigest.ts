@@ -1,6 +1,6 @@
 /**
- * Gunluk ozet e-postasi: yoneticiye "bugun bakilmasi gereken bir sey var mi" sorusunun cevabi.
- * Hicbir kaydi degistirmez; yalnizca okunmus verilerden metin uretir.
+ * Gunluk denetim raporu ("gunun ozeti"): yoneticiye "bugun bakilmasi gereken bir sey var mi" sorusunun cevabi.
+ * Hicbir kaydi degistirmez; okunmus verilerden uretilir ve veritabaninda gun basina bir satir olarak saklanir.
  */
 
 import type { AuditReport } from "./paymentAudit";
@@ -24,6 +24,11 @@ export type DigestPaymentLine = {
 };
 
 export type DailyDigest = {
+  /** Raporun ait oldugu gun (yyyy-mm-dd, uygulamanin saat diliminde). */
+  dayKey: string;
+  /** Rapor verisinin en son hesaplandigi an (ISO). */
+  generatedAt: string;
+  /** Gun etiketi (gg.aa.yyyy). */
   dayLabel: string;
   sync: DigestSyncSummary | null;
   audit: AuditReport;
@@ -31,39 +36,11 @@ export type DailyDigest = {
   pending: { count: number; total: number; lines: DigestPaymentLine[] };
 };
 
-export type DigestSendResult = {
-  status: "sent" | "no_recipient" | "already_sent" | "no_sender";
-  recipientCount: number;
-};
+/** Veritabaninda saklanan satir basina ust sinir (ekranda hepsi gosterilir). */
+export const DIGEST_MAX_LINES = 200;
 
-export const DIGEST_MAX_LINES = 15;
-
-function formatTry(amount: number): string {
-  return `${amount.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`;
-}
-
-function formatDayTr(iso: string): string {
-  const [year, month, day] = iso.slice(0, 10).split("-");
-  return `${day}.${month}.${year}`;
-}
-
-function shorten(text: string, max: number): string {
-  const clean = text.replace(/\s+/g, " ").trim();
-  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
-}
-
-function paymentLine(line: DigestPaymentLine): string {
-  const description = line.description ? ` — "${shorten(line.description, 70)}"` : "";
-  return `- ${formatDayTr(line.paidAt)} ${formatTry(line.amount)} ${line.doorLabel}${description} (${line.reason})`;
-}
-
-function limited(lines: DigestPaymentLine[], total: number): string[] {
-  const shown = lines.slice(0, DIGEST_MAX_LINES).map(paymentLine);
-  if (total > shown.length) {
-    shown.push(`… ve ${total - shown.length} kayıt daha (Yönetim > Daire Alacakları)`);
-  }
-  return shown;
-}
+/** "Zamanlayici gec kaldi" uyarisi icin tolerans: planlanan saatten sonra bu kadar dakika beklenir. */
+export const DAILY_REPORT_GRACE_MINUTES = 30;
 
 /** Dikkat gerektiren konu sayisi: onemli/orta bulgular + onay bekleyenler + senkron sorunu. */
 export function digestAttentionCount(digest: DailyDigest): number {
@@ -71,61 +48,65 @@ export function digestAttentionCount(digest: DailyDigest): number {
   return findings + digest.awaiting.length + (digest.sync?.failureNote ? 1 : 0);
 }
 
-export function buildDailyDigestEmail(digest: DailyDigest): { subject: string; text: string; html: string } {
-  const attention = digestAttentionCount(digest);
-  const subject =
-    attention > 0
-      ? `ApartmanWeb günlük özet ${digest.dayLabel}: bakılması gereken ${attention} konu var`
-      : `ApartmanWeb günlük özet ${digest.dayLabel}: bakılacak bir şey yok`;
+/** Verilen an, verilen saat diliminde hangi gune denk geliyor (yyyy-mm-dd). */
+export function dayKeyInZone(now: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
 
-  const lines: string[] = [`ApartmanWeb günlük özet — ${digest.dayLabel}`, ""];
+/** Verilen an, verilen saat diliminde gece yarisindan kac dakika sonra. */
+export function minutesOfDayInZone(now: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+  return hour * 60 + minute;
+}
 
-  if (digest.sync) {
-    const sync = digest.sync;
-    lines.push(
-      sync.failureNote
-        ? `Gmail senkronu SORUNLU: ${sync.failureNote}`
-        : `Gmail senkronu: ${sync.importedPaymentCount} yeni ödeme, ${sync.importedExpenseCount} gider işlendi (${sync.importedBatchCount} dosya, ${sync.skippedRowCount} satır atlandı). Hata yok.`
-    );
-    lines.push("");
+/** Bugunun raporu yok ve planlanan saat + tolerans gectiyse true: zamanlayici calismamis demektir. */
+export function isDailyReportOverdue(args: {
+  now: Date;
+  timeZone: string;
+  scheduleHour: number;
+  scheduleMinute: number;
+  hasTodayReport: boolean;
+  graceMinutes?: number;
+}): boolean {
+  if (args.hasTodayReport) {
+    return false;
   }
+  const dueMinutes = args.scheduleHour * 60 + args.scheduleMinute + (args.graceMinutes ?? DAILY_REPORT_GRACE_MINUTES);
+  return minutesOfDayInZone(args.now, args.timeZone) >= dueMinutes;
+}
 
-  const actionable = digest.audit.findings.filter((finding) => finding.severity !== "INFO");
-  if (actionable.length > 0) {
-    lines.push(`BAKILMASI GEREKEN KAYITLAR (${actionable.length}):`);
-    for (const finding of actionable) {
-      lines.push(`- [${finding.severity === "HIGH" ? "ÖNEMLİ" : "ORTA"}] ${finding.message}`);
-    }
-    lines.push("");
+/**
+ * Ayni gun senkron birden fazla calisirsa (ornegin servis yeniden baslarsa) yeni ice aktarilanlar toplanir;
+ * hata durumu ise en son calismanin durumudur.
+ */
+export function mergeSyncSummaries(
+  previous: DigestSyncSummary | null,
+  next: DigestSyncSummary | null
+): DigestSyncSummary | null {
+  if (!previous) {
+    return next;
   }
-
-  if (digest.awaiting.length > 0) {
-    lines.push(`ONAY BEKLEYEN ÖDEMELER (${digest.awaiting.length}) — hiçbir borca yazılmadı, sizin onayınızı bekliyor:`);
-    lines.push(...limited(digest.awaiting, digest.awaiting.length));
-    lines.push("");
+  if (!next) {
+    return previous;
   }
-
-  if (digest.pending.count > 0) {
-    lines.push(
-      `ORTADA KALAN ALACAKLAR: ${digest.pending.count} ödeme, toplam ${formatTry(digest.pending.total)} (borca yazılmamış tutar; yeni tahakkukta otomatik uygulanır ya da elle yazılır):`
-    );
-    lines.push(...limited(digest.pending.lines, digest.pending.count));
-    lines.push("");
-  }
-
-  if (attention === 0 && digest.pending.count === 0) {
-    lines.push("Bugün bakılması gereken bir kayıt yok.", "");
-  }
-
-  lines.push(
-    `Taranan ödeme: son ${digest.audit.windowDays} gün, ${digest.audit.scannedPaymentCount} kayıt.`,
-    "Bu özet yalnızca okur; hiçbir kaydı değiştirmez. Ayrıntılar: Yönetim > Daire Alacakları."
-  );
-
-  const text = lines.join("\n");
-  const html = `<pre style="font-family:inherit;white-space:pre-wrap">${text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")}</pre>`;
-  return { subject, text, html };
+  return {
+    importedPaymentCount: previous.importedPaymentCount + next.importedPaymentCount,
+    importedExpenseCount: previous.importedExpenseCount + next.importedExpenseCount,
+    importedBatchCount: previous.importedBatchCount + next.importedBatchCount,
+    skippedRowCount: previous.skippedRowCount + next.skippedRowCount,
+    errorCount: next.errorCount,
+    failureNote: next.failureNote,
+  };
 }

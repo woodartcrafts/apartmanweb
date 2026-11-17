@@ -751,6 +751,48 @@ export type PaymentAuditReport = {
   findings: PaymentAuditFinding[];
 };
 
+export type DailyAuditSyncSummary = {
+  importedPaymentCount: number;
+  importedExpenseCount: number;
+  importedBatchCount: number;
+  skippedRowCount: number;
+  errorCount: number;
+  failureNote: string | null;
+};
+
+export type DailyAuditPaymentLine = {
+  paidAt: string;
+  amount: number;
+  doorLabel: string;
+  description: string;
+  reason: string;
+};
+
+export type DailyAuditReportData = {
+  dayKey: string;
+  generatedAt: string;
+  dayLabel: string;
+  sync: DailyAuditSyncSummary | null;
+  audit: PaymentAuditReport;
+  awaiting: DailyAuditPaymentLine[];
+  pending: { count: number; total: number; lines: DailyAuditPaymentLine[] };
+};
+
+export type DailyAuditReportsResponse = {
+  todayKey: string;
+  autoEnabled: boolean;
+  scheduleHour: number;
+  scheduleMinute: number;
+  /** Bugunun raporu planlanan saat + toleranstan sonra hala yoksa true. */
+  overdue: boolean;
+  reports: Array<{
+    dayKey: string;
+    updatedAt: string;
+    attentionCount: number;
+    report: DailyAuditReportData;
+  }>;
+};
+
 export type ApplyPendingCreditsResult = {
   appliedPaymentCount: number;
   createdItemCount: number;

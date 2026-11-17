@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { config } from "../config";
 import { prisma } from "../db";
 import {
   extractDoorNoTagFromPaymentNote,
@@ -11,8 +12,18 @@ import {
   withAuditReviewedNote,
 } from "./adminNoteUtils";
 import { describePendingReason } from "./adminApartmentCreditRoutes";
-import type { DailyDigest, DigestPaymentLine, DigestSendResult, DigestSyncSummary } from "../utils/dailyDigest";
+import {
+  DIGEST_MAX_LINES,
+  dayKeyInZone,
+  digestAttentionCount,
+  isDailyReportOverdue,
+  mergeSyncSummaries,
+  type DailyDigest,
+  type DigestPaymentLine,
+  type DigestSyncSummary,
+} from "../utils/dailyDigest";
 import { fromCents, toCents } from "../utils/money";
+import { toPrismaJson } from "../utils/adminPermissions";
 import {
   auditPayments,
   type AuditChargeInput,
@@ -106,7 +117,7 @@ function bankDescriptionOf(note: string | null): string {
 }
 
 /**
- * Gunluk ozet e-postasi icin salt-okunur veri: denetim bulgulari + onay bekleyen odemeler +
+ * Gunluk denetim raporu icin salt-okunur veri: denetim bulgulari + onay bekleyen odemeler +
  * ortada kalan (borca yazilmamis) alacaklar. Alacak tanimi Daire Alacaklari ekraniyla aynidir.
  */
 export async function loadDailyDigest(
@@ -167,17 +178,47 @@ export async function loadDailyDigest(
   }).format(now);
 
   return {
+    dayKey: dayKeyInZone(now, timeZone),
+    generatedAt: now.toISOString(),
     dayLabel,
     sync,
     audit,
-    awaiting,
-    pending: { count: pendingLines.length, total: fromCents(pendingTotalCents), lines: pendingLines },
+    awaiting: awaiting.slice(0, DIGEST_MAX_LINES),
+    pending: {
+      count: pendingLines.length,
+      total: fromCents(pendingTotalCents),
+      lines: pendingLines.slice(0, DIGEST_MAX_LINES),
+    },
   };
 }
 
-export function createAdminPaymentAuditRoutes(deps: {
-  sendDigest: (options: { force: boolean }) => Promise<DigestSendResult>;
-}): Router {
+/**
+ * Bugunun raporunu hesaplar ve gun basina tek satir olarak saklar (varsa gunceller). `sync` bu calismanin
+ * senkron sonucudur; ayni gun onceki calismalarin sonuclariyla birlestirilir. Hicbir odeme kaydini degistirmez.
+ */
+export async function saveDailyAuditReport(sync: DigestSyncSummary | null): Promise<DailyDigest> {
+  const timeZone = config.gmailBankSync.scheduleTimeZone;
+  const now = new Date();
+  const dayKey = dayKeyInZone(now, timeZone);
+
+  const existing = await prisma.dailyAuditReport.findUnique({ where: { dayKey } });
+  const previousSync = existing ? ((existing.report as unknown as DailyDigest).sync ?? null) : null;
+
+  const digest = await loadDailyDigest(mergeSyncSummaries(previousSync, sync), now, timeZone);
+  const report = toPrismaJson(JSON.parse(JSON.stringify(digest)));
+  const attentionCount = digestAttentionCount(digest);
+
+  await prisma.dailyAuditReport.upsert({
+    where: { dayKey },
+    create: { dayKey, attentionCount, report },
+    update: { attentionCount, report },
+  });
+  return digest;
+}
+
+const DAILY_REPORT_LIST_LIMIT = 30;
+
+export function createAdminPaymentAuditRoutes(): Router {
   const router = Router();
 
   router.get("/payment-audit", async (req, res) => {
@@ -229,15 +270,47 @@ export function createAdminPaymentAuditRoutes(deps: {
     return res.json({ paymentId: payment.id, reviewed, changed: true });
   });
 
-  /** Gunluk ozeti simdi e-postayla gonderir (test / elle tetikleme). Gunluk "gonderildi" kaydini yoklamaz. */
-  router.post("/payment-audit/send-digest", async (_req, res) => {
+  /** Son gunlerin denetim raporlari + "bugunun raporu zamaninda olusmadi mi" bilgisi. */
+  router.get("/payment-audit/daily-reports", async (_req, res) => {
+    const rows = await prisma.dailyAuditReport.findMany({
+      orderBy: { dayKey: "desc" },
+      take: DAILY_REPORT_LIST_LIMIT,
+    });
+    const timeZone = config.gmailBankSync.scheduleTimeZone;
+    const now = new Date();
+    const todayKey = dayKeyInZone(now, timeZone);
+    const hasTodayReport = rows.some((row) => row.dayKey === todayKey);
+    return res.json({
+      todayKey,
+      autoEnabled: config.gmailBankSync.enabled,
+      scheduleHour: config.gmailBankSync.scheduleHour,
+      scheduleMinute: config.gmailBankSync.scheduleMinute,
+      overdue:
+        config.gmailBankSync.enabled &&
+        isDailyReportOverdue({
+          now,
+          timeZone,
+          scheduleHour: config.gmailBankSync.scheduleHour,
+          scheduleMinute: config.gmailBankSync.scheduleMinute,
+          hasTodayReport,
+        }),
+      reports: rows.map((row) => ({
+        dayKey: row.dayKey,
+        updatedAt: row.updatedAt.toISOString(),
+        attentionCount: row.attentionCount,
+        report: row.report,
+      })),
+    });
+  });
+
+  /** Bugunun raporunu simdi olusturur / gunceller (senkron calistirmaz, yalnizca kontrolleri yeniden hesaplar). */
+  router.post("/payment-audit/daily-reports/run", async (_req, res) => {
     try {
-      const result = await deps.sendDigest({ force: true });
-      return res.json(result);
+      const digest = await saveDailyAuditReport(null);
+      return res.json({ dayKey: digest.dayKey, attentionCount: digestAttentionCount(digest) });
     } catch (err) {
-      console.error("[daily-digest] manual send failed", err);
-      const detail = err instanceof Error ? err.message.replace(/\s+/g, " ").slice(0, 300) : "";
-      return res.status(502).json({ message: detail ? `Ozet e-postasi gonderilemedi: ${detail}` : "Ozet e-postasi gonderilemedi" });
+      console.error("[daily-audit] manual run failed", err);
+      return res.status(500).json({ message: "Denetim raporu olusturulamadi" });
     }
   });
 

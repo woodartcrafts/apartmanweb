@@ -549,8 +549,12 @@ model SecureNote {
   @@index([sortOrder])
 }
 
-/// Gunluk ozet e-postasinin o gun gonderildigini isaretler (yeniden baslatmada ve birden fazla serviste tekrar gonderimi onler).
-model DailyDigestLog {
-  dayKey String   @id
-  sentAt DateTime @default(now())
+/// Her gunun (uygulama saat diliminde) denetim raporu. Zamanlayici 12:00 senkronundan sonra yazar; ayni gun
+/// tekrar calisirsa (yeniden baslatma, "simdi olustur") ayni satiri gunceller.
+model DailyAuditReport {
+  dayKey         String   @id
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  attentionCount Int      @default(0)
+  report         Json
 }

@@ -30,6 +30,13 @@ describe("admin permission path mapping", () => {
     expect(mapRequestPathToAdminPage("/apartment-credits/apply", "POST")).toBe("APARTMENT_CREDITS");
   });
 
+  it("maps payment-audit and daily audit report paths to APARTMENT_CREDITS", () => {
+    expect(mapRequestPathToAdminPage("/payment-audit", "GET")).toBe("APARTMENT_CREDITS");
+    expect(mapRequestPathToAdminPage("/payment-audit/review", "POST")).toBe("APARTMENT_CREDITS");
+    expect(mapRequestPathToAdminPage("/payment-audit/daily-reports", "GET")).toBe("APARTMENT_CREDITS");
+    expect(mapRequestPathToAdminPage("/payment-audit/daily-reports/run", "POST")).toBe("APARTMENT_CREDITS");
+  });
+
   it("keeps apartment routes distinct from apartment-credits", () => {
     expect(mapRequestPathToAdminPage("/apartments", "GET")).toBe("APT_LIST");
     expect(mapRequestPathToAdminPage("/apartment-classes", "GET")).toBe("APT_CLASSES");
