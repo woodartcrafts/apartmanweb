@@ -250,8 +250,8 @@ export function SplitCandidatesPage({
         </div>
 
         <p className="small">
-          Otomatik bolme sadece surekli birlikte odeme yapan daireler icin yapilir (57/93,
-          48/65, 35/45). Aciklamasi birden fazla daireye isaret eden diger tahsilatlar
+          Otomatik bolme sadece surekli birlikte odeme yapan daireler icin yapilir (48/65,
+          35/45). Aciklamasi birden fazla daireye isaret eden diger tahsilatlar
           bolunmeden kaydedilir ve burada listelenir. Incelemek istemedigin kayitlar icin{" "}
           <b>Bolunmesin</b> diyerek listeyi temizleyebilirsin.
         </p>
