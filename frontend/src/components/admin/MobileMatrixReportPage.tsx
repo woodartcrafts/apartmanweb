@@ -238,20 +238,12 @@ function MobileMatrixApartmentView({ request, apartmentId }: { request: MobileMa
             </div>
           </div>
 
-          <div className="mm-sums">
-            <div className="mm-sum">
-              <span>Tahakkuk</span>
-              <b>{formatTry(detail.totals.charged)}</b>
-            </div>
-            <div className="mm-sum">
-              <span>Odeme</span>
-              <b className="mm-good">{formatTry(detail.totals.paid)}</b>
-            </div>
-            <div className="mm-sum">
+          {detail.totals.overdue > 0.005 ? (
+            <div className="mm-total">
               <span>Geciken</span>
-              <b className={detail.totals.overdue > 0.005 ? "mm-bad" : "mm-good"}>{formatTry(detail.totals.overdue)}</b>
+              <b>{formatTry(detail.totals.overdue)}</b>
             </div>
-          </div>
+          ) : null}
 
           <div className="mm-cols">
             <div className="mm-col">

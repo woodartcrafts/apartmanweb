@@ -160,10 +160,10 @@ export function cleanPaymentDescription(note: string | null, method: string): st
   const bank = parts.find((x) => x.startsWith("BANK_DESC:"));
   if (bank) {
     const text = bank.slice("BANK_DESC:".length).trim();
-    if (text) return text.length > 90 ? `${text.slice(0, 87)}...` : text;
+    if (text) return text;
   }
   const plain = parts.filter((x) => x && !/^[A-Z_]+(:|$)/.test(x)).join(" ");
-  return plain ? (plain.length > 90 ? `${plain.slice(0, 87)}...` : plain) : methodText;
+  return plain || methodText;
 }
 
 export async function buildMobileMatrixApartmentDetail(apartmentId: string): Promise<MobileMatrixApartmentDetail | null> {

@@ -12491,10 +12491,6 @@ td.empty {
 .mm-chev { color: var(--muted); font-size: 22px; line-height: 1; margin-left: 2px; }
 .mm-detail-title { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .mm-name-wrap { white-space: normal; }
-.mm-sums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
-.mm-sum { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.mm-sum span { color: var(--muted); font-size: 11px; }
-.mm-sum b { font-size: 13px; }
 .mm-good { color: #2e7d32; }
 .mm-bad { color: #c62828; }
 .mm-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; }
@@ -12510,7 +12506,7 @@ td.empty {
 .mm-cell-amt { font-weight: 700; font-size: 14px; }
 .mm-cell-state { margin-top: 3px; font-size: 11px; color: var(--muted); }
 .mm-cell-late .mm-cell-state { color: #c62828; font-weight: 600; }
-.mm-pay-desc { font-size: 11px; color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.mm-pay-desc { font-size: 11px; color: var(--ink); overflow-wrap: anywhere; }
 .mm-pay-covers { margin-top: 4px; font-size: 11px; color: var(--muted); }
 .mm-col-total { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; padding: 6px 4px; border-top: 2px solid var(--ink); font-size: 12px; }
 .mm-empty { color: var(--muted); font-size: 12px; padding: 6px 4px; }
