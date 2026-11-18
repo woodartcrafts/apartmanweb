@@ -17,21 +17,6 @@ const PERIODS: Array<{ key: PeriodKey; label: string }> = [
   { key: "ALL", label: "Tumu" },
 ];
 
-const MONTH_NAMES = [
-  "Ocak",
-  "Subat",
-  "Mart",
-  "Nisan",
-  "Mayis",
-  "Haziran",
-  "Temmuz",
-  "Agustos",
-  "Eylul",
-  "Ekim",
-  "Kasim",
-  "Aralik",
-];
-
 const METHOD_LABEL: Record<string, string> = {
   CASH: "Nakit",
   BANK_TRANSFER: "Banka",
@@ -73,22 +58,13 @@ function formatDay(iso: string): string {
   }).format(date);
 }
 
-function monthKeyOf(iso: string): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Istanbul",
-    year: "numeric",
-    month: "2-digit",
-  }).format(new Date(iso));
-  return parts; // yyyy-mm
-}
-
 export function MobileExpenseReportPage({ request }: MobileExpenseReportPageProps) {
   const [period, setPeriod] = useState<PeriodKey>("YEAR");
   const [rows, setRows] = useState<ExpenseReportRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const [openItem, setOpenItem] = useState<string | null>(null);
 
   const load = useCallback(
     async (key: PeriodKey) => {
@@ -120,43 +96,33 @@ export function MobileExpenseReportPage({ request }: MobileExpenseReportPageProp
   );
 
   useEffect(() => {
-    setSelectedItem(null);
+    setOpenItem(null);
     void load(period);
     // request kimligi her render'da degisebilir; donem degisince yuklenir.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
 
   const byItem = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; total: number; count: number }>();
+    const map = new Map<string, { id: string; name: string; total: number; rows: ExpenseReportRow[] }>();
     for (const row of rows) {
-      const entry = map.get(row.expenseItemId) ?? { id: row.expenseItemId, name: row.expenseItemName, total: 0, count: 0 };
+      const entry = map.get(row.expenseItemId) ?? { id: row.expenseItemId, name: row.expenseItemName, total: 0, rows: [] };
       entry.total += row.amount;
-      entry.count += 1;
+      entry.rows.push(row);
       map.set(row.expenseItemId, entry);
+    }
+    for (const entry of map.values()) {
+      // Tarih sirasi: en yeni ustte
+      entry.rows.sort((a, b) => new Date(b.spentAt).getTime() - new Date(a.spentAt).getTime());
     }
     return [...map.values()].sort((a, b) => b.total - a.total);
   }, [rows]);
 
-  const visibleRows = useMemo(
-    () => (selectedItem ? rows.filter((row) => row.expenseItemId === selectedItem) : rows),
-    [rows, selectedItem]
-  );
-  const visibleTotal = useMemo(() => visibleRows.reduce((sum, row) => sum + row.amount, 0), [visibleRows]);
   const grandTotal = useMemo(() => rows.reduce((sum, row) => sum + row.amount, 0), [rows]);
   const maxItemTotal = byItem[0]?.total ?? 0;
-  const lastDate = rows[0]?.spentAt ?? null;
-
-  const groups = useMemo(() => {
-    const map = new Map<string, { key: string; total: number; rows: ExpenseReportRow[] }>();
-    for (const row of visibleRows) {
-      const key = monthKeyOf(row.spentAt);
-      const group = map.get(key) ?? { key, total: 0, rows: [] };
-      group.total += row.amount;
-      group.rows.push(row);
-      map.set(key, group);
-    }
-    return [...map.values()].sort((a, b) => (a.key < b.key ? 1 : -1));
-  }, [visibleRows]);
+  const lastDate = rows.reduce<string | null>(
+    (latest, row) => (latest === null || new Date(row.spentAt) > new Date(latest) ? row.spentAt : latest),
+    null
+  );
 
   return (
     <section className="me-page">
@@ -189,68 +155,58 @@ export function MobileExpenseReportPage({ request }: MobileExpenseReportPageProp
       ) : null}
 
       <div className="me-total">
-        <span>{selectedItem ? "Secili kalem toplami" : "Toplam gider"}</span>
-        <b>{formatTry(selectedItem ? visibleTotal : grandTotal)}</b>
+        <span>Toplam gider</span>
+        <b>{formatTry(grandTotal)}</b>
       </div>
-
-      {byItem.length > 0 ? (
-        <div className="me-card">
-          <div className="me-card-title">
-            Gider kalemleri
-            {selectedItem ? (
-              <button type="button" className="me-clear" onClick={() => setSelectedItem(null)}>
-                Filtreyi kaldir
-              </button>
-            ) : null}
-          </div>
-          {byItem.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`me-item${selectedItem === item.id ? " me-item-on" : ""}`}
-              onClick={() => setSelectedItem(selectedItem === item.id ? null : item.id)}
-            >
-              <div className="me-item-top">
-                <span className="me-item-name">{item.name}</span>
-                <span className="me-item-amt">{formatTry(item.total)}</span>
-              </div>
-              <div className="me-bar">
-                <div className="me-bar-fill" style={{ width: `${maxItemTotal > 0 ? Math.max(3, (item.total / maxItemTotal) * 100) : 0}%` }} />
-              </div>
-              <div className="me-item-count">{item.count} kayit</div>
-            </button>
-          ))}
-        </div>
-      ) : null}
 
       {!busy && rows.length === 0 && !error ? <div className="me-empty">Bu donemde gider kaydi yok.</div> : null}
 
-      {groups.map((group) => {
-        const [year, month] = group.key.split("-");
-        return (
-          <div key={group.key} className="me-group">
-            <div className="me-group-head">
-              <span>
-                {MONTH_NAMES[Number(month) - 1] ?? month} {year}
-              </span>
-              <b>{formatTry(group.total)}</b>
-            </div>
-            {group.rows.map((row) => (
-              <div key={row.id} className="me-row">
-                <div className="me-row-top">
-                  <span className="me-row-date">{formatDay(row.spentAt)}</span>
-                  <span className="me-row-amt">{formatTry(row.amount)}</span>
-                </div>
-                <div className="me-row-tags">
-                  <span className="me-tag">{row.expenseItemName}</span>
-                  <span className="me-method">{METHOD_LABEL[row.paymentMethod] ?? row.paymentMethod}</span>
-                </div>
-                {row.description ? <div className="me-row-desc">{row.description}</div> : null}
+      {byItem.length > 0 ? (
+        <div className="me-card">
+          <div className="me-card-title">Gider kalemleri</div>
+          {byItem.map((item) => {
+            const open = openItem === item.id;
+            return (
+              <div key={item.id} className="me-item-wrap">
+                <button
+                  type="button"
+                  className={`me-item${open ? " me-item-on" : ""}`}
+                  onClick={() => setOpenItem(open ? null : item.id)}
+                  aria-expanded={open}
+                >
+                  <div className="me-item-top">
+                    <span className="me-item-name">{item.name}</span>
+                    <span className="me-item-amt">{formatTry(item.total)}</span>
+                  </div>
+                  <div className="me-bar">
+                    <div
+                      className="me-bar-fill"
+                      style={{ width: `${maxItemTotal > 0 ? Math.max(3, (item.total / maxItemTotal) * 100) : 0}%` }}
+                    />
+                  </div>
+                  <div className="me-item-count">
+                    {item.rows.length} kayit <span className="me-item-chev">{open ? "▲" : "▼"}</span>
+                  </div>
+                </button>
+                {open ? (
+                  <div className="me-details">
+                    {item.rows.map((row) => (
+                      <div key={row.id} className="me-row">
+                        <div className="me-row-top">
+                          <span className="me-row-date">{formatDay(row.spentAt)}</span>
+                          <span className="me-row-amt">{formatTry(row.amount)}</span>
+                        </div>
+                        <div className="me-method">{METHOD_LABEL[row.paymentMethod] ?? row.paymentMethod}</div>
+                        {row.description ? <div className="me-row-desc">{row.description}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
-            ))}
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      ) : null}
     </section>
   );
 }
