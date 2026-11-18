@@ -46,6 +46,7 @@ export type AdminPageKey =
   | "REPORTS_STAFF_OPEN_AIDAT"
   | "REPORTS_STAFF_OPEN_AIDAT_SEND_EMAIL"
   | "REPORTS_MOBILE_MATRIX"
+  | "REPORTS_MOBILE_BANK"
   | "REPORTS_MONTHLY_BALANCE"
   | "REPORTS_MONTHLY_LEDGER"
   | "REPORTS_FRACTIONAL"
@@ -1864,3 +1865,27 @@ export function mapImportInfos(infos: string[]): ImportInfoNote[] {
     };
   });
 }
+
+
+export type MobileBankDeposit = {
+  id: string;
+  bankName: string;
+  branchName: string | null;
+  principalAmount: number;
+  annualInterestRate: number;
+  startDate: string;
+  endDate: string;
+  daysLeft: number;
+  matured: boolean;
+  netInterest: number;
+  netMaturityAmount: number;
+  notes: string | null;
+};
+
+export type MobileBankReportResponse = {
+  snapshotAt: string;
+  lastDataAt: string | null;
+  bankBalance: number;
+  deposits: MobileBankDeposit[];
+  totals: { depositPrincipal: number; depositNetMaturity: number; grandTotal: number };
+};

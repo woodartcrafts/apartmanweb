@@ -34,6 +34,7 @@ import { createAdminPaymentRefundRoutes } from "./adminPaymentRefundRoutes";
 import { createAdminSplitCandidateRoutes } from "./adminSplitCandidateRoutes";
 import { createAdminApartmentCreditRoutes } from "./adminApartmentCreditRoutes";
 import { createAdminPaymentAuditRoutes, saveDailyAuditReport } from "./adminPaymentAuditRoutes";
+import { buildMobileBankReport } from "../utils/mobileBankReport";
 import { buildMobileMatrixApartmentDetail, buildMobileMatrixApartmentPdf, buildMobileMatrixPdf, getMobileMatrixLastDataAt, buildMobileMatrixReport } from "../utils/mobileMatrixReport";
 import { sendHeartbeat } from "../utils/heartbeat";
 import { digestAttentionCount, type DigestSyncSummary } from "../utils/dailyDigest";
@@ -9506,6 +9507,10 @@ router.get("/reports/apartment-balance-matrix", async (req, res) => {
 });
 
 // Mobil Matrix Raporu: veri ve PDF mantigi src/utils/mobileMatrixReport.ts icinde.
+router.get("/reports/bank-balance-mobile", async (_req, res) => {
+  return res.json(await buildMobileBankReport());
+});
+
 router.get("/reports/apartment-balance-matrix-mobile", async (_req, res) => {
   return res.json(await buildMobileMatrixReport());
 });

@@ -48,6 +48,7 @@ export type AdminPageKey =
   | "REPORTS_STAFF_OPEN_AIDAT"
   | "REPORTS_STAFF_OPEN_AIDAT_SEND_EMAIL"
   | "REPORTS_MOBILE_MATRIX"
+  | "REPORTS_MOBILE_BANK"
   | "REPORTS_MONTHLY_BALANCE"
   | "REPORTS_MONTHLY_LEDGER"
   | "REPORTS_FRACTIONAL"
@@ -139,6 +140,7 @@ export const ADMIN_PAGE_DEFINITIONS: Array<{ key: AdminPageKey; label: string }>
   { key: "REPORTS_STAFF_OPEN_AIDAT", label: "Raporlar / Personel / Personel Acik Aidat" },
   { key: "REPORTS_STAFF_OPEN_AIDAT_SEND_EMAIL", label: "Raporlar / Personel / Personel Acik Aidat / Ekstre E-mail Gonder" },
   { key: "REPORTS_MOBILE_MATRIX", label: "Raporlar / Mobil / Mobil Matrix Raporu" },
+  { key: "REPORTS_MOBILE_BANK", label: "Raporlar / Mobil / Mobil Banka Raporu" },
   { key: "REPORTS_MONTHLY_BALANCE", label: "Raporlar / Finans / Aylik Bakiye Matrisi" },
   { key: "REPORTS_MONTHLY_LEDGER", label: "Sistem ve Duzeltme / Raporlar / Aylik Defter" },
   { key: "REPORTS_FRACTIONAL", label: "Raporlar / Finans / Kesirli Kapatmalar" },
@@ -307,6 +309,7 @@ export function mapRequestPathToAdminPage(pathname: string, method?: string): Ad
   if (pathname.startsWith("/reports/staff-mobile-home")) return "REPORTS_STAFF_MOBILE_HOME";
   if (pathname.startsWith("/reports/staff-open-aidat")) return "REPORTS_STAFF_OPEN_AIDAT";
   if (pathname.startsWith("/reports/apartment-balance-matrix-mobile")) return "REPORTS_MOBILE_MATRIX";
+  if (pathname.startsWith("/reports/bank-balance-mobile")) return "REPORTS_MOBILE_BANK";
   if (pathname.startsWith("/reports/apartment-balance-matrix")) return "REPORTS_MONTHLY_BALANCE";
   if (pathname.startsWith("/reports/monthly-balance")) return "REPORTS_MONTHLY_BALANCE";
   if (pathname.startsWith("/reports/monthly-ledger")) return "REPORTS_MONTHLY_LEDGER";

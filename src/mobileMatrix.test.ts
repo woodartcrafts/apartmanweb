@@ -15,6 +15,8 @@ describe("mobil matrix raporu", () => {
     expect(mapRequestPathToAdminPage("/reports/apartment-balance-matrix-mobile/pdf", "GET")).toBe("REPORTS_MOBILE_MATRIX");
     expect(mapRequestPathToAdminPage("/reports/apartment-balance-matrix-mobile/apartment/abc", "GET")).toBe("REPORTS_MOBILE_MATRIX");
     expect(mapRequestPathToAdminPage("/expenses/mobile-report", "GET")).toBe("EXPENSES_MOBILE_REPORT");
+    expect(mapRequestPathToAdminPage("/reports/bank-balance-mobile", "GET")).toBe("REPORTS_MOBILE_BANK");
+    expect(mapRequestPathToAdminPage("/reports/bank-balance-audit", "GET")).toBe("REPORTS_SUMMARY");
     expect(mapRequestPathToAdminPage("/reports/apartment-balance-matrix", "GET")).toBe("REPORTS_MONTHLY_BALANCE");
     expect(mapRequestPathToAdminPage("/expenses/report", "GET")).toBe("EXPENSES_REPORT_LIST");
   });

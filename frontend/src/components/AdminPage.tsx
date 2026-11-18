@@ -287,6 +287,11 @@ const MobileMatrixReportPage = lazy(() =>
     default: module.MobileMatrixReportPage,
   }))
 );
+const MobileBankReportPage = lazy(() =>
+  import("./admin/MobileBankReportPage").then((module) => ({
+    default: module.MobileBankReportPage,
+  }))
+);
 const MobileExpenseReportPage = lazy(() =>
   import("./admin/MobileExpenseReportPage").then((module) => ({
     default: module.MobileExpenseReportPage,
@@ -1111,6 +1116,7 @@ function normalizeToastText(value: string): string {
       "/admin/reports/staff-contact-edit": "APT_EDIT",
       "/admin/reports/monthly-balance-matrix": "REPORTS_MONTHLY_BALANCE",
       "/admin/reports/mobile-matrix": "REPORTS_MOBILE_MATRIX",
+      "/admin/reports/mobile-bank": "REPORTS_MOBILE_BANK",
       "/admin/reports/monthly-ledger-print": "REPORTS_MONTHLY_LEDGER",
       "/admin/reports/fractional-closures": "REPORTS_FRACTIONAL",
       "/admin/reports/reference-search": "REPORTS_REFERENCE_SEARCH",
@@ -1161,6 +1167,7 @@ function normalizeToastText(value: string): string {
       { path: "/admin/reports/staff-contact-edit", key: "APT_EDIT" },
       { path: "/admin/reports/monthly-balance-matrix", key: "REPORTS_MONTHLY_BALANCE" },
       { path: "/admin/reports/mobile-matrix", key: "REPORTS_MOBILE_MATRIX" },
+      { path: "/admin/reports/mobile-bank", key: "REPORTS_MOBILE_BANK" },
       { path: "/admin/reports/monthly-ledger-print", key: "REPORTS_MONTHLY_LEDGER" },
       { path: "/admin/reports/fractional-closures", key: "REPORTS_FRACTIONAL" },
       { path: "/admin/reports/reference-search", key: "REPORTS_REFERENCE_SEARCH" },
@@ -9357,6 +9364,9 @@ function normalizeToastText(value: string): string {
             <NavLink className="btn btn-ghost" to="/admin/reports/mobile-matrix">
               Mobil Matrix Raporu
             </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/reports/mobile-bank">
+              Mobil Banka Raporu
+            </NavLink>
           </div>
         </details>
 
@@ -13311,6 +13321,14 @@ function normalizeToastText(value: string): string {
           }
         />
         <Route
+          path="/reports/mobile-bank"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <MobileBankReportPage request={authorizedRequest} />
+            </Suspense>
+          }
+        />
+        <Route
           path="/expenses/mobile-report"
           element={
             <Suspense fallback={<LazyAdminPageFallback />}>
@@ -14693,6 +14711,7 @@ function normalizeToastText(value: string): string {
       )}
 
       {!location.pathname.startsWith("/admin/reports/mobile-matrix") &&
+        !location.pathname.startsWith("/admin/reports/mobile-bank") &&
         !location.pathname.startsWith("/admin/expenses/mobile-report") && (
           <footer className="status-bar status-bar-fixed">{isPermissionDeniedText(message) ? "Admin panel hazir" : message}</footer>
         )}
