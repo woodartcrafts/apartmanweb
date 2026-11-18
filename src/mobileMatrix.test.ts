@@ -14,3 +14,17 @@ describe("mobil matrix raporu", () => {
     expect(mapRequestPathToAdminPage("/reports/apartment-balance-matrix-mobile", "GET")).toBe("REPORTS_MONTHLY_BALANCE");
   });
 });
+
+import { cleanPaymentDescription } from "./utils/mobileMatrixReport";
+
+describe("odeme aciklamasi", () => {
+  it("banka aciklamasini teknik etiketlerden ayirir", () => {
+    expect(
+      cleanPaymentDescription("BANK_REF:ABC | BANK_DESC:FATİH YAZGAN*0125*Öz | DOOR:33 | RECONCILE_LOCK:MANUAL", "BANK_TRANSFER")
+    ).toBe("FATİH YAZGAN*0125*Öz");
+  });
+  it("aciklama yoksa odeme yontemini yazar", () => {
+    expect(cleanPaymentDescription(null, "CASH")).toBe("Nakit");
+    expect(cleanPaymentDescription("DOOR:5 | AUTO_MATCH:EXACT", "BANK_TRANSFER")).toBe("Banka");
+  });
+});

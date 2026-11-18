@@ -34,7 +34,7 @@ import { createAdminPaymentRefundRoutes } from "./adminPaymentRefundRoutes";
 import { createAdminSplitCandidateRoutes } from "./adminSplitCandidateRoutes";
 import { createAdminApartmentCreditRoutes } from "./adminApartmentCreditRoutes";
 import { createAdminPaymentAuditRoutes, saveDailyAuditReport } from "./adminPaymentAuditRoutes";
-import { buildMobileMatrixPdf, buildMobileMatrixReport } from "../utils/mobileMatrixReport";
+import { buildMobileMatrixApartmentDetail, buildMobileMatrixPdf, buildMobileMatrixReport } from "../utils/mobileMatrixReport";
 import { sendHeartbeat } from "../utils/heartbeat";
 import { digestAttentionCount, type DigestSyncSummary } from "../utils/dailyDigest";
 import { createAdminCashCashflowRoutes } from "./adminCashCashflowRoutes";
@@ -9508,6 +9508,14 @@ router.get("/reports/apartment-balance-matrix", async (req, res) => {
 // Mobil Matrix Raporu: veri ve PDF mantigi src/utils/mobileMatrixReport.ts icinde.
 router.get("/reports/apartment-balance-matrix-mobile", async (_req, res) => {
   return res.json(await buildMobileMatrixReport());
+});
+
+router.get("/reports/apartment-balance-matrix-mobile/apartment/:apartmentId", async (req, res) => {
+  const detail = await buildMobileMatrixApartmentDetail(req.params.apartmentId);
+  if (!detail) {
+    return res.status(404).json({ message: "Daire bulunamadi" });
+  }
+  return res.json(detail);
 });
 
 router.get("/reports/apartment-balance-matrix-mobile/pdf", async (_req, res) => {

@@ -1365,6 +1365,44 @@ export type MobileMatrixReportResponse = {
   rows: MobileMatrixReportRow[];
 };
 
+export type MobileMatrixApartmentCharge = {
+  chargeId: string;
+  periodYear: number;
+  periodMonth: number;
+  kind: MobileMatrixChargeKind;
+  chargeTypeName: string;
+  amount: number;
+  paid: number;
+  remaining: number;
+  dueDate: string;
+  overdue: boolean;
+};
+
+export type MobileMatrixApartmentPayment = {
+  paymentId: string;
+  paidAt: string;
+  amount: number;
+  method: string;
+  description: string;
+  covers: Array<{
+    periodYear: number;
+    periodMonth: number;
+    kind: MobileMatrixChargeKind;
+    chargeTypeName: string;
+    amount: number;
+  }>;
+};
+
+export type MobileMatrixApartmentDetailResponse = {
+  apartmentId: string;
+  doorNo: string;
+  occupant: string;
+  snapshotAt: string;
+  totals: { charged: number; paid: number; remaining: number; overdue: number };
+  charges: MobileMatrixApartmentCharge[];
+  payments: MobileMatrixApartmentPayment[];
+};
+
 export type ReferenceMovementSearchRow = {
   movementId: string;
   movementType: "PAYMENT" | "EXPENSE";

@@ -118,6 +118,147 @@ export async function buildMobileMatrixReport(): Promise<MobileMatrixReport> {
   };
 }
 
+export type MobileMatrixApartmentCharge = {
+  chargeId: string;
+  periodYear: number;
+  periodMonth: number;
+  kind: MobileMatrixChargeKind;
+  chargeTypeName: string;
+  amount: number;
+  paid: number;
+  remaining: number;
+  dueDate: Date;
+  /** Vadesi gecmis ve kalan > 0 ise true (matristeki "Geciken" ile ayni kural). */
+  overdue: boolean;
+};
+
+export type MobileMatrixApartmentPayment = {
+  paymentId: string;
+  paidAt: Date;
+  /** Bu daireye yazilan tutar (bolunmus odemede odemenin tamami degil). */
+  amount: number;
+  method: string;
+  description: string;
+  covers: Array<{ periodYear: number; periodMonth: number; kind: MobileMatrixChargeKind; chargeTypeName: string; amount: number }>;
+};
+
+export type MobileMatrixApartmentDetail = {
+  apartmentId: string;
+  doorNo: string;
+  occupant: string;
+  snapshotAt: Date;
+  totals: { charged: number; paid: number; remaining: number; overdue: number };
+  charges: MobileMatrixApartmentCharge[];
+  payments: MobileMatrixApartmentPayment[];
+};
+
+// Banka aciklamasi / not icindeki teknik etiketleri (BANK_REF, DOOR, AUTO_MATCH...) okunur metne cevirir.
+export function cleanPaymentDescription(note: string | null, method: string): string {
+  const methodText = method === "CASH" ? "Nakit" : method === "CREDIT_CARD" ? "Kredi kartı" : method === "BANK_TRANSFER" ? "Banka" : "Diğer";
+  if (!note) return methodText;
+  const parts = note.split("|").map((x) => x.trim());
+  const bank = parts.find((x) => x.startsWith("BANK_DESC:"));
+  if (bank) {
+    const text = bank.slice("BANK_DESC:".length).trim();
+    if (text) return text.length > 90 ? `${text.slice(0, 87)}...` : text;
+  }
+  const plain = parts.filter((x) => x && !/^[A-Z_]+(:|$)/.test(x)).join(" ");
+  return plain ? (plain.length > 90 ? `${plain.slice(0, 87)}...` : plain) : methodText;
+}
+
+export async function buildMobileMatrixApartmentDetail(apartmentId: string): Promise<MobileMatrixApartmentDetail | null> {
+  const snapshotAt = new Date();
+  const apartment = await prisma.apartment.findUnique({
+    where: { id: apartmentId },
+    include: {
+      users: { where: { role: UserRole.RESIDENT }, select: { fullName: true }, orderBy: [{ fullName: "asc" }] },
+    },
+  });
+  if (!apartment) return null;
+
+  const charges = await prisma.charge.findMany({
+    where: { apartmentId },
+    select: {
+      id: true,
+      periodYear: true,
+      periodMonth: true,
+      amount: true,
+      dueDate: true,
+      chargeType: { select: { name: true } },
+      paymentItems: {
+        select: {
+          amount: true,
+          payment: { select: { id: true, paidAt: true, method: true, note: true } },
+        },
+      },
+    },
+    orderBy: [{ periodYear: "asc" }, { periodMonth: "asc" }, { createdAt: "asc" }],
+  });
+
+  const paymentMap = new Map<string, MobileMatrixApartmentPayment>();
+  const chargeRows: MobileMatrixApartmentCharge[] = charges.map((charge) => {
+    const kind = classifyMobileMatrixChargeKind(charge.chargeType.name);
+    const amount = Number(charge.amount);
+    const paid = Number(charge.paymentItems.reduce((sum, item) => sum + Number(item.amount), 0).toFixed(2));
+    const remaining = Number((amount - paid).toFixed(2));
+
+    for (const item of charge.paymentItems) {
+      const existing =
+        paymentMap.get(item.payment.id) ??
+        ({
+          paymentId: item.payment.id,
+          paidAt: item.payment.paidAt,
+          amount: 0,
+          method: item.payment.method,
+          description: cleanPaymentDescription(item.payment.note, item.payment.method),
+          covers: [],
+        } satisfies MobileMatrixApartmentPayment);
+      existing.amount = Number((existing.amount + Number(item.amount)).toFixed(2));
+      existing.covers.push({
+        periodYear: charge.periodYear,
+        periodMonth: charge.periodMonth,
+        kind,
+        chargeTypeName: charge.chargeType.name,
+        amount: Number(item.amount),
+      });
+      paymentMap.set(item.payment.id, existing);
+    }
+
+    return {
+      chargeId: charge.id,
+      periodYear: charge.periodYear,
+      periodMonth: charge.periodMonth,
+      kind,
+      chargeTypeName: charge.chargeType.name,
+      amount,
+      paid,
+      remaining,
+      dueDate: charge.dueDate,
+      overdue: remaining > 0.0001 && charge.dueDate.getTime() <= snapshotAt.getTime(),
+    };
+  });
+
+  const payments = [...paymentMap.values()].sort((a, b) => a.paidAt.getTime() - b.paidAt.getTime());
+  const residents = apartment.users.map((x) => x.fullName.trim()).filter(Boolean);
+  const charged = Number(chargeRows.reduce((s, c) => s + c.amount, 0).toFixed(2));
+  const paidTotal = Number(payments.reduce((s, p) => s + p.amount, 0).toFixed(2));
+
+  return {
+    apartmentId,
+    doorNo: apartment.doorNo,
+    occupant: residents.length > 0 ? residents.join(", ") : apartment.ownerFullName?.trim() || "-",
+    snapshotAt,
+    totals: {
+      charged,
+      paid: paidTotal,
+      remaining: Number(chargeRows.reduce((s, c) => s + Math.max(0, c.remaining), 0).toFixed(2)),
+      overdue: Number(chargeRows.filter((c) => c.overdue).reduce((s, c) => s + c.remaining, 0).toFixed(2)),
+    },
+    charges: chargeRows,
+    payments,
+  };
+}
+
 const MONTH_NAMES = [
   "Ocak",
   "Şubat",
@@ -235,7 +376,7 @@ export function buildMobileMatrixPdf(report: MobileMatrixReport): Promise<Buffer
           .font(regular)
           .fontSize(10)
           .fillColor("#222222")
-          .text(`${row.occupant} (${row.blockName})`, left + 70, y + 4, { width: width - 190, lineBreak: false, ellipsis: true });
+          .text(row.occupant, left + 70, y + 4, { width: width - 190, lineBreak: false, ellipsis: true });
         if (hasDebt) {
           doc
             .font(bold)
