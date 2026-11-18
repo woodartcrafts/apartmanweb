@@ -550,7 +550,12 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
   const [bankPreviewFilterSplitOnly, setBankPreviewFilterSplitOnly] = useState(false);
   const [activeBankPreviewFilterKey, setActiveBankPreviewFilterKey] = useState<BankPreviewHeaderFilterKey | null>(null);
 
-  function normalizeToastText(value: string): string {
+  // Yetki yok mesajlari kullaniciya gosterilmez (kisitli kullanicilarda arka plan istekleri 403 alabilir).
+function isPermissionDeniedText(text: string): boolean {
+  return /yetkiniz yok/i.test(text);
+}
+
+function normalizeToastText(value: string): string {
     return value
       .toLowerCase()
       .replaceAll("Ä±", "i")
@@ -9146,7 +9151,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
 
   return (
     <section className="dashboard">
-      {toastMessage && (
+      {toastMessage && !isPermissionDeniedText(toastMessage) && (
         <div className="blocking-modal toast-modal" role="status" aria-live="polite" aria-busy="false">
           <div className={`blocking-modal-card save-notice-modal-card${toastIsError ? " save-notice-modal-card-error" : ""}`}>
             <div className="save-notice-icon" aria-hidden="true">
@@ -14687,7 +14692,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
         </aside>
       )}
 
-      <footer className="status-bar status-bar-fixed">{message}</footer>
+      <footer className="status-bar status-bar-fixed">{isPermissionDeniedText(message) ? "Admin panel hazir" : message}</footer>
     </section>
   );
 }
