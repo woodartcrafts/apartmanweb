@@ -118,6 +118,16 @@ export async function buildMobileMatrixReport(): Promise<MobileMatrixReport> {
   };
 }
 
+// Sistemdeki en son banka/odeme/gider hareketinin tarihi (en son yuklenen ekstrenin son islem tarihi).
+export async function getMobileMatrixLastDataAt(): Promise<Date | null> {
+  const [lastPayment, lastExpense] = await Promise.all([
+    prisma.payment.aggregate({ _max: { paidAt: true } }),
+    prisma.expense.aggregate({ _max: { spentAt: true } }),
+  ]);
+  const candidates = [lastPayment._max.paidAt, lastExpense._max.spentAt].filter((x): x is Date => x instanceof Date);
+  return candidates.length > 0 ? new Date(Math.max(...candidates.map((x) => x.getTime()))) : null;
+}
+
 export type MobileMatrixApartmentCharge = {
   chargeId: string;
   periodYear: number;
@@ -314,7 +324,7 @@ function resolveFontPath(fileName: string): string | null {
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
-export function buildMobileMatrixApartmentPdf(detail: MobileMatrixApartmentDetail): Promise<Buffer> {
+export function buildMobileMatrixApartmentPdf(detail: MobileMatrixApartmentDetail, lastDataAt: Date | null): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ margin: 36, size: "A4", bufferPages: true });
@@ -341,7 +351,7 @@ export function buildMobileMatrixApartmentPdf(detail: MobileMatrixApartmentDetai
 
       doc.font(bold).fontSize(17).fillColor("#14213d").text(`Daire ${detail.doorNo}`, left, doc.y);
       doc.font(regular).fontSize(11).fillColor("#222222").text(detail.occupant);
-      doc.fontSize(9).fillColor("#666666").text(`Rapor oluşturma: ${formatDateTime(detail.snapshotAt)}`);
+      doc.fontSize(9).fillColor("#666666").text(`Son veri tarihi: ${formatMobileMatrixDate(lastDataAt)}`);
       doc.moveDown(0.6);
 
       if (detail.totals.overdue > 0.005) {

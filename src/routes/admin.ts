@@ -34,7 +34,7 @@ import { createAdminPaymentRefundRoutes } from "./adminPaymentRefundRoutes";
 import { createAdminSplitCandidateRoutes } from "./adminSplitCandidateRoutes";
 import { createAdminApartmentCreditRoutes } from "./adminApartmentCreditRoutes";
 import { createAdminPaymentAuditRoutes, saveDailyAuditReport } from "./adminPaymentAuditRoutes";
-import { buildMobileMatrixApartmentDetail, buildMobileMatrixApartmentPdf, buildMobileMatrixPdf, buildMobileMatrixReport } from "../utils/mobileMatrixReport";
+import { buildMobileMatrixApartmentDetail, buildMobileMatrixApartmentPdf, buildMobileMatrixPdf, getMobileMatrixLastDataAt, buildMobileMatrixReport } from "../utils/mobileMatrixReport";
 import { sendHeartbeat } from "../utils/heartbeat";
 import { digestAttentionCount, type DigestSyncSummary } from "../utils/dailyDigest";
 import { createAdminCashCashflowRoutes } from "./adminCashCashflowRoutes";
@@ -9524,7 +9524,7 @@ router.get("/reports/apartment-balance-matrix-mobile/apartment/:apartmentId/pdf"
     if (!detail) {
       return res.status(404).json({ message: "Daire bulunamadi" });
     }
-    const pdf = await buildMobileMatrixApartmentPdf(detail);
+    const pdf = await buildMobileMatrixApartmentPdf(detail, await getMobileMatrixLastDataAt());
     const dayKey = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Europe/Istanbul",
       year: "numeric",

@@ -65,7 +65,7 @@ describe("buildMobileMatrixApartmentPdf", () => {
         description: "ŞEYMA TANĞUT aidat ve doğalgaz ödemesi çok uzun açıklama metni ".repeat(3),
         covers: [{ periodYear: 2026, periodMonth: 10, kind: "AIDAT" as const, chargeTypeName: "Aidat", amount: 1000 }],
       })),
-    });
+    }, new Date("2026-11-17T10:00:00Z"));
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
     expect(pdf.length).toBeGreaterThan(2000);
   });
