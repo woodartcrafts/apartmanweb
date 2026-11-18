@@ -287,6 +287,11 @@ const MobileMatrixReportPage = lazy(() =>
     default: module.MobileMatrixReportPage,
   }))
 );
+const MobileExpenseReportPage = lazy(() =>
+  import("./admin/MobileExpenseReportPage").then((module) => ({
+    default: module.MobileExpenseReportPage,
+  }))
+);
 const DailyAuditReportPage = lazy(() =>
   import("./admin/DailyAuditReportPage").then((module) => ({
     default: module.DailyAuditReportPage,
@@ -1094,6 +1099,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/expense-items": "EXPENSE_ITEMS_LIST",
       "/admin/expenses/new": "EXPENSES_NEW_CREATE",
       "/admin/expenses/report": "EXPENSES_REPORT_LIST",
+      "/admin/expenses/mobile-report": "EXPENSES_REPORT_LIST",
       "/admin/reports": "REPORTS_SUMMARY",
       "/admin/reports/overdue-payments": "REPORTS_OVERDUE",
       "/admin/reports/staff-open-aidat": "REPORTS_STAFF_OPEN_AIDAT",
@@ -1181,6 +1187,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       { path: "/admin/expense-items", key: "EXPENSE_ITEMS_LIST" },
       { path: "/admin/expenses/new", key: "EXPENSES_NEW_CREATE" },
       { path: "/admin/expenses/report", key: "EXPENSES_REPORT_LIST" },
+      { path: "/admin/expenses/mobile-report", key: "EXPENSES_REPORT_LIST" },
       { path: "/admin/banks", key: "BANKS" },
       { path: "/admin/initial-balances", key: "BANK_INITIAL_BALANCES" },
       { path: "/admin/banks/term-deposits", key: "BANK_TERM_DEPOSITS_LIST" },
@@ -9297,6 +9304,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <NavLink className="btn btn-ghost" to="/admin/expenses/new">
               Gider Giris
             </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/expenses/mobile-report">
+              Mobil Gider Raporu
+            </NavLink>
           </div>
         </details>
 
@@ -13292,6 +13302,14 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
           element={
             <Suspense fallback={<LazyAdminPageFallback />}>
               <MobileMatrixReportPage request={authorizedRequest} />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/expenses/mobile-report"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <MobileExpenseReportPage request={authorizedRequest} />
             </Suspense>
           }
         />

@@ -12510,3 +12510,39 @@ td.empty {
 .mm-pay-covers { margin-top: 4px; font-size: 11px; color: var(--muted); }
 .mm-col-total { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; padding: 6px 4px; border-top: 2px solid var(--ink); font-size: 12px; }
 .mm-empty { color: var(--muted); font-size: 12px; padding: 6px 4px; }
+
+/* Mobil Gider Raporu */
+.me-page { max-width: 640px; margin: 0 auto; padding: 4px 2px 24px; font-variant-numeric: tabular-nums; }
+.me-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.me-head h3 { margin: 0; font-size: 20px; }
+.me-sub { color: var(--muted); font-size: 13px; margin-top: 2px; min-height: 16px; }
+.me-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.me-chip { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px; padding: 7px 14px; font: inherit; font-size: 14px; cursor: pointer; }
+.me-chip-on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.me-error { background: #fdecec; color: #b3261e; border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; font-size: 14px; }
+.me-warn { background: #fff4df; color: #8a5300; border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; font-size: 13px; }
+.me-total { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; background: var(--card); border: 1px solid var(--line); border-left: 5px solid #1d4ed8; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+.me-total span { color: var(--muted); font-size: 13px; }
+.me-total b { font-size: 26px; color: #14213d; }
+.me-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; margin-bottom: 12px; }
+.me-card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 14px; padding: 4px 2px 6px; }
+.me-clear { border: 0; background: none; color: #1d4ed8; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.me-item { display: block; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--line); background: none; padding: 8px 4px; font: inherit; color: inherit; cursor: pointer; border-radius: 6px; }
+.me-item-on { background: #e6eefc; }
+.me-item-top { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+.me-item-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.me-item-amt { font-weight: 700; white-space: nowrap; }
+.me-bar { height: 6px; background: #e8ecf2; border-radius: 3px; margin: 5px 0 3px; overflow: hidden; }
+.me-bar-fill { height: 100%; background: #1d4ed8; border-radius: 3px; }
+.me-item-count { font-size: 11px; color: var(--muted); }
+.me-empty { color: var(--muted); text-align: center; padding: 20px 0; }
+.me-group { margin-bottom: 14px; }
+.me-group-head { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 4px; border-bottom: 2px solid var(--ink); margin-bottom: 6px; font-size: 14px; }
+.me-row { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; }
+.me-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.me-row-date { color: var(--muted); font-size: 12px; }
+.me-row-amt { font-weight: 700; font-size: 16px; color: #c62828; }
+.me-row-tags { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+.me-tag { background: #e6eefc; color: #1d4ed8; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 600; }
+.me-method { color: var(--muted); font-size: 12px; }
+.me-row-desc { margin-top: 5px; font-size: 13px; overflow-wrap: anywhere; }
