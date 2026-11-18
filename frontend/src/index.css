@@ -12458,3 +12458,30 @@ td.empty {
     padding-top: calc(env(safe-area-inset-top, 0px) + 32px);
   }
 }
+/* Mobil Matrix Raporu */
+.mm-page { max-width: 640px; margin: 0 auto; padding: 4px 2px 24px; font-variant-numeric: tabular-nums; }
+.mm-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.mm-head h3 { margin: 0; font-size: 20px; }
+.mm-sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.mm-error { background: #fdecec; color: #b3261e; border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; font-size: 14px; }
+.mm-total { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; background: var(--card); border: 1px solid var(--line); border-left: 5px solid #c62828; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+.mm-total span { color: var(--muted); font-size: 13px; }
+.mm-total b { font-size: 26px; color: #c62828; }
+.mm-apt { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+.mm-apt-bad { border-left: 4px solid #c62828; }
+.mm-apt-head { display: flex; align-items: center; gap: 10px; }
+.mm-no { min-width: 38px; height: 34px; padding: 0 6px; border-radius: 9px; background: var(--ink); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 15px; }
+.mm-name { flex: 1; min-width: 0; }
+.mm-name-main { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-name-sub { font-size: 12px; color: var(--muted); }
+.mm-amount { font-weight: 700; font-size: 16px; color: #c62828; white-space: nowrap; }
+.mm-amount-ok { color: #2e7d32; font-weight: 600; font-size: 13px; }
+.mm-items { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.mm-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; }
+.mm-month { width: 100px; flex: none; color: var(--muted); }
+.mm-item-amount { margin-left: auto; font-weight: 600; }
+.mm-tag { border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.mm-tag-aidat { background: #e6eefc; color: #1d4ed8; }
+.mm-tag-gaz { background: #fdf0dc; color: #b45309; }
+.mm-tag-tadilat { background: #efe8fd; color: #7c3aed; }
+.mm-tag-diger { background: #eceff3; color: #475467; }

@@ -282,6 +282,11 @@ const SplitCandidatesPage = lazy(() =>
     default: module.SplitCandidatesPage,
   }))
 );
+const MobileMatrixReportPage = lazy(() =>
+  import("./admin/MobileMatrixReportPage").then((module) => ({
+    default: module.MobileMatrixReportPage,
+  }))
+);
 const DailyAuditReportPage = lazy(() =>
   import("./admin/DailyAuditReportPage").then((module) => ({
     default: module.DailyAuditReportPage,
@@ -1094,6 +1099,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       "/admin/reports/staff-open-aidat": "REPORTS_STAFF_OPEN_AIDAT",
       "/admin/reports/staff-contact-edit": "APT_EDIT",
       "/admin/reports/monthly-balance-matrix": "REPORTS_MONTHLY_BALANCE",
+      "/admin/reports/mobile-matrix": "REPORTS_MONTHLY_BALANCE",
       "/admin/reports/monthly-ledger-print": "REPORTS_MONTHLY_LEDGER",
       "/admin/reports/fractional-closures": "REPORTS_FRACTIONAL",
       "/admin/reports/reference-search": "REPORTS_REFERENCE_SEARCH",
@@ -1143,6 +1149,7 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
       { path: "/admin/reports/staff-open-aidat", key: "REPORTS_STAFF_OPEN_AIDAT" },
       { path: "/admin/reports/staff-contact-edit", key: "APT_EDIT" },
       { path: "/admin/reports/monthly-balance-matrix", key: "REPORTS_MONTHLY_BALANCE" },
+      { path: "/admin/reports/mobile-matrix", key: "REPORTS_MONTHLY_BALANCE" },
       { path: "/admin/reports/monthly-ledger-print", key: "REPORTS_MONTHLY_LEDGER" },
       { path: "/admin/reports/fractional-closures", key: "REPORTS_FRACTIONAL" },
       { path: "/admin/reports/reference-search", key: "REPORTS_REFERENCE_SEARCH" },
@@ -9332,6 +9339,9 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
             <NavLink className="btn btn-ghost" to="/admin/reports/cash-cashflow">
               Nakit Tahsilat ve Odemeler
             </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/reports/mobile-matrix">
+              Mobil Matrix Raporu
+            </NavLink>
           </div>
         </details>
 
@@ -13274,6 +13284,14 @@ function AdminPage({ user, onSessionExpired }: { user: LoginResponse["user"] | n
                 approvePendingCredit={approvePendingCredit}
                 markAuditReviewed={markPaymentAuditReviewed}
               />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/reports/mobile-matrix"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <MobileMatrixReportPage request={authorizedRequest} />
             </Suspense>
           }
         />

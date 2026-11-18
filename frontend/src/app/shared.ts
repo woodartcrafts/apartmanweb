@@ -1334,6 +1334,35 @@ export type ApartmentMonthlyBalanceMatrixReportResponse = {
   rows: ApartmentMonthlyBalanceMatrixRow[];
 };
 
+export type MobileMatrixChargeKind = "AIDAT" | "DOGALGAZ" | "TADILAT" | "DIGER";
+
+export type MobileMatrixOverdueItem = {
+  periodYear: number;
+  periodMonth: number;
+  kind: MobileMatrixChargeKind;
+  chargeTypeName: string;
+  remaining: number;
+};
+
+export type MobileMatrixReportRow = {
+  apartmentId: string;
+  blockName: string;
+  apartmentDoorNo: string;
+  occupant: string;
+  overdueTotal: number;
+  items: MobileMatrixOverdueItem[];
+};
+
+export type MobileMatrixReportResponse = {
+  snapshotAt: string;
+  totals: {
+    apartmentCount: number;
+    overdueApartmentCount: number;
+    overdueTotal: number;
+  };
+  rows: MobileMatrixReportRow[];
+};
+
 export type ReferenceMovementSearchRow = {
   movementId: string;
   movementType: "PAYMENT" | "EXPENSE";
