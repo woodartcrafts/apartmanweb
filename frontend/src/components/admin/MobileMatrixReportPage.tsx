@@ -203,6 +203,34 @@ function formatDayShort(iso: string): string {
 function MobileMatrixApartmentView({ request, apartmentId }: { request: MobileMatrixReportPageProps["request"]; apartmentId: string }) {
   const [detail, setDetail] = useState<MobileMatrixApartmentDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+  async function downloadPdf(): Promise<void> {
+    setPdfBusy(true);
+    setError(null);
+    try {
+      const res = await apiFetch(
+        `${apiBase}/api/admin/reports/apartment-balance-matrix-mobile/apartment/${encodeURIComponent(apartmentId)}/pdf`
+      );
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(errData.message ?? "PDF indirilemedi");
+      }
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `daire-${detail?.doorNo ?? "rapor"}-${new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" })}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "PDF indirilemedi");
+    } finally {
+      setPdfBusy(false);
+    }
+  }
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -223,6 +251,11 @@ function MobileMatrixApartmentView({ request, apartmentId }: { request: MobileMa
         <Link className="btn" to="/admin/reports/mobile-matrix">
           ‹ Rapora don
         </Link>
+        <div className="mm-actions">
+          <button className="btn btn-primary" type="button" onClick={() => void downloadPdf()} disabled={pdfBusy || !detail}>
+            {pdfBusy ? "Hazirlaniyor..." : "PDF olarak aktar"}
+          </button>
+        </div>
       </div>
 
       {error ? <div className="mm-error">{error}</div> : null}

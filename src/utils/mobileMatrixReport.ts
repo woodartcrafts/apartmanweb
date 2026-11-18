@@ -314,6 +314,137 @@ function resolveFontPath(fileName: string): string | null {
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
+export function buildMobileMatrixApartmentPdf(detail: MobileMatrixApartmentDetail): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 36, size: "A4", bufferPages: true });
+      const chunks: Buffer[] = [];
+      doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+
+      const regularPath = resolveFontPath("DejaVuSans.ttf");
+      const boldPath = resolveFontPath("DejaVuSans-Bold.ttf");
+      const regular = regularPath ? "Body" : "Helvetica";
+      const bold = boldPath ? "BodyBold" : "Helvetica-Bold";
+      if (regularPath) doc.registerFont("Body", regularPath);
+      if (boldPath) doc.registerFont("BodyBold", boldPath);
+
+      const left = doc.page.margins.left;
+      const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+      const bottomLimit = doc.page.height - doc.page.margins.bottom - 14;
+      const ensure = (height: number) => {
+        if (doc.y + height > bottomLimit) doc.addPage();
+      };
+      const monthLabel = (year: number, month: number) => `${MONTH_NAMES[month - 1] ?? month} ${year}`;
+      const kindLabel = (kind: MobileMatrixChargeKind, name: string) => (kind === "DIGER" ? name : KIND_LABEL[kind]);
+
+      doc.font(bold).fontSize(17).fillColor("#14213d").text(`Daire ${detail.doorNo}`, left, doc.y);
+      doc.font(regular).fontSize(11).fillColor("#222222").text(detail.occupant);
+      doc.fontSize(9).fillColor("#666666").text(`Rapor oluşturma: ${formatDateTime(detail.snapshotAt)}`);
+      doc.moveDown(0.6);
+
+      if (detail.totals.overdue > 0.005) {
+        doc
+          .font(bold)
+          .fontSize(13)
+          .fillColor("#c62828")
+          .text(`Geciken: ${moneyFormatter.format(detail.totals.overdue)}`, left, doc.y);
+        doc.moveDown(0.5);
+      }
+
+      // --- Tahakkuklar ---
+      doc.font(bold).fontSize(12).fillColor("#14213d").text("Tahakkuklar", left, doc.y);
+      doc.moveTo(left, doc.y + 2).lineTo(left + width, doc.y + 2).strokeColor("#14213d").lineWidth(1).stroke();
+      doc.moveDown(0.5);
+      if (detail.charges.length === 0) {
+        doc.font(regular).fontSize(9).fillColor("#777777").text("Kayıt yok", left, doc.y);
+      }
+      const cDate = left + 2;
+      const cKind = left + 95;
+      const cAmt = left + width - 250;
+      for (const charge of detail.charges) {
+        ensure(16);
+        const state = charge.remaining <= 0.005 ? "Ödendi" : charge.overdue ? "Geciken" : "Vadesi gelmedi";
+        const color = charge.remaining <= 0.005 ? "#2e7d32" : charge.overdue ? "#c62828" : "#b26a00";
+        const y = doc.y;
+        doc.font(regular).fontSize(9).fillColor("#222222");
+        doc.text(monthLabel(charge.periodYear, charge.periodMonth), cDate, y, { width: 90, lineBreak: false });
+        doc.text(kindLabel(charge.kind, charge.chargeTypeName), cKind, y, { width: cAmt - cKind - 6, lineBreak: false, ellipsis: true });
+        doc.text(moneyFormatter.format(charge.amount), cAmt, y, { width: 80, align: "right", lineBreak: false });
+        doc.fillColor(color).text(
+          charge.remaining <= 0.005 ? state : `${state}: ${moneyFormatter.format(charge.remaining)}`,
+          cAmt + 86,
+          y,
+          { width: 164, align: "right", lineBreak: false }
+        );
+        doc.y = y + 15;
+        doc.x = left;
+      }
+      ensure(18);
+      doc.font(bold).fontSize(10).fillColor("#14213d");
+      doc.text(`Toplam tahakkuk: ${moneyFormatter.format(detail.totals.charged)}`, left, doc.y + 2, { width, align: "right" });
+      doc.moveDown(1);
+
+      // --- Odemeler ---
+      ensure(40);
+      doc.font(bold).fontSize(12).fillColor("#14213d").text("Ödemeler", left, doc.y);
+      doc.moveTo(left, doc.y + 2).lineTo(left + width, doc.y + 2).strokeColor("#14213d").lineWidth(1).stroke();
+      doc.moveDown(0.5);
+      if (detail.payments.length === 0) {
+        doc.font(regular).fontSize(9).fillColor("#777777").text("Ödeme yok", left, doc.y);
+      }
+      const descX = left + 70;
+      const descW = width - 70 - 90;
+      for (const payment of detail.payments) {
+        doc.font(regular).fontSize(9);
+        const descHeight = doc.heightOfString(payment.description, { width: descW });
+        const coverLines = payment.covers.map(
+          (cover) => `${monthLabel(cover.periodYear, cover.periodMonth)} ${kindLabel(cover.kind, cover.chargeTypeName)} · ${moneyFormatter.format(cover.amount)}`
+        );
+        doc.fontSize(8);
+        const coversHeight = coverLines.length > 0 ? doc.heightOfString(coverLines.join("\n"), { width: descW }) : 0;
+        ensure(descHeight + coversHeight + 12);
+        const y = doc.y;
+        doc.font(regular).fontSize(9).fillColor("#222222").text(formatMobileMatrixDate(payment.paidAt), left + 2, y, { width: 66, lineBreak: false });
+        doc.text(payment.description, descX, y, { width: descW });
+        let cursor = y + descHeight;
+        if (coverLines.length > 0) {
+          doc.font(regular).fontSize(8).fillColor("#666666").text(coverLines.join("\n"), descX, cursor + 1, { width: descW });
+          cursor += coversHeight + 1;
+        }
+        doc.font(bold).fontSize(9).fillColor("#2e7d32").text(moneyFormatter.format(payment.amount), left + width - 88, y, {
+          width: 88,
+          align: "right",
+          lineBreak: false,
+        });
+        doc.y = cursor + 7;
+        doc.x = left;
+      }
+      ensure(18);
+      doc.font(bold).fontSize(10).fillColor("#14213d");
+      doc.text(`Toplam ödeme: ${moneyFormatter.format(detail.totals.paid)}`, left, doc.y + 2, { width, align: "right" });
+
+      const range = doc.bufferedPageRange();
+      for (let i = 0; i < range.count; i += 1) {
+        doc.switchToPage(range.start + i);
+        doc
+          .font(regular)
+          .fontSize(8)
+          .fillColor("#888888")
+          .text(`Sayfa ${i + 1} / ${range.count}`, left, doc.page.height - doc.page.margins.bottom + 8, {
+            width,
+            align: "right",
+            lineBreak: false,
+          });
+      }
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 export function buildMobileMatrixPdf(report: MobileMatrixReport): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {

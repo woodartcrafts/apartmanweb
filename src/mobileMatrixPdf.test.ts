@@ -35,3 +35,38 @@ describe("mobil matrix pdf", () => {
     expect(formatMobileMatrixDate(null)).toBe("-");
   });
 });
+
+describe("buildMobileMatrixApartmentPdf", () => {
+  it("daire detayi icin gecerli PDF uretir (uzun aciklama, cok odeme)", async () => {
+    const { buildMobileMatrixApartmentPdf } = await import("./utils/mobileMatrixReport");
+    const pdf = await buildMobileMatrixApartmentPdf({
+      apartmentId: "a1",
+      doorNo: "100",
+      occupant: "Şeyma Tanğut Öztürk",
+      snapshotAt: new Date("2026-11-19T10:00:00Z"),
+      totals: { charged: 5000, paid: 3000, remaining: 2000, overdue: 2000 },
+      charges: Array.from({ length: 60 }, (_, i) => ({
+        chargeId: `c${i}`,
+        periodYear: 2026,
+        periodMonth: (i % 12) + 1,
+        kind: "AIDAT" as const,
+        chargeTypeName: "Aidat",
+        amount: 1000,
+        paid: i % 2 ? 1000 : 0,
+        remaining: i % 2 ? 0 : 1000,
+        dueDate: new Date("2026-01-05T00:00:00Z"),
+        overdue: i % 2 === 0,
+      })),
+      payments: Array.from({ length: 30 }, (_, i) => ({
+        paymentId: `p${i}`,
+        paidAt: new Date("2026-11-17T10:00:00Z"),
+        amount: 1000,
+        method: "BANK_TRANSFER",
+        description: "ŞEYMA TANĞUT aidat ve doğalgaz ödemesi çok uzun açıklama metni ".repeat(3),
+        covers: [{ periodYear: 2026, periodMonth: 10, kind: "AIDAT" as const, chargeTypeName: "Aidat", amount: 1000 }],
+      })),
+    });
+    expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pdf.length).toBeGreaterThan(2000);
+  });
+});

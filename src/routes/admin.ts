@@ -34,7 +34,7 @@ import { createAdminPaymentRefundRoutes } from "./adminPaymentRefundRoutes";
 import { createAdminSplitCandidateRoutes } from "./adminSplitCandidateRoutes";
 import { createAdminApartmentCreditRoutes } from "./adminApartmentCreditRoutes";
 import { createAdminPaymentAuditRoutes, saveDailyAuditReport } from "./adminPaymentAuditRoutes";
-import { buildMobileMatrixApartmentDetail, buildMobileMatrixPdf, buildMobileMatrixReport } from "../utils/mobileMatrixReport";
+import { buildMobileMatrixApartmentDetail, buildMobileMatrixApartmentPdf, buildMobileMatrixPdf, buildMobileMatrixReport } from "../utils/mobileMatrixReport";
 import { sendHeartbeat } from "../utils/heartbeat";
 import { digestAttentionCount, type DigestSyncSummary } from "../utils/dailyDigest";
 import { createAdminCashCashflowRoutes } from "./adminCashCashflowRoutes";
@@ -9516,6 +9516,29 @@ router.get("/reports/apartment-balance-matrix-mobile/apartment/:apartmentId", as
     return res.status(404).json({ message: "Daire bulunamadi" });
   }
   return res.json(detail);
+});
+
+router.get("/reports/apartment-balance-matrix-mobile/apartment/:apartmentId/pdf", async (req, res) => {
+  try {
+    const detail = await buildMobileMatrixApartmentDetail(req.params.apartmentId);
+    if (!detail) {
+      return res.status(404).json({ message: "Daire bulunamadi" });
+    }
+    const pdf = await buildMobileMatrixApartmentPdf(detail);
+    const dayKey = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Istanbul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(detail.snapshotAt);
+    const safeDoor = detail.doorNo.replace(/[^A-Za-z0-9_-]/g, "");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="daire-${safeDoor || "rapor"}-${dayKey}.pdf"`);
+    return res.send(pdf);
+  } catch (err) {
+    console.error("[mobile-matrix-apartment-pdf-failed]", err);
+    return res.status(500).json({ message: "PDF olusturulamadi" });
+  }
 });
 
 router.get("/reports/apartment-balance-matrix-mobile/pdf", async (_req, res) => {
