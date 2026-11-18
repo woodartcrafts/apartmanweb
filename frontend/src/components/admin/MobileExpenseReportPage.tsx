@@ -59,7 +59,7 @@ function formatDay(iso: string): string {
 }
 
 export function MobileExpenseReportPage({ request }: MobileExpenseReportPageProps) {
-  const [period, setPeriod] = useState<PeriodKey>("YEAR");
+  const [period, setPeriod] = useState<PeriodKey>("ALL");
   const [rows, setRows] = useState<ExpenseReportRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
