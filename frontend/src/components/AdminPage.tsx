@@ -14692,7 +14692,10 @@ function normalizeToastText(value: string): string {
         </aside>
       )}
 
-      <footer className="status-bar status-bar-fixed">{isPermissionDeniedText(message) ? "Admin panel hazir" : message}</footer>
+      {!location.pathname.startsWith("/admin/reports/mobile-matrix") &&
+        !location.pathname.startsWith("/admin/expenses/mobile-report") && (
+          <footer className="status-bar status-bar-fixed">{isPermissionDeniedText(message) ? "Admin panel hazir" : message}</footer>
+        )}
     </section>
   );
 }
