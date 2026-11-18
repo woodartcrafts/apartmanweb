@@ -12459,7 +12459,7 @@ td.empty {
   }
 }
 /* Mobil Matrix Raporu */
-.mm-page { max-width: 640px; margin: 0 auto; padding: 4px 2px 24px; font-variant-numeric: tabular-nums; }
+.mm-page { min-width: 0; max-width: 640px; margin: 0 auto; padding: 4px 2px 24px; font-variant-numeric: tabular-nums; }
 .mm-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .mm-head h3 { margin: 0; font-size: 20px; }
 .mm-sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
@@ -12472,7 +12472,7 @@ td.empty {
 .mm-apt-head { display: flex; align-items: center; gap: 10px; }
 .mm-no { min-width: 38px; height: 34px; padding: 0 6px; border-radius: 9px; background: var(--ink); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 15px; }
 .mm-name { flex: 1; min-width: 0; }
-.mm-name-main { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-name-main { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; line-height: 1.25; }
 .mm-name-sub { font-size: 12px; color: var(--muted); }
 .mm-amount { font-weight: 700; font-size: 16px; color: #c62828; white-space: nowrap; }
 .mm-amount-ok { color: #2e7d32; font-weight: 600; font-size: 13px; }
