@@ -34,7 +34,7 @@ import { createAdminPaymentRefundRoutes } from "./adminPaymentRefundRoutes";
 import { createAdminSplitCandidateRoutes } from "./adminSplitCandidateRoutes";
 import { createAdminApartmentCreditRoutes } from "./adminApartmentCreditRoutes";
 import { createAdminPaymentAuditRoutes, saveDailyAuditReport } from "./adminPaymentAuditRoutes";
-import { classifyMobileMatrixChargeKind, type MobileMatrixChargeKind } from "../utils/mobileMatrix";
+import { buildMobileMatrixPdf, buildMobileMatrixReport } from "../utils/mobileMatrixReport";
 import { sendHeartbeat } from "../utils/heartbeat";
 import { digestAttentionCount, type DigestSyncSummary } from "../utils/dailyDigest";
 import { createAdminCashCashflowRoutes } from "./adminCashCashflowRoutes";
@@ -9505,96 +9505,28 @@ router.get("/reports/apartment-balance-matrix", async (req, res) => {
   });
 });
 
-// Mobil Matrix Raporu: tum daireler, daire no sirasiyla; gecikmis (vadesi gecmis) acik kalemler ay + tur ile.
-// "Geciken" tutari matris raporundaki yillik "Geciken" ile ayni kuralla hesaplanir (dueDate <= simdi, kalan > 0).
+// Mobil Matrix Raporu: veri ve PDF mantigi src/utils/mobileMatrixReport.ts icinde.
 router.get("/reports/apartment-balance-matrix-mobile", async (_req, res) => {
-  const snapshotAt = new Date();
+  return res.json(await buildMobileMatrixReport());
+});
 
-  const [apartments, overdueCharges] = await Promise.all([
-    prisma.apartment.findMany({
-      include: {
-        block: { select: { name: true } },
-        users: {
-          where: { role: UserRole.RESIDENT },
-          select: { fullName: true },
-          orderBy: [{ fullName: "asc" }],
-        },
-      },
-    }),
-    prisma.charge.findMany({
-      where: { dueDate: { lte: snapshotAt } },
-      select: {
-        id: true,
-        apartmentId: true,
-        periodYear: true,
-        periodMonth: true,
-        amount: true,
-        chargeType: { select: { name: true } },
-        paymentItems: { select: { amount: true } },
-      },
-      orderBy: [{ periodYear: "asc" }, { periodMonth: "asc" }, { createdAt: "asc" }],
-    }),
-  ]);
-
-  const itemsByApartmentId = new Map<
-    string,
-    Array<{
-      periodYear: number;
-      periodMonth: number;
-      kind: MobileMatrixChargeKind;
-      chargeTypeName: string;
-      remaining: number;
-    }>
-  >();
-
-  for (const charge of overdueCharges) {
-    const paid = charge.paymentItems.reduce((sum, item) => sum + Number(item.amount), 0);
-    const remaining = Number((Number(charge.amount) - paid).toFixed(2));
-    if (remaining <= 0.0001) {
-      continue;
-    }
-
-    const list = itemsByApartmentId.get(charge.apartmentId) ?? [];
-    list.push({
-      periodYear: charge.periodYear,
-      periodMonth: charge.periodMonth,
-      kind: classifyMobileMatrixChargeKind(charge.chargeType.name),
-      chargeTypeName: charge.chargeType.name,
-      remaining,
-    });
-    itemsByApartmentId.set(charge.apartmentId, list);
+router.get("/reports/apartment-balance-matrix-mobile/pdf", async (_req, res) => {
+  try {
+    const report = await buildMobileMatrixReport();
+    const pdf = await buildMobileMatrixPdf(report);
+    const dayKey = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Istanbul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(report.snapshotAt);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="mobil-matrix-raporu-${dayKey}.pdf"`);
+    return res.send(pdf);
+  } catch (err) {
+    console.error("[mobile-matrix-pdf-failed]", err);
+    return res.status(500).json({ message: "PDF olusturulamadi" });
   }
-
-  const rows = apartments
-    .map((apartment) => {
-      const residents = apartment.users.map((x) => x.fullName.trim()).filter(Boolean);
-      const occupant = residents.length > 0 ? residents.join(", ") : apartment.ownerFullName?.trim() || "-";
-      const items = itemsByApartmentId.get(apartment.id) ?? [];
-      return {
-        apartmentId: apartment.id,
-        blockName: apartment.block.name,
-        apartmentDoorNo: apartment.doorNo,
-        occupant,
-        overdueTotal: Number(items.reduce((sum, item) => sum + item.remaining, 0).toFixed(2)),
-        items,
-      };
-    })
-    .sort((a, b) => {
-      const na = Number.parseInt(a.apartmentDoorNo, 10);
-      const nb = Number.parseInt(b.apartmentDoorNo, 10);
-      if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
-      return a.apartmentDoorNo.localeCompare(b.apartmentDoorNo, "tr", { numeric: true });
-    });
-
-  return res.json({
-    snapshotAt,
-    totals: {
-      apartmentCount: rows.length,
-      overdueApartmentCount: rows.filter((row) => row.overdueTotal > 0).length,
-      overdueTotal: Number(rows.reduce((sum, row) => sum + row.overdueTotal, 0).toFixed(2)),
-    },
-    rows,
-  });
 });
 
 router.get("/statement/all", async (_req, res) => {

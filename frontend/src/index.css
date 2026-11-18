@@ -12485,3 +12485,4 @@ td.empty {
 .mm-tag-gaz { background: #fdf0dc; color: #b45309; }
 .mm-tag-tadilat { background: #efe8fd; color: #7c3aed; }
 .mm-tag-diger { background: #eceff3; color: #475467; }
+.mm-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }

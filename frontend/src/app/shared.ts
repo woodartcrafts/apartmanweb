@@ -1355,6 +1355,8 @@ export type MobileMatrixReportRow = {
 
 export type MobileMatrixReportResponse = {
   snapshotAt: string;
+  /** En son banka/odeme/gider hareketinin tarihi (veri ne zamana kadar guncel). */
+  lastDataAt: string | null;
   totals: {
     apartmentCount: number;
     overdueApartmentCount: number;
