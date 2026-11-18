@@ -10,8 +10,13 @@ describe("mobil matrix raporu", () => {
     expect(classifyMobileMatrixChargeKind("Su")).toBe("DIGER");
   });
 
-  it("endpoint matris raporu yetkisine baglidir", () => {
-    expect(mapRequestPathToAdminPage("/reports/apartment-balance-matrix-mobile", "GET")).toBe("REPORTS_MONTHLY_BALANCE");
+  it("mobil endpointler kendi yetki anahtarlarina baglidir (masaustu raporlardan ayri)", () => {
+    expect(mapRequestPathToAdminPage("/reports/apartment-balance-matrix-mobile", "GET")).toBe("REPORTS_MOBILE_MATRIX");
+    expect(mapRequestPathToAdminPage("/reports/apartment-balance-matrix-mobile/pdf", "GET")).toBe("REPORTS_MOBILE_MATRIX");
+    expect(mapRequestPathToAdminPage("/reports/apartment-balance-matrix-mobile/apartment/abc", "GET")).toBe("REPORTS_MOBILE_MATRIX");
+    expect(mapRequestPathToAdminPage("/expenses/mobile-report", "GET")).toBe("EXPENSES_MOBILE_REPORT");
+    expect(mapRequestPathToAdminPage("/reports/apartment-balance-matrix", "GET")).toBe("REPORTS_MONTHLY_BALANCE");
+    expect(mapRequestPathToAdminPage("/expenses/report", "GET")).toBe("EXPENSES_REPORT_LIST");
   });
 });
 

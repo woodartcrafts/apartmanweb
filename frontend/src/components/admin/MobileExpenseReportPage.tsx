@@ -103,7 +103,7 @@ export function MobileExpenseReportPage({ request }: MobileExpenseReportPageProp
         }
         params.set("includeDistributed", "false");
         let cut = false;
-        const data = await request<ExpenseReportRow[]>(`/api/admin/expenses/report?${params.toString()}`, {
+        const data = await request<ExpenseReportRow[]>(`/api/admin/expenses/mobile-report?${params.toString()}`, {
           onResponse: (response) => {
             cut = response.headers.get("X-Result-Truncated") === "true";
           },

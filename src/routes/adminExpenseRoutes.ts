@@ -114,7 +114,7 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
     );
   });
 
-  router.get("/expenses/report", async (req, res) => {
+  router.get(["/expenses/report", "/expenses/mobile-report"], async (req, res) => {
     const querySchema = z.object({
       from: z.string().datetime().optional(),
       to: z.string().datetime().optional(),
