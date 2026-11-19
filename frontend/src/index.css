@@ -12593,3 +12593,28 @@ td.empty {
 .ln-empty { color: var(--muted); padding: 16px 4px; }
 .ln-note-ileri { border-left-color: #78909c; }
 .ln-note-ileri .ln-badge { background: #eceff1; color: #37474f; }
+
+/* Mobil Kalan Islemler */
+.ml-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.ml-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.ml-card span { color: var(--muted); font-size: 13px; }
+.ml-card b { font-size: 20px; }
+.ml-card-eksik { border-left: 5px solid #c62828; }
+.ml-card-eksik b { color: #c62828; }
+.ml-card-fazla { border-left: 5px solid #2e7d32; }
+.ml-card-fazla b { color: #2e7d32; }
+.ml-extra { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+.ml-filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 10px; }
+.ml-filter { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.ml-filter-on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.ml-note { padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.ml-note:last-child { border-bottom: 0; }
+.ml-note-top { display: flex; align-items: center; gap: 8px; }
+.ml-badge { border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 600; white-space: nowrap; background: #eceff3; color: #475467; }
+.ml-note-eksik .ml-badge { background: #fdecec; color: #b3261e; }
+.ml-note-fazla .ml-badge { background: #e7f5ea; color: #2e7d32; }
+.ml-note-onay .ml-badge { background: #fdf0dc; color: #b45309; }
+.ml-note-ileri .ml-badge { background: #e6eefc; color: #1d4ed8; }
+.ml-date { color: var(--muted); font-size: 12px; }
+.ml-amount { margin-left: auto; font-size: 15px; }
+.ml-text { margin-top: 3px; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }

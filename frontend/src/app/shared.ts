@@ -47,6 +47,7 @@ export type AdminPageKey =
   | "REPORTS_STAFF_OPEN_AIDAT_SEND_EMAIL"
   | "REPORTS_MOBILE_MATRIX"
   | "REPORTS_MOBILE_BANK"
+  | "REPORTS_MOBILE_LEFTOVER"
   | "CONTROL_LEFTOVER_NOTES"
   | "REPORTS_MONTHLY_BALANCE"
   | "REPORTS_MONTHLY_LEDGER"
@@ -1899,6 +1900,23 @@ export type LeftoverNote = {
   date: string;
   amount: number;
   text: string;
+};
+
+export type MobileLeftoverApartment = {
+  doorNo: string;
+  name: string;
+  eksik: number;
+  fazla: number;
+  onay: number;
+  ileri: number;
+  notes: LeftoverNote[];
+};
+
+export type MobileLeftoverReportResponse = {
+  generatedAt: string;
+  lastDataAt: string | null;
+  totals: { eksik: number; fazla: number; onay: number; ileri: number };
+  apartments: MobileLeftoverApartment[];
 };
 
 export type LeftoverNotesResponse = {

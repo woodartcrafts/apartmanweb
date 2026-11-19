@@ -36,6 +36,7 @@ import { createAdminApartmentCreditRoutes } from "./adminApartmentCreditRoutes";
 import { createAdminPaymentAuditRoutes, saveDailyAuditReport } from "./adminPaymentAuditRoutes";
 import { buildLeftoverNotes } from "../utils/leftoverNotes";
 import { buildMobileBankReport } from "../utils/mobileBankReport";
+import { buildMobileLeftoverReport } from "../utils/mobileLeftoverReport";
 import { buildMobileMatrixApartmentDetail, buildMobileMatrixApartmentPdf, buildMobileMatrixPdf, getMobileMatrixLastDataAt, buildMobileMatrixReport } from "../utils/mobileMatrixReport";
 import { sendHeartbeat } from "../utils/heartbeat";
 import { digestAttentionCount, type DigestSyncSummary } from "../utils/dailyDigest";
@@ -9569,6 +9570,11 @@ router.get("/reports/leftover-notes", async (req, res) => {
   const parsed = Number(rawDays);
   const days = rawDays === "all" ? null : Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 3650) : 60;
   return res.json(await buildLeftoverNotes(days));
+});
+
+// Mobil Kalan Islemler: ayni veri, daire daire gruplu; mobil sayfa kendiliginden yeniler.
+router.get("/reports/leftover-mobile", async (_req, res) => {
+  return res.json(await buildMobileLeftoverReport());
 });
 
 router.get("/reports/bank-balance-mobile", async (_req, res) => {
