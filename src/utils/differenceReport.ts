@@ -70,7 +70,7 @@ export async function buildDifferenceReport(now: Date = new Date()): Promise<Dif
         totalAmount: true,
         method: true,
         note: true,
-        itemLinks: { select: { amount: true, charge: { select: { apartmentId: true, dueDate: true } } } },
+        itemLinks: { select: { amount: true, chargeId: true, charge: { select: { apartmentId: true, dueDate: true, amount: true } } } },
       },
     }),
     buildLeftoverNotes(null),
@@ -111,6 +111,20 @@ export async function buildDifferenceReport(now: Date = new Date()): Promise<Dif
   // Onay bekleyen odemesi olan daireler fark listesine girmez; "Onay bekleyen" bolumunde gorunur.
   const pendingApartments = new Set<string>();
 
+  // Vadesi gelmemis borclara yazilan toplam odeme (borc bazinda): tamami odenmis peşin borc fark degildir,
+  // kismen odenmis olan ise gercek bir artiktir ve fark sayilir.
+  const futurePaidByCharge = new Map<string, number>();
+  for (const payment of payments) {
+    for (const link of payment.itemLinks) {
+      if (link.charge.dueDate.getTime() > now.getTime()) {
+        const cents = toCents(link.amount);
+        if (Number.isFinite(cents)) {
+          futurePaidByCharge.set(link.chargeId, (futurePaidByCharge.get(link.chargeId) ?? 0) + cents);
+        }
+      }
+    }
+  }
+
   for (const payment of payments) {
     const note = payment.note ?? "";
     const totalCents = toCents(payment.totalAmount);
@@ -126,10 +140,12 @@ export async function buildDifferenceReport(now: Date = new Date()): Promise<Dif
         continue;
       }
       appliedCents += cents;
-      // Vadesi gelmemis bir borca yazilan odeme peşin odemedir; o borc rapora girmedigi icin
-      // bu tutar da "fazla" sayilmaz (yoksa vadesi gelmemis her peşin odeme sahte fark gorunur).
+      // Tamami odenmis, vadesi gelmemis borca yazilan tutar peşin odemedir; fark sayilmaz.
       if (link.charge.dueDate.getTime() > now.getTime()) {
-        continue;
+        const chargeCents = toCents(link.charge.amount);
+        if ((futurePaidByCharge.get(link.chargeId) ?? 0) >= chargeCents) {
+          continue;
+        }
       }
       const apartmentId = link.charge.apartmentId;
       appliedByApartment.set(apartmentId, (appliedByApartment.get(apartmentId) ?? 0) + cents);
