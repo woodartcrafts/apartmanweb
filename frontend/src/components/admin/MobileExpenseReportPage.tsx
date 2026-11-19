@@ -65,6 +65,7 @@ export function MobileExpenseReportPage({ request }: MobileExpenseReportPageProp
   const [error, setError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [openItem, setOpenItem] = useState<string | null>(null);
+  const [lastDataAt, setLastDataAt] = useState<string | null>(null);
 
   const load = useCallback(
     async (key: PeriodKey) => {
@@ -96,6 +97,14 @@ export function MobileExpenseReportPage({ request }: MobileExpenseReportPageProp
   );
 
   useEffect(() => {
+    // Son veri tarihi: en son yuklenen banka ekstresindeki son islem tarihi (donemden bagimsiz).
+    request<{ lastDataAt: string | null }>("/api/admin/expenses/mobile-report/last-data")
+      .then((res) => setLastDataAt(res.lastDataAt))
+      .catch(() => setLastDataAt(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     setOpenItem(null);
     void load(period);
     // request kimligi her render'da degisebilir; donem degisince yuklenir.
@@ -119,17 +128,12 @@ export function MobileExpenseReportPage({ request }: MobileExpenseReportPageProp
 
   const grandTotal = useMemo(() => rows.reduce((sum, row) => sum + row.amount, 0), [rows]);
   const maxItemTotal = byItem[0]?.total ?? 0;
-  const lastDate = rows.reduce<string | null>(
-    (latest, row) => (latest === null || new Date(row.spentAt) > new Date(latest) ? row.spentAt : latest),
-    null
-  );
-
   return (
     <section className="me-page">
       <div className="me-head">
         <div>
           <h3>Mobil Gider Raporu</h3>
-          <div className="me-sub">{lastDate ? `Son gider tarihi: ${formatDay(lastDate)}` : busy ? "Yukleniyor..." : ""}</div>
+          <div className="me-sub">{lastDataAt ? `Son veri tarihi: ${formatDay(lastDataAt)}` : busy ? "Yukleniyor..." : ""}</div>
         </div>
         <button className="btn" type="button" onClick={() => void load(period)} disabled={busy}>
           {busy ? "..." : "Yenile"}

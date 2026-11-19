@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { UserRole } from "@prisma/client";
+import { ImportBatchType, UserRole } from "@prisma/client";
 import PDFDocument from "pdfkit";
 import { prisma } from "../db";
 import { classifyMobileMatrixChargeKind, type MobileMatrixChargeKind } from "./mobileMatrix";
@@ -35,7 +35,7 @@ export type MobileMatrixReport = {
 export async function buildMobileMatrixReport(): Promise<MobileMatrixReport> {
   const snapshotAt = new Date();
 
-  const [apartments, overdueCharges, lastPayment, lastExpense] = await Promise.all([
+  const [apartments, overdueCharges, lastDataAt] = await Promise.all([
     prisma.apartment.findMany({
       include: {
         block: { select: { name: true } },
@@ -59,8 +59,7 @@ export async function buildMobileMatrixReport(): Promise<MobileMatrixReport> {
       },
       orderBy: [{ periodYear: "asc" }, { periodMonth: "asc" }, { createdAt: "asc" }],
     }),
-    prisma.payment.aggregate({ _max: { paidAt: true } }),
-    prisma.expense.aggregate({ _max: { spentAt: true } }),
+    getMobileMatrixLastDataAt(),
   ]);
 
   const itemsByApartmentId = new Map<string, MobileMatrixItem[]>();
@@ -102,10 +101,6 @@ export async function buildMobileMatrixReport(): Promise<MobileMatrixReport> {
       return a.apartmentDoorNo.localeCompare(b.apartmentDoorNo, "tr", { numeric: true });
     });
 
-  const candidates = [lastPayment._max.paidAt, lastExpense._max.spentAt].filter((x): x is Date => x instanceof Date);
-  const lastDataAt =
-    candidates.length > 0 ? new Date(Math.max(...candidates.map((x) => x.getTime()))) : null;
-
   return {
     snapshotAt,
     lastDataAt,
@@ -118,8 +113,24 @@ export async function buildMobileMatrixReport(): Promise<MobileMatrixReport> {
   };
 }
 
-// Sistemdeki en son banka/odeme/gider hareketinin tarihi (en son yuklenen ekstrenin son islem tarihi).
+// "Son veri tarihi": en son yuklenen banka ekstresindeki son islem tarihi.
+// Ekstre partisine bagli kayit bulunamazsa sistemdeki en son odeme/gider tarihine duser.
 export async function getMobileMatrixLastDataAt(): Promise<Date | null> {
+  const latestBatch = await prisma.importBatch.findFirst({
+    where: { kind: ImportBatchType.BANK_STATEMENT_UPLOAD },
+    orderBy: [{ uploadedAt: "desc" }],
+    select: { id: true },
+  });
+  if (latestBatch) {
+    const [payment, expense] = await Promise.all([
+      prisma.payment.aggregate({ where: { importBatchId: latestBatch.id }, _max: { paidAt: true } }),
+      prisma.expense.aggregate({ where: { importBatchId: latestBatch.id }, _max: { spentAt: true } }),
+    ]);
+    const dates = [payment._max.paidAt, expense._max.spentAt].filter((x): x is Date => x instanceof Date);
+    if (dates.length > 0) {
+      return new Date(Math.max(...dates.map((x) => x.getTime())));
+    }
+  }
   const [lastPayment, lastExpense] = await Promise.all([
     prisma.payment.aggregate({ _max: { paidAt: true } }),
     prisma.expense.aggregate({ _max: { spentAt: true } }),

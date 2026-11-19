@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 import { buildDateRangeFilter } from "../utils/dateRange";
+import { getMobileMatrixLastDataAt } from "../utils/mobileMatrixReport";
 import { prismaExcludePaymentRefundExpenses } from "../utils/paymentRefund";
 
 const EXPENSE_REPORT_EXPENSE_LIMIT = 2000;
@@ -112,6 +113,10 @@ export function createAdminExpenseRoutes(deps: ExpenseRoutesDeps): Router {
         reference: expense.reference,
       }))
     );
+  });
+
+  router.get("/expenses/mobile-report/last-data", async (_req, res) => {
+    return res.json({ lastDataAt: await getMobileMatrixLastDataAt() });
   });
 
   router.get(["/expenses/report", "/expenses/mobile-report"], async (req, res) => {
