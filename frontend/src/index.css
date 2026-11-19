@@ -12591,3 +12591,5 @@ td.empty {
 .ln-text { font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
 .ln-error { background: #fdecea; color: #b71c1c; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
 .ln-empty { color: var(--muted); padding: 16px 4px; }
+.ln-note-ileri { border-left-color: #78909c; }
+.ln-note-ileri .ln-badge { background: #eceff1; color: #37474f; }

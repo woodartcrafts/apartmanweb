@@ -20,6 +20,23 @@ describe("leftoverNotes", () => {
     expect(text).toContain("NİLÜFER ORHAN");
   });
 
+  it("vadesi gelmemis kalemde eksik demez, onceden odendi der", () => {
+    const text = describePartialCharge({
+      doorNo: "15",
+      typeName: "Aidat",
+      year: 2026,
+      month: 12,
+      amount: 2000,
+      paid: 25,
+      lastPaidAt: new Date("2026-11-17T00:00:00Z"),
+      payer: null,
+      dueDate: new Date("2026-12-31T00:00:00Z"),
+      now: new Date("2026-11-19T00:00:00Z"),
+    });
+    expect(text).toContain("onceden odendi");
+    expect(text).not.toContain("EKSIK");
+  });
+
   it("onay bekleyen ve fazla gelen odemeyi ayirir", () => {
     const base = { doorNo: "81", paidAt: new Date("2026-11-17T00:00:00Z"), total: 11325, unapplied: 11325, payer: null, noOpenDebt: false };
     expect(describeUnappliedPayment({ ...base, pendingApproval: true })).toContain("ONAY BEKLIYOR");

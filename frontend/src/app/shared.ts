@@ -1894,7 +1894,7 @@ export type MobileBankReportResponse = {
 
 export type LeftoverNote = {
   id: string;
-  kind: "EKSIK" | "FAZLA" | "ONAY";
+  kind: "EKSIK" | "FAZLA" | "ONAY" | "ILERI";
   doorNo: string;
   date: string;
   amount: number;
@@ -1906,5 +1906,5 @@ export type LeftoverNotesResponse = {
   lastDataAt: string | null;
   days: number | null;
   notes: LeftoverNote[];
-  totals: { eksik: number; fazla: number; onay: number };
+  totals: { eksik: number; fazla: number; onay: number; ileri: number };
 };

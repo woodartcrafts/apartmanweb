@@ -6,7 +6,7 @@ import { parsePaymentNoteParts } from "../routes/adminNoteUtils";
  * "Kalan Islemler" notlari: ekstre yuklemesinden sonra tam kapanmayan, fazla gelen ya da
  * onay bekleyen odemeleri sade Turkce cumlelerle anlatir. Veriyi yazmaz, sadece okur.
  */
-export type LeftoverNoteKind = "EKSIK" | "FAZLA" | "ONAY";
+export type LeftoverNoteKind = "EKSIK" | "FAZLA" | "ONAY" | "ILERI";
 
 export type LeftoverNote = {
   id: string;
@@ -24,7 +24,7 @@ export type LeftoverNotesReport = {
   lastDataAt: string | null;
   days: number | null;
   notes: LeftoverNote[];
-  totals: { eksik: number; fazla: number; onay: number };
+  totals: { eksik: number; fazla: number; onay: number; ileri: number };
 };
 
 const MONTH_NAMES = [
@@ -95,9 +95,19 @@ export function describePartialCharge(params: {
   paid: number;
   lastPaidAt: Date;
   payer: string | null;
+  /** Vadesi henuz gelmemis kalemde kalan tutar "eksik" degil, onceden odeme sayilir. */
+  dueDate?: Date;
+  now?: Date;
 }): string {
   const remaining = params.amount - params.paid;
   const who = params.payer ? ` (${params.payer})` : "";
+  if (params.dueDate && params.now && params.dueDate.getTime() > params.now.getTime()) {
+    return (
+      `Daire ${params.doorNo} - ${monthLabel(params.year, params.month)} ${params.typeName}: ` +
+      `${formatTryText(params.paid)} onceden odendi, kalan ${formatTryText(remaining)} ` +
+      `(vadesi ${formatDayText(params.dueDate)}, henuz gelmedi). Son odeme ${formatDayText(params.lastPaidAt)}${who}.`
+    );
+  }
   return (
     `Daire ${params.doorNo} - ${monthLabel(params.year, params.month)} ${params.typeName}: ` +
     `${formatTryText(params.amount)} borcun ${formatTryText(params.paid)} kadari odendi, ` +
@@ -144,6 +154,7 @@ export async function buildLeftoverNotes(days: number | null): Promise<LeftoverN
         periodYear: true,
         periodMonth: true,
         amount: true,
+        dueDate: true,
         apartment: { select: { doorNo: true } },
         chargeType: { select: { name: true } },
         paymentItems: {
@@ -182,9 +193,10 @@ export async function buildLeftoverNotes(days: number | null): Promise<LeftoverN
     if (since && latest.payment.paidAt < since) {
       continue;
     }
+    const notDueYet = charge.dueDate.getTime() > generatedAt.getTime();
     notes.push({
       id: `charge:${charge.id}`,
-      kind: "EKSIK",
+      kind: notDueYet ? "ILERI" : "EKSIK",
       doorNo: charge.apartment.doorNo,
       date: latest.payment.paidAt.toISOString(),
       amount: Math.round(remaining * 100) / 100,
@@ -197,6 +209,8 @@ export async function buildLeftoverNotes(days: number | null): Promise<LeftoverN
         paid,
         lastPaidAt: latest.payment.paidAt,
         payer: extractPayerName(latest.payment.note),
+        dueDate: charge.dueDate,
+        now: generatedAt,
       }),
     });
   }
@@ -242,6 +256,6 @@ export async function buildLeftoverNotes(days: number | null): Promise<LeftoverN
     lastDataAt: lastDataAt ? lastDataAt.toISOString() : null,
     days,
     notes,
-    totals: { eksik: sumBy("EKSIK"), fazla: sumBy("FAZLA"), onay: sumBy("ONAY") },
+    totals: { eksik: sumBy("EKSIK"), fazla: sumBy("FAZLA"), onay: sumBy("ONAY"), ileri: sumBy("ILERI") },
   };
 }

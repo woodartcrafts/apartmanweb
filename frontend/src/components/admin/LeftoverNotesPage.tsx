@@ -9,6 +9,7 @@ const KIND_LABEL: Record<LeftoverNote["kind"], string> = {
   EKSIK: "Eksik kaldi",
   FAZLA: "Fazla geldi",
   ONAY: "Onay bekliyor",
+  ILERI: "Onceden odendi",
 };
 
 function formatDay(iso: string | null): string {
@@ -84,6 +85,7 @@ export function LeftoverNotesPage({ request }: LeftoverNotesPageProps) {
             <span>Toplam eksik: <b>{formatTry(data.totals.eksik)}</b></span>
             <span>Toplam fazla: <b>{formatTry(data.totals.fazla)}</b></span>
             <span>Onay bekleyen: <b>{formatTry(data.totals.onay)}</b></span>
+            <span>Vadesi gelmemis kalan: <b>{formatTry(data.totals.ileri)}</b></span>
           </div>
 
           {data.notes.length === 0 ? <div className="ln-empty">Bu aralikta kalan islem yok.</div> : null}
