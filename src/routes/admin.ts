@@ -6462,44 +6462,99 @@ router.post("/bank-statement/commit", async (req, res) => {
   }
 });
 
+/**
+ * Ekstre dosyasini (xlsx) iceri aktarir. Hem admin ekrani hem otomasyon API'si kullanir;
+ * mukerrer kontrolleri (BANK_REF, kaynaklar arasi) processBankStatementImport icindedir.
+ */
+export async function importBankStatementFile(
+  file: Express.Multer.File,
+  uploadedById?: string
+): Promise<{ status: number; body: unknown }> {
+  if (file.originalname.toLowerCase().endsWith(".xls")) {
+    return { status: 400, body: { message: LEGACY_XLS_UNSUPPORTED_MESSAGE } };
+  }
+
+  await ensurePaymentMethodDefinitions();
+
+  const rows = await parseBankStatementRows(file);
+  const statementClosingBalance = extractStatementClosingBalance(rows);
+  if (rows.length === 0) {
+    return { status: 400, body: { message: "No valid bank statement rows found" } };
+  }
+
+  const rawCommitRows: BankStatementCommitRow[] = rows.map((row) => ({
+    occurredAt: row.occurredAt,
+    amount: Number(Math.abs(row.amount).toFixed(2)),
+    entryType: row.amount > 0 ? "PAYMENT" : "EXPENSE",
+    description: row.description,
+    reference: row.reference,
+    txType: row.txType,
+    paymentMethod: derivePaymentMethod(row.txType),
+  }));
+  // Onizleme ve Gmail ile ayni bolme kurali (eskiden bu yol hic bolmuyordu).
+  const commitRows = planAutoSplit(rawCommitRows, await loadValidDoorNoSet()).rows;
+
+  const result = await processBankStatementImport({
+    rows: commitRows,
+    fileName: file.originalname,
+    statementClosingBalance,
+    uploadedById,
+  });
+
+  return { status: 200, body: result };
+}
+
+/** Dosyadaki satirlari veritabaniyla karsilastirir; hicbir sey yazmaz. */
+export async function previewBankStatementFile(file: Express.Multer.File): Promise<{
+  rowCount: number;
+  newCount: number;
+  rows: Array<{
+    date: string;
+    amount: number;
+    entryType: "PAYMENT" | "EXPENSE";
+    description: string;
+    reference: string | null;
+    alreadyInDb: boolean;
+  }>;
+}> {
+  const parsedRows = await parseBankStatementRows(file);
+  const refs = [...new Set(parsedRows.map((row) => row.reference?.trim()).filter((r): r is string => Boolean(r)))];
+  const existing = refs.length
+    ? await prisma.payment.findMany({
+        where: { OR: refs.map((r) => ({ note: { startsWith: `BANK_REF:${r}` } })) },
+        select: { note: true },
+      })
+    : [];
+  const existingExpenses = refs.length
+    ? await prisma.expense.findMany({ where: { reference: { in: refs } }, select: { reference: true } })
+    : [];
+  const known = new Set<string>();
+  for (const row of existing) {
+    const m = row.note?.match(/BANK_REF:([^\s|]+)/);
+    if (m) known.add(m[1]);
+  }
+  for (const row of existingExpenses) {
+    if (row.reference) known.add(row.reference.trim());
+  }
+  const rows = parsedRows.map((row) => ({
+    date: row.occurredAt.toISOString().slice(0, 10),
+    amount: Number(Math.abs(row.amount).toFixed(2)),
+    entryType: (row.amount > 0 ? "PAYMENT" : "EXPENSE") as "PAYMENT" | "EXPENSE",
+    description: row.description,
+    reference: row.reference?.trim() || null,
+    alreadyInDb: Boolean(row.reference && known.has(row.reference.trim())),
+  }));
+  return { rowCount: rows.length, newCount: rows.filter((r) => !r.alreadyInDb).length, rows };
+}
+
 router.post("/bank-statement/import", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "File is required" });
     }
 
-    if (req.file.originalname.toLowerCase().endsWith(".xls")) {
-      return res.status(400).json({ message: LEGACY_XLS_UNSUPPORTED_MESSAGE });
-    }
-
-    await ensurePaymentMethodDefinitions();
-
-    const rows = await parseBankStatementRows(req.file);
-    const statementClosingBalance = extractStatementClosingBalance(rows);
-    if (rows.length === 0) {
-      return res.status(400).json({ message: "No valid bank statement rows found" });
-    }
-
-    const rawCommitRows: BankStatementCommitRow[] = rows.map((row) => ({
-      occurredAt: row.occurredAt,
-      amount: Number(Math.abs(row.amount).toFixed(2)),
-      entryType: row.amount > 0 ? "PAYMENT" : "EXPENSE",
-      description: row.description,
-      reference: row.reference,
-      txType: row.txType,
-      paymentMethod: derivePaymentMethod(row.txType),
-    }));
-    // Onizleme ve Gmail ile ayni bolme kurali (eskiden bu yol hic bolmuyordu).
-    const commitRows = planAutoSplit(rawCommitRows, await loadValidDoorNoSet()).rows;
-
-    const result = await processBankStatementImport({
-      rows: commitRows,
-      fileName: req.file.originalname,
-      statementClosingBalance,
-      uploadedById: req.user?.userId,
-    });
-
-    return res.json(result);
+    const outcome = await importBankStatementFile(req.file, req.user?.userId);
+    return res.status(outcome.status).json(outcome.body);
   } catch (err) {
     console.error("[bank-statement-import-failed]", err);
     const detail = err instanceof Error ? err.message : "Beklenmeyen hata";

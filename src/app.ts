@@ -8,6 +8,7 @@ import path from "path";
 import { config } from "./config";
 import authRoutes from "./routes/auth";
 import adminRoutes from "./routes/admin";
+import automationRoutes from "./routes/automation";
 import residentRoutes from "./routes/resident";
 import { runGmailBankSync } from "./routes/admin";
 
@@ -91,6 +92,7 @@ app.post("/api/internal/gmail-bank-sync", async (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/automation", automationRoutes);
 app.use("/api/resident", residentRoutes);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
