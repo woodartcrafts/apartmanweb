@@ -70,7 +70,7 @@ export async function buildDifferenceReport(now: Date = new Date()): Promise<Dif
         totalAmount: true,
         method: true,
         note: true,
-        itemLinks: { select: { amount: true, charge: { select: { apartmentId: true } } } },
+        itemLinks: { select: { amount: true, charge: { select: { apartmentId: true, dueDate: true } } } },
       },
     }),
     buildLeftoverNotes(null),
@@ -126,6 +126,11 @@ export async function buildDifferenceReport(now: Date = new Date()): Promise<Dif
         continue;
       }
       appliedCents += cents;
+      // Vadesi gelmemis bir borca yazilan odeme peşin odemedir; o borc rapora girmedigi icin
+      // bu tutar da "fazla" sayilmaz (yoksa vadesi gelmemis her peşin odeme sahte fark gorunur).
+      if (link.charge.dueDate.getTime() > now.getTime()) {
+        continue;
+      }
       const apartmentId = link.charge.apartmentId;
       appliedByApartment.set(apartmentId, (appliedByApartment.get(apartmentId) ?? 0) + cents);
     }
