@@ -25,7 +25,6 @@ export type MobileBankReport = {
   /** Vadesiz banka bakiyesi (Raporlar ozetindeki "Banka bakiyesi" ile ayni hesap). */
   bankBalance: number;
   deposits: MobileBankDeposit[];
-  /** depositPrincipal / depositNetMaturity yalnizca vadesi dolmamis kayitlari kapsar. */
   totals: {
     depositPrincipal: number;
     depositNetMaturity: number;
@@ -76,11 +75,9 @@ export async function buildMobileBankReport(): Promise<MobileBankReport> {
   });
 
   const bankBalance = Number(snapshot.estimatedBalance.toFixed(2));
-  // Vadesi dolmus kayitlar toplama dahil edilmez: bankada kapanip vadesiz bakiyeye gecmis olabilir
-  // (cifte sayimi onlemek icin ayri listelenir).
-  const openDeposits = deposits.filter((d) => !d.matured);
-  const depositPrincipal = Number(openDeposits.reduce((sum, d) => sum + d.principalAmount, 0).toFixed(2));
-  const depositNetMaturity = Number(openDeposits.reduce((sum, d) => sum + d.netMaturityAmount, 0).toFixed(2));
+  // Sistemde aktif gorunen tum vadeli mevduat kayitlari (vadesi dolmus olsa da) anapara olarak toplanir.
+  const depositPrincipal = Number(deposits.reduce((sum, d) => sum + d.principalAmount, 0).toFixed(2));
+  const depositNetMaturity = Number(deposits.reduce((sum, d) => sum + d.netMaturityAmount, 0).toFixed(2));
 
   return {
     snapshotAt,
