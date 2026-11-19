@@ -11,18 +11,23 @@ type Filter = "HEPSI" | "EKSIK" | "FAZLA" | "ONAY";
 const AUTO_REFRESH_MS = 60_000;
 
 const KIND_LABEL: Record<LeftoverNote["kind"], string> = {
-  EKSIK: "Az odendi",
-  FAZLA: "Fazla odendi",
-  ONAY: "Onay bekliyor",
-  ILERI: "Onceden odendi",
+  EKSIK: "Borcun bir kısmı ödenmemiş",
+  FAZLA: "Fazla yatırmış",
+  ONAY: "Onayını bekliyor",
+  ILERI: "Önceden ödemiş (sorun yok)",
 };
 
 const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "HEPSI", label: "Hepsi" },
-  { key: "EKSIK", label: "Az odenen" },
-  { key: "FAZLA", label: "Fazla odenen" },
+  { key: "EKSIK", label: "Ödenmemiş" },
+  { key: "FAZLA", label: "Fazla yatıran" },
   { key: "ONAY", label: "Onay bekleyen" },
 ];
+
+// Kart ustundeki "Daire 12 - " on eki zaten daire basliginda yazili; tekrarini gizler.
+function stripDoorPrefix(text: string): string {
+  return text.replace(/^Daire \S+ - /, "");
+}
 
 function formatDay(iso: string | null): string {
   if (!iso) {
@@ -75,7 +80,7 @@ export function MobileLeftoverPage({ request }: MobileLeftoverPageProps) {
       setError(null);
     } catch (err) {
       if (!silent) {
-        setError(err instanceof Error ? err.message : "Kalan islemler alinamadi");
+        setError(err instanceof Error ? err.message : "Kalan işlemler alınamadı");
       }
     } finally {
       loadingRef.current = false;
@@ -124,12 +129,12 @@ export function MobileLeftoverPage({ request }: MobileLeftoverPageProps) {
     <section className="mm-page">
       <div className="mm-head">
         <div style={{ minWidth: 0 }}>
-          <h3>Mobil Kalan Islemler</h3>
+          <h3>Mobil Kalan İşlemler</h3>
           <div className="mm-sub">
             {busy && !data
-              ? "Yukleniyor..."
+              ? "Yükleniyor..."
               : `Son veri tarihi: ${data ? formatDay(data.lastDataAt) : "-"}${
-                  refreshedAt ? ` · Guncellendi ${formatClock(refreshedAt)}` : ""
+                  refreshedAt ? ` · Güncellendi ${formatClock(refreshedAt)}` : ""
                 }`}
           </div>
         </div>
@@ -146,18 +151,43 @@ export function MobileLeftoverPage({ request }: MobileLeftoverPageProps) {
         <>
           <div className="ml-cards">
             <div className="ml-card ml-card-eksik">
-              <span>Az odenen</span>
+              <span>Ödenmemiş kalan</span>
               <b>{formatTry(data.totals.eksik)}</b>
+              <small>Borcunun bir kısmını henüz ödememiş</small>
             </div>
             <div className="ml-card ml-card-fazla">
-              <span>Fazla odenen</span>
+              <span>Fazla yatırılan</span>
               <b>{formatTry(data.totals.fazla)}</b>
+              <small>Fazla gelmiş, düşeceği borç yok</small>
             </div>
           </div>
+
+          <details className="ml-help">
+            <summary>Bu sayfa nasıl okunur?</summary>
+            <ul>
+              <li>
+                <b>Fazla ödeme normalde burada görünmez.</b> Örneğin 2.000 ₺ aidat borcu olan 2.100 ₺ öderse, fazla 100 ₺
+                sıradaki borcuna kendiliğinden düşer.
+              </li>
+              <li>
+                <b>Ödenmemiş:</b> borcun bir kısmı hâlâ yatmamış. Örneğin 2.000 ₺ borca 1.500 ₺ ödenmiş, 500 ₺ eksik.
+              </li>
+              <li>
+                <b>Fazla yatıran:</b> fazla ödenmiş ama düşeceği açık bir borç yok (örneğin sonraki ayın aidatı henüz
+                girilmemiş). Yeni borç girilince kendiliğinden düşer.
+              </li>
+              <li>
+                <b>Önceden ödemiş:</b> vadesi gelmemiş bir borca erken ödeme yapılmış. Sorun yok, sadece bilgi.
+              </li>
+              <li>
+                <b>Onayını bekliyor:</b> ödeme geldi ama hangi borca ait olduğu belli değil. Senin onayın gerekiyor.
+              </li>
+            </ul>
+          </details>
           {data.totals.onay > 0 || data.totals.ileri > 0 ? (
             <div className="ml-extra">
               {data.totals.onay > 0 ? <span>Onay bekleyen: <b>{formatTry(data.totals.onay)}</b></span> : null}
-              {data.totals.ileri > 0 ? <span>Vadesi gelmemis kalan: <b>{formatTry(data.totals.ileri)}</b></span> : null}
+              {data.totals.ileri > 0 ? <span>Vadesi gelmemiş kalan: <b>{formatTry(data.totals.ileri)}</b></span> : null}
             </div>
           ) : null}
 
@@ -174,7 +204,7 @@ export function MobileLeftoverPage({ request }: MobileLeftoverPageProps) {
             ))}
           </div>
 
-          {visibleApartments.length === 0 ? <div className="mm-sub">Gosterilecek kalan islem yok.</div> : null}
+          {visibleApartments.length === 0 ? <div className="mm-sub">Gösterilecek kalan işlem yok.</div> : null}
 
           {visibleApartments.map(({ apartment, notes }) => (
             <div key={apartment.doorNo} className="mm-apt">
@@ -192,7 +222,8 @@ export function MobileLeftoverPage({ request }: MobileLeftoverPageProps) {
                       <span className="ml-date">{formatDay(note.date)}</span>
                       <b className="ml-amount">{formatTry(note.amount)}</b>
                     </div>
-                    <div className="ml-text">{note.text}</div>
+                    <div className="ml-text">{stripDoorPrefix(note.text)}</div>
+                    {note.hint ? <div className="ml-hint">{note.hint}</div> : null}
                   </div>
                 ))}
               </div>

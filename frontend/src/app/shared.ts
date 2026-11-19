@@ -1900,6 +1900,7 @@ export type LeftoverNote = {
   date: string;
   amount: number;
   text: string;
+  hint: string;
 };
 
 export type MobileLeftoverApartment = {

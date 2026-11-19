@@ -4,7 +4,7 @@ import { mapRequestPathToAdminPage } from "./utils/adminPermissions";
 import type { LeftoverNote } from "./utils/leftoverNotes";
 
 function note(partial: Partial<LeftoverNote> & Pick<LeftoverNote, "id" | "kind" | "doorNo" | "amount">): LeftoverNote {
-  return { date: "2026-11-10T00:00:00.000Z", text: "x", ...partial };
+  return { date: "2026-11-10T00:00:00.000Z", text: "x", hint: "y", ...partial };
 }
 
 describe("mobil kalan islemler", () => {

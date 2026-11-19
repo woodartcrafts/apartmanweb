@@ -17,6 +17,8 @@ export type LeftoverNote = {
   /** Eksik/fazla kalan tutar. */
   amount: number;
   text: string;
+  /** "Ne yapmali?" icin tek cumlelik, sade yonlendirme. */
+  hint: string;
 };
 
 export type LeftoverNotesReport = {
@@ -104,14 +106,14 @@ export function describePartialCharge(params: {
   if (params.dueDate && params.now && params.dueDate.getTime() > params.now.getTime()) {
     return (
       `Daire ${params.doorNo} - ${monthLabel(params.year, params.month)} ${params.typeName}: ` +
-      `${formatTryText(params.paid)} onceden odendi, kalan ${formatTryText(remaining)} ` +
-      `(vadesi ${formatDayText(params.dueDate)}, henuz gelmedi). Son odeme ${formatDayText(params.lastPaidAt)}${who}.`
+      `Vadesi henüz gelmedi (${formatDayText(params.dueDate)}). ${formatTryText(params.paid)} önceden ödendi, ` +
+      `kalan ${formatTryText(remaining)} vade gelince ödenecek. Son ödeme ${formatDayText(params.lastPaidAt)}${who}.`
     );
   }
   return (
     `Daire ${params.doorNo} - ${monthLabel(params.year, params.month)} ${params.typeName}: ` +
-    `${formatTryText(params.amount)} borcun ${formatTryText(params.paid)} kadari odendi, ` +
-    `${formatTryText(remaining)} EKSIK kaldi. Son odeme ${formatDayText(params.lastPaidAt)}${who}.`
+    `Borç ${formatTryText(params.amount)}, ödenen ${formatTryText(params.paid)}, ` +
+    `ödenmeyen ${formatTryText(remaining)}. Son ödeme ${formatDayText(params.lastPaidAt)}${who}.`
   );
 }
 
@@ -123,21 +125,34 @@ export function describeUnappliedPayment(params: {
   payer: string | null;
   pendingApproval: boolean;
   noOpenDebt: boolean;
+  /** Elle duzenlenmis (kilitli) odeme yeni borca kendiliginden yazilmaz. */
+  manualLock?: boolean;
 }): string {
   const who = params.payer ? ` (${params.payer})` : "";
   if (params.pendingApproval) {
     return (
-      `Daire ${params.doorNo} - ${formatDayText(params.paidAt)} tarihli ${formatTryText(params.total)} odeme${who} geldi, ` +
-      `hangi borca ait oldugu belli olmadigi icin ONAY BEKLIYOR. Hicbir borca yazilmadi.`
+      `Daire ${params.doorNo} - ${formatDayText(params.paidAt)} tarihli ${formatTryText(params.total)} ödeme${who} geldi. ` +
+      `Hangi borca ait olduğu belli olmadığı için hiçbir borca yazılmadı, onayını bekliyor.`
     );
   }
-  const reason = params.noOpenDebt
-    ? "dairenin o an acik borcu yoktu"
-    : "odeme borctan fazlaydi";
+  const reason = params.noOpenDebt ? "Dairenin o an ödenmemiş borcu yoktu" : "Ödeme borçtan fazlaydı";
+  const follow = params.manualLock
+    ? "Elle düzenlendiği için yeni borca kendiliğinden yazılmaz."
+    : "Dairenin yeni bir borcu eklenince otomatik olarak ona yazılır.";
   return (
-    `Daire ${params.doorNo} - ${formatDayText(params.paidAt)} tarihli ${formatTryText(params.total)} odemeden${who} ` +
-    `${formatTryText(params.unapplied)} FAZLA kaldi, borca yazilamadi (${reason}).`
+    `Daire ${params.doorNo} - ${formatDayText(params.paidAt)} tarihli ${formatTryText(params.total)} ödemeden${who} ` +
+    `${formatTryText(params.unapplied)} artakaldı. ${reason}. ${follow}`
   );
+}
+
+/** Her not turu icin "ne yapmali?" cumlesi. */
+export function describeHint(kind: LeftoverNoteKind, manualLock: boolean): string {
+  if (kind === "EKSIK") return "Kalan tutarın daire sakininden ödenmesi bekleniyor.";
+  if (kind === "ILERI") return "Bir şey yapmana gerek yok.";
+  if (kind === "ONAY") return "Ödemenin hangi borca yazılacağını onaylaman gerekiyor.";
+  return manualLock
+    ? "Elle düzenlendiği için kendiliğinden düşmez; ödemeyi bir borca yazman ya da iade etmen gerekir."
+    : "Bir şey yapmana gerek yok, yeni borç eklenince kendiliğinden düşer.";
 }
 
 const MILLIS_IN_DAY = 24 * 60 * 60 * 1000;
@@ -197,6 +212,7 @@ export async function buildLeftoverNotes(days: number | null): Promise<LeftoverN
     notes.push({
       id: `charge:${charge.id}`,
       kind: notDueYet ? "ILERI" : "EKSIK",
+      hint: describeHint(notDueYet ? "ILERI" : "EKSIK", false),
       doorNo: charge.apartment.doorNo,
       date: latest.payment.paidAt.toISOString(),
       amount: Math.round(remaining * 100) / 100,
@@ -228,9 +244,11 @@ export async function buildLeftoverNotes(days: number | null): Promise<LeftoverN
       continue;
     }
     const pendingApproval = note.includes("UNAPPLIED:PENDING_APPROVAL");
+    const manualLock = note.includes("RECONCILE_LOCK:MANUAL");
     notes.push({
       id: `payment:${payment.id}`,
       kind: pendingApproval ? "ONAY" : "FAZLA",
+      hint: describeHint(pendingApproval ? "ONAY" : "FAZLA", manualLock),
       doorNo: extractDoorNo(note) ?? "?",
       date: payment.paidAt.toISOString(),
       amount: unapplied,
@@ -242,6 +260,7 @@ export async function buildLeftoverNotes(days: number | null): Promise<LeftoverN
         payer: extractPayerName(note),
         pendingApproval,
         noOpenDebt: note.includes("UNAPPLIED:NO_OPEN_DEBT"),
+        manualLock,
       }),
     });
   }

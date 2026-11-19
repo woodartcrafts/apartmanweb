@@ -6,10 +6,10 @@ type LeftoverNotesPageProps = {
 };
 
 const KIND_LABEL: Record<LeftoverNote["kind"], string> = {
-  EKSIK: "Eksik kaldi",
-  FAZLA: "Fazla geldi",
-  ONAY: "Onay bekliyor",
-  ILERI: "Onceden odendi",
+  EKSIK: "Borcun bir kısmı ödenmemiş",
+  FAZLA: "Fazla yatırmış",
+  ONAY: "Onayını bekliyor",
+  ILERI: "Önceden ödemiş (sorun yok)",
 };
 
 function formatDay(iso: string | null): string {
@@ -98,6 +98,7 @@ export function LeftoverNotesPage({ request }: LeftoverNotesPageProps) {
                 <b className="ln-amount">{formatTry(note.amount)}</b>
               </div>
               <div className="ln-text">{note.text}</div>
+              {note.hint ? <div className="ln-hint">{note.hint}</div> : null}
             </div>
           ))}
         </>

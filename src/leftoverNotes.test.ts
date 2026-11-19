@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describePartialCharge, describeUnappliedPayment, extractDoorNo, extractPayerName, monthLabel } from "./utils/leftoverNotes";
+import { describeHint, describePartialCharge, describeUnappliedPayment, extractDoorNo, extractPayerName, monthLabel } from "./utils/leftoverNotes";
 import { mapRequestPathToAdminPage } from "./utils/adminPermissions";
 
 describe("leftoverNotes", () => {
@@ -15,7 +15,7 @@ describe("leftoverNotes", () => {
       payer: "NİLÜFER ORHAN",
     });
     expect(text).toContain("Daire 80");
-    expect(text).toContain("190 ₺ EKSIK");
+    expect(text).toContain("ödenmeyen 190 ₺");
     expect(text).toContain("18.11.2026");
     expect(text).toContain("NİLÜFER ORHAN");
   });
@@ -33,14 +33,24 @@ describe("leftoverNotes", () => {
       dueDate: new Date("2026-12-31T00:00:00Z"),
       now: new Date("2026-11-19T00:00:00Z"),
     });
-    expect(text).toContain("onceden odendi");
-    expect(text).not.toContain("EKSIK");
+    expect(text).toContain("önceden ödendi");
+    expect(text).not.toContain("ödenmeyen");
   });
 
   it("onay bekleyen ve fazla gelen odemeyi ayirir", () => {
     const base = { doorNo: "81", paidAt: new Date("2026-11-17T00:00:00Z"), total: 11325, unapplied: 11325, payer: null, noOpenDebt: false };
-    expect(describeUnappliedPayment({ ...base, pendingApproval: true })).toContain("ONAY BEKLIYOR");
-    expect(describeUnappliedPayment({ ...base, pendingApproval: false, unapplied: 1300 })).toContain("1.300 ₺ FAZLA");
+    expect(describeUnappliedPayment({ ...base, pendingApproval: true })).toContain("onayını bekliyor");
+    const fazla = describeUnappliedPayment({ ...base, pendingApproval: false, unapplied: 1300 });
+    expect(fazla).toContain("1.300 ₺ artakaldı");
+    expect(fazla).toContain("otomatik olarak ona yazılır");
+  });
+
+  it("elle duzenlenmis fazla odeme icin kendiliginden dusmeyecegini soyler", () => {
+    const base = { doorNo: "4", paidAt: new Date("2026-08-16T00:00:00Z"), total: 3400, unapplied: 1300, payer: null, noOpenDebt: false, pendingApproval: false };
+    expect(describeUnappliedPayment({ ...base, manualLock: true })).toContain("kendiliğinden yazılmaz");
+    expect(describeHint("FAZLA", true)).toContain("iade");
+    expect(describeHint("FAZLA", false)).toContain("kendiliğinden düşer");
+    expect(describeHint("ILERI", false)).toContain("gerek yok");
   });
 
   it("not etiketlerinden daire ve odeyen adini okur", () => {

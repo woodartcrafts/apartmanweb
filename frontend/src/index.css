@@ -12618,3 +12618,8 @@ td.empty {
 .ml-date { color: var(--muted); font-size: 12px; }
 .ml-amount { margin-left: auto; font-size: 15px; }
 .ml-text { margin-top: 3px; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+.ml-card small { color: var(--muted); font-size: 12px; line-height: 1.3; }
+.ml-help { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; margin-bottom: 10px; font-size: 14px; }
+.ml-help summary { cursor: pointer; font-weight: 600; }
+.ml-help ul { margin: 8px 0 2px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; line-height: 1.35; }
+.ml-hint, .ln-hint { margin-top: 4px; font-size: 13px; color: var(--muted); font-style: italic; }
