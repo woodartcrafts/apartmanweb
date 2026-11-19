@@ -12623,3 +12623,18 @@ td.empty {
 .ml-help summary { cursor: pointer; font-weight: 600; }
 .ml-help ul { margin: 8px 0 2px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; line-height: 1.35; }
 .ml-hint, .ln-hint { margin-top: 4px; font-size: 13px; color: var(--muted); font-style: italic; }
+.ml-diff-eksik { border-left: 4px solid #c62828; }
+.ml-diff-fazla { border-left: 4px solid #2e7d32; }
+.ml-diff-amount { margin-left: auto; font-weight: 700; font-size: 17px; white-space: nowrap; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+.ml-diff-amount small { font-size: 12px; font-weight: 600; }
+.ml-diff-amount-eksik { color: #c62828; }
+.ml-diff-amount-fazla { color: #2e7d32; }
+.ml-diff .ml-text { margin-top: 8px; }
+.ml-timeline { margin-top: 8px; font-size: 12px; }
+.ml-timeline summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.ml-tl-head, .ml-tl-row { display: grid; grid-template-columns: 44px 1fr 74px 74px; gap: 6px; padding: 4px 0; border-bottom: 1px dashed var(--line); align-items: start; }
+.ml-tl-head { color: var(--muted); font-weight: 600; margin-top: 6px; }
+.ml-tl-row span:nth-child(3), .ml-tl-row span:nth-child(4), .ml-tl-head span:nth-child(3), .ml-tl-head span:nth-child(4) { text-align: right; white-space: nowrap; }
+.ml-tl-label { overflow-wrap: anywhere; }
+.ml-tl-origin { background: #fff8e1; font-weight: 700; border-radius: 6px; }
+.ml-section-title { margin: 14px 2px 8px; font-weight: 700; font-size: 14px; }

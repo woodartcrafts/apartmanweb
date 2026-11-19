@@ -37,6 +37,7 @@ import { createAdminPaymentAuditRoutes, saveDailyAuditReport } from "./adminPaym
 import { buildLeftoverNotes } from "../utils/leftoverNotes";
 import { buildMobileBankReport } from "../utils/mobileBankReport";
 import { buildMobileLeftoverReport } from "../utils/mobileLeftoverReport";
+import { buildDifferenceReport } from "../utils/differenceReport";
 import { buildMobileMatrixApartmentDetail, buildMobileMatrixApartmentPdf, buildMobileMatrixPdf, getMobileMatrixLastDataAt, buildMobileMatrixReport } from "../utils/mobileMatrixReport";
 import { sendHeartbeat } from "../utils/heartbeat";
 import { digestAttentionCount, type DigestSyncSummary } from "../utils/dailyDigest";
@@ -9575,6 +9576,11 @@ router.get("/reports/leftover-notes", async (req, res) => {
 // Mobil Kalan Islemler: ayni veri, daire daire gruplu; mobil sayfa kendiliginden yeniler.
 router.get("/reports/leftover-mobile", async (_req, res) => {
   return res.json(await buildMobileLeftoverReport());
+});
+
+// Fark kaynagi: her dairenin bugunku farki ve hangi odemede dogdugu (ayni yetki anahtari).
+router.get("/reports/leftover-mobile/differences", async (_req, res) => {
+  return res.json(await buildDifferenceReport());
 });
 
 router.get("/reports/bank-balance-mobile", async (_req, res) => {

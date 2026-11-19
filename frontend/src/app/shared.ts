@@ -1920,6 +1920,32 @@ export type MobileLeftoverReportResponse = {
   apartments: MobileLeftoverApartment[];
 };
 
+export type DifferenceTimelineRow = {
+  date: string;
+  kind: "CHARGE" | "PAYMENT";
+  label: string;
+  amount: number;
+  balance: number;
+};
+
+export type DifferenceItem = {
+  doorNo: string;
+  name: string;
+  diff: number;
+  kind: "FAZLA" | "EKSIK";
+  origin: { date: string; paid: number; owed: number; label: string };
+  summary: string;
+  timeline: DifferenceTimelineRow[];
+};
+
+export type DifferenceReportResponse = {
+  generatedAt: string;
+  lastDataAt: string | null;
+  totals: { eksik: number; fazla: number; onay: number };
+  differences: DifferenceItem[];
+  pendingApprovals: LeftoverNote[];
+};
+
 export type LeftoverNotesResponse = {
   generatedAt: string;
   lastDataAt: string | null;

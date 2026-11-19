@@ -5,6 +5,7 @@ import multer from "multer";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db";
+import { buildDifferenceReport } from "../utils/differenceReport";
 import { buildLeftoverNotes } from "../utils/leftoverNotes";
 import { importBankStatementFile, previewBankStatementFile } from "./admin";
 import { MANUAL_RECONCILE_LOCK_TAG, parsePaymentNoteParts } from "./adminNoteUtils";
@@ -91,6 +92,10 @@ router.get("/leftover-notes", async (req, res) => {
   const parsed = Number(raw);
   const days = raw === "all" ? null : Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 3650) : 60;
   return res.json(await buildLeftoverNotes(days));
+});
+
+router.get("/differences", async (_req, res) => {
+  return res.json(await buildDifferenceReport());
 });
 
 router.get("/apartments/:doorNo", async (req, res) => {

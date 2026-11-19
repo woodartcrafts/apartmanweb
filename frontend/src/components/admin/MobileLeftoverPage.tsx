@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { formatTry, type LeftoverNote, type MobileLeftoverReportResponse } from "../../app/shared";
+import { formatTry, type DifferenceItem, type DifferenceReportResponse } from "../../app/shared";
 
 type MobileLeftoverPageProps = {
   request: <T>(endpoint: string, options?: { method?: "GET" | "POST"; payload?: unknown }) => Promise<T>;
@@ -10,26 +10,14 @@ type Filter = "HEPSI" | "EKSIK" | "FAZLA" | "ONAY";
 // Sayfa acik oldukca veriyi bu aralikla kendiliginden yeniler.
 const AUTO_REFRESH_MS = 60_000;
 
-const KIND_LABEL: Record<LeftoverNote["kind"], string> = {
-  EKSIK: "Borcun bir kısmı ödenmemiş",
-  FAZLA: "Fazla yatırmış",
-  ONAY: "Onayını bekliyor",
-  ILERI: "Önceden ödemiş (sorun yok)",
-};
-
 const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "HEPSI", label: "Hepsi" },
-  { key: "EKSIK", label: "Ödenmemiş" },
-  { key: "FAZLA", label: "Fazla yatıran" },
+  { key: "EKSIK", label: "Eksik" },
+  { key: "FAZLA", label: "Fazla" },
   { key: "ONAY", label: "Onay bekleyen" },
 ];
 
-// Kart ustundeki "Daire 12 - " on eki zaten daire basliginda yazili; tekrarini gizler.
-function stripDoorPrefix(text: string): string {
-  return text.replace(/^Daire \S+ - /, "");
-}
-
-function formatDay(iso: string | null): string {
+function formatDay(iso: string | null, withYear = true): string {
   if (!iso) {
     return "-";
   }
@@ -41,7 +29,7 @@ function formatDay(iso: string | null): string {
     timeZone: "Europe/Istanbul",
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
+    ...(withYear ? { year: "numeric" as const } : {}),
   }).format(date);
 }
 
@@ -54,8 +42,17 @@ function formatClock(date: Date): string {
   }).format(date);
 }
 
+// Kart ustundeki "Daire 12 - " on eki zaten daire basliginda yazili; tekrarini gizler.
+function stripDoorPrefix(text: string): string {
+  return text.replace(/^Daire \S+ - /, "");
+}
+
+function isOriginRow(item: DifferenceItem, row: DifferenceItem["timeline"][number]): boolean {
+  return row.kind === "PAYMENT" && row.date === item.origin.date && Math.abs(row.amount - item.origin.paid) < 0.005;
+}
+
 export function MobileLeftoverPage({ request }: MobileLeftoverPageProps) {
-  const [data, setData] = useState<MobileLeftoverReportResponse | null>(null);
+  const [data, setData] = useState<DifferenceReportResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("HEPSI");
@@ -74,7 +71,7 @@ export function MobileLeftoverPage({ request }: MobileLeftoverPageProps) {
       setBusy(true);
     }
     try {
-      const next = await requestRef.current<MobileLeftoverReportResponse>("/api/admin/reports/leftover-mobile");
+      const next = await requestRef.current<DifferenceReportResponse>("/api/admin/reports/leftover-mobile/differences");
       setData(next);
       setRefreshedAt(new Date());
       setError(null);
@@ -113,17 +110,14 @@ export function MobileLeftoverPage({ request }: MobileLeftoverPageProps) {
     };
   }, [load]);
 
-  const visibleApartments = useMemo(() => {
-    if (!data) {
+  const visibleDifferences = useMemo(() => {
+    if (!data || filter === "ONAY") {
       return [];
     }
-    return data.apartments
-      .map((apartment) => ({
-        apartment,
-        notes: filter === "HEPSI" ? apartment.notes : apartment.notes.filter((note) => note.kind === filter),
-      }))
-      .filter((entry) => entry.notes.length > 0);
+    return filter === "HEPSI" ? data.differences : data.differences.filter((item) => item.kind === filter);
   }, [data, filter]);
+
+  const showPending = filter === "HEPSI" || filter === "ONAY";
 
   return (
     <section className="mm-page">
@@ -151,14 +145,14 @@ export function MobileLeftoverPage({ request }: MobileLeftoverPageProps) {
         <>
           <div className="ml-cards">
             <div className="ml-card ml-card-eksik">
-              <span>Ödenmemiş kalan</span>
+              <span>Toplam eksik</span>
               <b>{formatTry(data.totals.eksik)}</b>
-              <small>Borcunun bir kısmını henüz ödememiş</small>
+              <small>Gelmesi gerekirken gelmeyen</small>
             </div>
             <div className="ml-card ml-card-fazla">
-              <span>Fazla yatırılan</span>
+              <span>Toplam fazla</span>
               <b>{formatTry(data.totals.fazla)}</b>
-              <small>Fazla gelmiş, düşeceği borç yok</small>
+              <small>Gerekenden fazla gelen</small>
             </div>
           </div>
 
@@ -166,30 +160,22 @@ export function MobileLeftoverPage({ request }: MobileLeftoverPageProps) {
             <summary>Bu sayfa nasıl okunur?</summary>
             <ul>
               <li>
-                <b>Fazla ödeme normalde burada görünmez.</b> Örneğin 2.000 ₺ aidat borcu olan 2.100 ₺ öderse, fazla 100 ₺
-                sıradaki borcuna kendiliğinden düşer.
+                <b>Sadece farkı olan daireler görünür.</b> Fark = şu ana kadar ödenmesi gereken ile gelen ödeme arasındaki
+                fark. Vadesi gelmemiş borçlar sayılmaz.
               </li>
               <li>
-                <b>Ödenmemiş:</b> borcun bir kısmı hâlâ yatmamış. Örneğin 2.000 ₺ borca 1.500 ₺ ödenmiş, 500 ₺ eksik.
+                <b>Eksik:</b> gelmesi gereken para gelmemiş. <b>Fazla:</b> gerekenden fazla gelmiş, bir sonraki borca
+                düşer.
               </li>
               <li>
-                <b>Fazla yatıran:</b> fazla ödenmiş ama düşeceği açık bir borç yok (örneğin sonraki ayın aidatı henüz
-                girilmemiş). Yeni borç girilince kendiliğinden düşer.
+                <b>Kaynak:</b> her kartın altında farkın <b>ilk hangi ödemede</b> doğduğu yazar. "Ay ay geçmiş"e dokunursan
+                borç ve ödemeleri sırayla görürsün, kaynak ödeme işaretlidir.
               </li>
               <li>
-                <b>Önceden ödemiş:</b> vadesi gelmemiş bir borca erken ödeme yapılmış. Sorun yok, sadece bilgi.
-              </li>
-              <li>
-                <b>Onayını bekliyor:</b> ödeme geldi ama hangi borca ait olduğu belli değil. Senin onayın gerekiyor.
+                <b>Onay bekleyen:</b> ödeme geldi ama hangi borca ait olduğu belli değil, senin onayını bekliyor.
               </li>
             </ul>
           </details>
-          {data.totals.onay > 0 || data.totals.ileri > 0 ? (
-            <div className="ml-extra">
-              {data.totals.onay > 0 ? <span>Onay bekleyen: <b>{formatTry(data.totals.onay)}</b></span> : null}
-              {data.totals.ileri > 0 ? <span>Vadesi gelmemiş kalan: <b>{formatTry(data.totals.ileri)}</b></span> : null}
-            </div>
-          ) : null}
 
           <div className="ml-filters">
             {FILTERS.map((item) => (
@@ -204,31 +190,66 @@ export function MobileLeftoverPage({ request }: MobileLeftoverPageProps) {
             ))}
           </div>
 
-          {visibleApartments.length === 0 ? <div className="mm-sub">Gösterilecek kalan işlem yok.</div> : null}
+          {visibleDifferences.length === 0 && !(showPending && data.pendingApprovals.length > 0) ? (
+            <div className="mm-sub">Gösterilecek kalan işlem yok.</div>
+          ) : null}
 
-          {visibleApartments.map(({ apartment, notes }) => (
-            <div key={apartment.doorNo} className="mm-apt">
+          {visibleDifferences.map((item) => (
+            <div key={item.doorNo} className={`mm-apt ml-diff ml-diff-${item.kind.toLowerCase()}`}>
               <div className="mm-apt-head">
-                <div className="mm-no">{apartment.doorNo}</div>
+                <div className="mm-no">{item.doorNo}</div>
                 <div className="mm-name">
-                  <div className="mm-name-main">{apartment.name || `Daire ${apartment.doorNo}`}</div>
+                  <div className="mm-name-main">{item.name || `Daire ${item.doorNo}`}</div>
+                </div>
+                <div className={`ml-diff-amount ml-diff-amount-${item.kind.toLowerCase()}`}>
+                  {formatTry(Math.abs(item.diff))}
+                  <small>{item.kind === "EKSIK" ? "eksik" : "fazla"}</small>
                 </div>
               </div>
-              <div className="mm-items">
-                {notes.map((note) => (
-                  <div key={note.id} className={`ml-note ml-note-${note.kind.toLowerCase()}`}>
-                    <div className="ml-note-top">
-                      <span className="ml-badge">{KIND_LABEL[note.kind]}</span>
-                      <span className="ml-date">{formatDay(note.date)}</span>
-                      <b className="ml-amount">{formatTry(note.amount)}</b>
-                    </div>
-                    <div className="ml-text">{stripDoorPrefix(note.text)}</div>
-                    {note.hint ? <div className="ml-hint">{note.hint}</div> : null}
+              <div className="ml-text">{item.summary}</div>
+              <details className="ml-timeline">
+                <summary>Ay ay geçmiş</summary>
+                <div className="ml-tl-head">
+                  <span>Tarih</span>
+                  <span>Ne oldu</span>
+                  <span>Tutar</span>
+                  <span>Durum</span>
+                </div>
+                {item.timeline.map((row, index) => (
+                  <div
+                    key={`${row.date}-${index}`}
+                    className={`ml-tl-row${isOriginRow(item, row) ? " ml-tl-origin" : ""}`}
+                  >
+                    <span>{formatDay(row.date, false)}</span>
+                    <span className="ml-tl-label">
+                      {row.kind === "PAYMENT" ? "Ödeme: " : "Borç: "}
+                      {row.label}
+                      {isOriginRow(item, row) ? " ← kaynak" : ""}
+                    </span>
+                    <span className={row.amount >= 0 ? "mm-good" : "mm-bad"}>{formatTry(row.amount)}</span>
+                    <span className={row.balance >= 0 ? "mm-good" : "mm-bad"}>{formatTry(row.balance)}</span>
                   </div>
                 ))}
-              </div>
+              </details>
             </div>
           ))}
+
+          {showPending && data.pendingApprovals.length > 0 ? (
+            <>
+              <div className="ml-section-title">Onayını bekleyen ödemeler ({formatTry(data.totals.onay)})</div>
+              {data.pendingApprovals.map((note) => (
+                <div key={note.id} className="mm-apt ml-note ml-note-onay">
+                  <div className="ml-note-top">
+                    <span className="ml-badge">Daire {note.doorNo}</span>
+                    <span className="ml-date">{formatDay(note.date)}</span>
+                    <b className="ml-amount">{formatTry(note.amount)}</b>
+                  </div>
+                  <div className="ml-text">{stripDoorPrefix(note.text)}</div>
+                  {note.hint ? <div className="ml-hint">{note.hint}</div> : null}
+                </div>
+              ))}
+            </>
+          ) : null}
         </>
       ) : null}
     </section>
