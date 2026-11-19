@@ -12570,3 +12570,24 @@ td.empty {
 .mb-section-total b { font-size: 16px; }
 .mb-section-muted { opacity: 0.85; }
 .mb-note { color: var(--muted); font-size: 12px; padding: 0 2px 6px; }
+
+/* Kalan Islemler Notlari */
+.ln-page { max-width: 760px; margin: 0 auto; padding: 0 4px 24px; min-width: 0; }
+.ln-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.ln-head h3 { margin: 0 0 4px; }
+.ln-sub { color: var(--muted); font-size: 13px; }
+.ln-actions { display: flex; gap: 8px; align-items: center; }
+.ln-summary { display: flex; flex-wrap: wrap; gap: 8px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin-bottom: 12px; font-size: 14px; }
+.ln-note { background: var(--card); border: 1px solid var(--line); border-left: 5px solid #1d4ed8; border-radius: 12px; padding: 10px 14px; margin-bottom: 10px; }
+.ln-note-eksik { border-left-color: #c62828; }
+.ln-note-fazla { border-left-color: #1d4ed8; }
+.ln-note-onay { border-left-color: #ef6c00; }
+.ln-note-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+.ln-badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #1e3a8a; }
+.ln-note-eksik .ln-badge { background: #fdecea; color: #b71c1c; }
+.ln-note-onay .ln-badge { background: #fff3e0; color: #e65100; }
+.ln-date { color: var(--muted); font-size: 12px; }
+.ln-amount { margin-left: auto; font-size: 16px; white-space: nowrap; }
+.ln-text { font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+.ln-error { background: #fdecea; color: #b71c1c; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+.ln-empty { color: var(--muted); padding: 16px 4px; }

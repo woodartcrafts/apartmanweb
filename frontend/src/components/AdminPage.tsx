@@ -287,6 +287,11 @@ const MobileMatrixReportPage = lazy(() =>
     default: module.MobileMatrixReportPage,
   }))
 );
+const LeftoverNotesPage = lazy(() =>
+  import("./admin/LeftoverNotesPage").then((module) => ({
+    default: module.LeftoverNotesPage,
+  }))
+);
 const MobileBankReportPage = lazy(() =>
   import("./admin/MobileBankReportPage").then((module) => ({
     default: module.MobileBankReportPage,
@@ -1117,6 +1122,7 @@ function normalizeToastText(value: string): string {
       "/admin/reports/monthly-balance-matrix": "REPORTS_MONTHLY_BALANCE",
       "/admin/reports/mobile-matrix": "REPORTS_MOBILE_MATRIX",
       "/admin/reports/mobile-bank": "REPORTS_MOBILE_BANK",
+      "/admin/control/leftover-notes": "CONTROL_LEFTOVER_NOTES",
       "/admin/reports/monthly-ledger-print": "REPORTS_MONTHLY_LEDGER",
       "/admin/reports/fractional-closures": "REPORTS_FRACTIONAL",
       "/admin/reports/reference-search": "REPORTS_REFERENCE_SEARCH",
@@ -1168,6 +1174,7 @@ function normalizeToastText(value: string): string {
       { path: "/admin/reports/monthly-balance-matrix", key: "REPORTS_MONTHLY_BALANCE" },
       { path: "/admin/reports/mobile-matrix", key: "REPORTS_MOBILE_MATRIX" },
       { path: "/admin/reports/mobile-bank", key: "REPORTS_MOBILE_BANK" },
+      { path: "/admin/control/leftover-notes", key: "CONTROL_LEFTOVER_NOTES" },
       { path: "/admin/reports/monthly-ledger-print", key: "REPORTS_MONTHLY_LEDGER" },
       { path: "/admin/reports/fractional-closures", key: "REPORTS_FRACTIONAL" },
       { path: "/admin/reports/reference-search", key: "REPORTS_REFERENCE_SEARCH" },
@@ -9409,6 +9416,9 @@ function normalizeToastText(value: string): string {
             <NavLink className="btn btn-ghost" to="/admin/reconcile/door-mismatch-report">
               Banka Eslestirme Kontrolu
             </NavLink>
+            <NavLink className="btn btn-ghost" to="/admin/control/leftover-notes">
+              Kalan Islemler Notlari
+            </NavLink>
             <NavLink className="btn btn-ghost" to="/admin/reports/bank-statement">
               Banka Ekstresi Karsilastirma
             </NavLink>
@@ -13317,6 +13327,14 @@ function normalizeToastText(value: string): string {
           element={
             <Suspense fallback={<LazyAdminPageFallback />}>
               <MobileMatrixReportPage request={authorizedRequest} />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/control/leftover-notes"
+          element={
+            <Suspense fallback={<LazyAdminPageFallback />}>
+              <LeftoverNotesPage request={authorizedRequest} />
             </Suspense>
           }
         />

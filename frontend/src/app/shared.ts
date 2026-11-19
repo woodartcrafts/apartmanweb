@@ -47,6 +47,7 @@ export type AdminPageKey =
   | "REPORTS_STAFF_OPEN_AIDAT_SEND_EMAIL"
   | "REPORTS_MOBILE_MATRIX"
   | "REPORTS_MOBILE_BANK"
+  | "CONTROL_LEFTOVER_NOTES"
   | "REPORTS_MONTHLY_BALANCE"
   | "REPORTS_MONTHLY_LEDGER"
   | "REPORTS_FRACTIONAL"
@@ -1888,4 +1889,22 @@ export type MobileBankReportResponse = {
   bankBalance: number;
   deposits: MobileBankDeposit[];
   totals: { depositPrincipal: number; depositNetMaturity: number; grandTotal: number };
+};
+
+
+export type LeftoverNote = {
+  id: string;
+  kind: "EKSIK" | "FAZLA" | "ONAY";
+  doorNo: string;
+  date: string;
+  amount: number;
+  text: string;
+};
+
+export type LeftoverNotesResponse = {
+  generatedAt: string;
+  lastDataAt: string | null;
+  days: number | null;
+  notes: LeftoverNote[];
+  totals: { eksik: number; fazla: number; onay: number };
 };

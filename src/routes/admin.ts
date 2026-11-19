@@ -34,6 +34,7 @@ import { createAdminPaymentRefundRoutes } from "./adminPaymentRefundRoutes";
 import { createAdminSplitCandidateRoutes } from "./adminSplitCandidateRoutes";
 import { createAdminApartmentCreditRoutes } from "./adminApartmentCreditRoutes";
 import { createAdminPaymentAuditRoutes, saveDailyAuditReport } from "./adminPaymentAuditRoutes";
+import { buildLeftoverNotes } from "../utils/leftoverNotes";
 import { buildMobileBankReport } from "../utils/mobileBankReport";
 import { buildMobileMatrixApartmentDetail, buildMobileMatrixApartmentPdf, buildMobileMatrixPdf, getMobileMatrixLastDataAt, buildMobileMatrixReport } from "../utils/mobileMatrixReport";
 import { sendHeartbeat } from "../utils/heartbeat";
@@ -9507,6 +9508,14 @@ router.get("/reports/apartment-balance-matrix", async (req, res) => {
 });
 
 // Mobil Matrix Raporu: veri ve PDF mantigi src/utils/mobileMatrixReport.ts icinde.
+// Kalan Islemler notlari: eksik kalan / fazla gelen / onay bekleyen odemeleri sade cumlelerle listeler.
+router.get("/reports/leftover-notes", async (req, res) => {
+  const rawDays = String(req.query.days ?? "60").trim().toLowerCase();
+  const parsed = Number(rawDays);
+  const days = rawDays === "all" ? null : Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 3650) : 60;
+  return res.json(await buildLeftoverNotes(days));
+});
+
 router.get("/reports/bank-balance-mobile", async (_req, res) => {
   return res.json(await buildMobileBankReport());
 });
