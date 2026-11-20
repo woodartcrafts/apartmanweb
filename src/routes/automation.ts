@@ -207,6 +207,68 @@ router.get("/payments/by-ref/:ref", async (req, res) => {
   });
 });
 
+/**
+ * Toplu denetim (salt okunur): tarih araligindaki tum odemeler, notlari ve bagli tahakkuklariyla.
+ * Banka ekstresiyle satir satir karsilastirmak icindir.
+ */
+router.get("/audit/payments", async (req, res) => {
+  const parseDay = (value: unknown, fallback: Date): Date => {
+    const text = typeof value === "string" ? value.trim() : "";
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(text) ? new Date(`${text}T00:00:00.000Z`) : fallback;
+    return Number.isNaN(date.getTime()) ? fallback : date;
+  };
+  const now = new Date();
+  const from = parseDay(req.query.from, new Date(now.getTime() - 400 * 24 * 3600 * 1000));
+  const to = parseDay(req.query.to, new Date(now.getTime() + 24 * 3600 * 1000));
+
+  const payments = await prisma.payment.findMany({
+    where: { paidAt: { gte: from, lte: to } },
+    select: {
+      id: true,
+      paidAt: true,
+      totalAmount: true,
+      note: true,
+      itemLinks: {
+        select: {
+          chargeId: true,
+          amount: true,
+          charge: {
+            select: {
+              periodYear: true,
+              periodMonth: true,
+              amount: true,
+              dueDate: true,
+              apartment: { select: { doorNo: true } },
+              chargeType: { select: { name: true } },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { paidAt: "asc" },
+    take: 5000,
+  });
+
+  return res.json({
+    count: payments.length,
+    payments: payments.map((payment) => ({
+      id: payment.id,
+      paidAt: payment.paidAt.toISOString(),
+      total: Number(payment.totalAmount),
+      note: payment.note ?? "",
+      items: payment.itemLinks.map((item) => ({
+        chargeId: item.chargeId,
+        amount: Number(item.amount),
+        door: item.charge.apartment.doorNo,
+        period: `${item.charge.periodYear}-${String(item.charge.periodMonth).padStart(2, "0")}`,
+        type: item.charge.chargeType.name,
+        chargeAmount: Number(item.charge.amount),
+        dueDate: item.charge.dueDate.toISOString().slice(0, 10),
+      })),
+    })),
+  });
+});
+
 // ---------------------------------------------------------------- ekstre
 
 router.post("/bank-statement/preview", upload.single("file"), async (req, res) => {
